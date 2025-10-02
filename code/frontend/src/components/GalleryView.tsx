@@ -1,6 +1,9 @@
 import React from 'react';
 
 const GalleryView: React.FC = () => {
+  // TODO: IMPLEMENT REAL GALLERY WITH BACKEND INTEGRATION
+  // This component shows placeholder content - replace with real image gallery
+  
   return (
     <div className="space-y-6">
       <div className="bg-dark-800 rounded-lg p-8 border border-dark-700">
@@ -10,6 +13,24 @@ const GalleryView: React.FC = () => {
         <p className="text-dark-300 mb-6">
           View your uploaded drone images and stitched panoramas
         </p>
+        
+        {/* TODO: BACKEND INTEGRATION NEEDED
+        Replace this empty state with real gallery implementation:
+        
+        useEffect(() => {
+          const fetchGalleryImages = async () => {
+            try {
+              const response = await fetch('/api/gallery/images');
+              const data = await response.json();
+              setGalleryImages(data);
+            } catch (error) {
+              console.error('Failed to fetch gallery images:', error);
+            }
+          };
+          
+          fetchGalleryImages();
+        }, []);
+        */}
         
         {/* Gallery grid placeholder */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

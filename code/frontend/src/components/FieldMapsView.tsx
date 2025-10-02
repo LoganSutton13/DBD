@@ -25,7 +25,8 @@ const FieldMapsView: React.FC = () => {
   const [selectedMap, setSelectedMap] = useState<FieldMap | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-  // Mock data - this would come from your backend
+  // TODO: REPLACE MOCK DATA WITH REAL BACKEND API CALL
+  // Mock data - this would come from your Python backend
   const [fieldMaps] = useState<FieldMap[]>([
     {
       id: '1',
@@ -79,6 +80,50 @@ const FieldMapsView: React.FC = () => {
       status: 'processing',
     },
   ]);
+
+  // TODO: IMPLEMENT BACKEND INTEGRATION
+  // Replace mock data with real API calls:
+  /*
+  useEffect(() => {
+    const fetchFieldMaps = async () => {
+      try {
+        const response = await fetch('/api/fieldmaps');
+        if (!response.ok) {
+          throw new Error('Failed to fetch field maps');
+        }
+        const data = await response.json();
+        setFieldMaps(data);
+      } catch (error) {
+        console.error('Error fetching field maps:', error);
+        // Handle error state
+      }
+    };
+
+    fetchFieldMaps();
+  }, []);
+
+  // TODO: IMPLEMENT REAL DOWNLOAD FUNCTION
+  const downloadFieldMap = async (mapId: string) => {
+    try {
+      const response = await fetch(`/api/fieldmaps/${mapId}/download`);
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+      // Handle file download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `field-map-${mapId}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Download failed:', error);
+    }
+  };
+  */
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {

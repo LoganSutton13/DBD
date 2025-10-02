@@ -65,8 +65,11 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
     });
   };
 
+  // TODO: REPLACE SIMULATION WITH REAL BACKEND UPLOAD
+  // This function simulates file upload - replace with actual API call to your Python backend
   const simulateUpload = async (file: UploadFile) => {
     return new Promise<void>((resolve) => {
+      // SIMULATION CODE START - REMOVE WHEN CONNECTING TO BACKEND
       const interval = setInterval(() => {
         setUploadFiles((prev) => {
           const updated = prev.map(f => {
@@ -101,8 +104,54 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
         
         resolve();
       }, 2000 + Math.random() * 3000);
+      // SIMULATION CODE END - REMOVE WHEN CONNECTING TO BACKEND
     });
   };
+
+  // TODO: IMPLEMENT REAL UPLOAD FUNCTION
+  // Replace the above simulation with this structure:
+  /*
+  const uploadToBackend = async (file: UploadFile) => {
+    try {
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('file', file.file);
+      formData.append('metadata', JSON.stringify(file.metadata));
+
+      // Upload to your Python backend endpoint
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+        // Add progress tracking if needed
+        onUploadProgress: (progressEvent) => {
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          // Update file progress in state
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const result = await response.json();
+      
+      // Update stats and file status
+      onStatsUpdate((prev) => ({
+        imagesUploaded: prev.imagesUploaded + 1,
+        processing: prev.processing - 1,
+        completed: prev.completed + 1,
+        storageUsed: prev.storageUsed + (file.metadata?.size || 0) / (1024 * 1024),
+      }));
+
+      return result;
+    } catch (error) {
+      // Handle upload error
+      console.error('Upload failed:', error);
+      // Update file status to 'error'
+      return { error: error.message };
+    }
+  };
+  */
 
   const startUpload = async () => {
     setIsUploading(true);
@@ -113,12 +162,19 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
       processing: prev.processing + pendingFiles.length,
     }));
     
+    // TODO: REPLACE WITH REAL BACKEND UPLOAD
+    // Current implementation uses simulation - replace with actual API calls
     for (const file of pendingFiles) {
       setUploadFiles((prev) => 
         prev.map(f => f.id === file.id ? { ...f, status: 'uploading' } : f)
       );
       
+      // SIMULATION: Replace this with uploadToBackend(file)
       await simulateUpload(file);
+      
+      // TODO: BACKEND INTEGRATION
+      // Replace above line with:
+      // await uploadToBackend(file);
     }
     
     setIsUploading(false);

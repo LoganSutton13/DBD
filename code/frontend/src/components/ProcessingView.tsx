@@ -1,6 +1,9 @@
 import React from 'react';
 
 const ProcessingView: React.FC = () => {
+  // TODO: IMPLEMENT REAL PROCESSING QUEUE
+  // This component shows placeholder data - replace with real backend integration
+  
   return (
     <div className="space-y-6">
       <div className="bg-dark-800 rounded-lg p-8 border border-dark-700">
@@ -10,6 +13,27 @@ const ProcessingView: React.FC = () => {
         <p className="text-dark-300 mb-6">
           Monitor your image stitching and processing jobs
         </p>
+        
+        {/* TODO: BACKEND INTEGRATION NEEDED
+        Replace this static content with real processing queue data:
+        
+        useEffect(() => {
+          const fetchProcessingQueue = async () => {
+            try {
+              const response = await fetch('/api/processing/queue');
+              const data = await response.json();
+              setProcessingJobs(data);
+            } catch (error) {
+              console.error('Failed to fetch processing queue:', error);
+            }
+          };
+          
+          // Poll for updates every 5 seconds
+          fetchProcessingQueue();
+          const interval = setInterval(fetchProcessingQueue, 5000);
+          return () => clearInterval(interval);
+        }, []);
+        */}
         
         {/* Processing status */}
         <div className="space-y-4">
