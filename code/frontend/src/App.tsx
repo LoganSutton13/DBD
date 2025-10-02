@@ -1,28 +1,34 @@
 import React, { useState } from 'react';
 import './App.css';
-import Navigation from './components/Navigation';
+import Header from './components/Header';
+import Sidebar from './components/Sidebar';
 import UploadView from './components/UploadView';
 import GalleryView from './components/GalleryView';
+import ProcessingView from './components/ProcessingView';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'upload' | 'gallery'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'gallery' | 'processing'>('upload');
+
+  const renderActiveView = () => {
+    switch (activeTab) {
+      case 'upload':
+        return <UploadView />;
+      case 'gallery':
+        return <GalleryView />;
+      case 'processing':
+        return <ProcessingView />;
+      default:
+        return <UploadView />;
+    }
+  };
 
   return (
     <div className="min-h-screen bg-dark-900 text-dark-100">
-      <div className="container mx-auto px-4 py-8">
-        <header className="mb-8">
-          <h1 className="text-4xl font-bold text-primary-500 mb-2">
-            Drone Imagery Hub
-          </h1>
-          <p className="text-dark-300 text-lg">
-            Upload, process, and view your drone imagery
-          </p>
-        </header>
-        
-        <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
-        
-        <main>
-          {activeTab === 'upload' ? <UploadView /> : <GalleryView />}
+      <Header />
+      <div className="flex">
+        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+        <main className="flex-1 p-8">
+          {renderActiveView()}
         </main>
       </div>
     </div>
