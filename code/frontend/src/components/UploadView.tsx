@@ -2,7 +2,19 @@ import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { UploadFile } from '../types/upload';
 
-const UploadView: React.FC = () => {
+interface AppStats {
+  imagesUploaded: number;
+  processing: number;
+  completed: number;
+  storageUsed: number;
+}
+
+interface UploadViewProps {
+  onStatsUpdate: (updateFn: (prev: AppStats) => Partial<AppStats>) => void;
+  currentStats: AppStats;
+}
+
+const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) => {
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -60,10 +72,13 @@ const UploadView: React.FC = () => {
           const updated = prev.map(f => {
             if (f.id === file.id) {
               const newProgress = Math.min(f.progress + Math.random() * 20, 100);
+              const newStatus: 'pending' | 'uploading' | 'completed' | 'error' = 
+                newProgress === 100 ? 'completed' : 'uploading';
+              
               return {
                 ...f,
                 progress: newProgress,
-                status: newProgress === 100 ? 'completed' : 'uploading',
+                status: newStatus,
               };
             }
             return f;
@@ -74,6 +89,16 @@ const UploadView: React.FC = () => {
 
       setTimeout(() => {
         clearInterval(interval);
+        
+        // Update stats when upload completes
+        const fileSizeMB = (file.metadata?.size || 0) / (1024 * 1024);
+        onStatsUpdate((prev) => ({
+          imagesUploaded: prev.imagesUploaded + 1,
+          processing: prev.processing - 1,
+          completed: prev.completed + 1,
+          storageUsed: prev.storageUsed + fileSizeMB,
+        }));
+        
         resolve();
       }, 2000 + Math.random() * 3000);
     });
@@ -82,6 +107,11 @@ const UploadView: React.FC = () => {
   const startUpload = async () => {
     setIsUploading(true);
     const pendingFiles = uploadFiles.filter(f => f.status === 'pending');
+    
+    // Update processing count when upload starts
+    onStatsUpdate((prev) => ({
+      processing: prev.processing + pendingFiles.length,
+    }));
     
     for (const file of pendingFiles) {
       setUploadFiles((prev) => 

@@ -1,11 +1,19 @@
 import React from 'react';
 
-interface SidebarProps {
-  activeTab: 'upload' | 'gallery' | 'processing';
-  onTabChange: (tab: 'upload' | 'gallery' | 'processing') => void;
+interface AppStats {
+  imagesUploaded: number;
+  processing: number;
+  completed: number;
+  storageUsed: number;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
+interface SidebarProps {
+  activeTab: 'upload' | 'gallery' | 'processing' | 'fieldmaps';
+  onTabChange: (tab: 'upload' | 'gallery' | 'processing' | 'fieldmaps') => void;
+  stats: AppStats;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, stats }) => {
   const menuItems = [
     {
       id: 'upload' as const,
@@ -31,6 +39,15 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      )
+    },
+    {
+      id: 'fieldmaps' as const,
+      label: 'Field Maps',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m0 0L9 7" />
         </svg>
       )
     }
@@ -62,15 +79,15 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
           <div className="space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-dark-300 text-sm">Images Uploaded</span>
-              <span className="text-primary-400 font-medium">0</span>
+              <span className="text-primary-400 font-medium">{stats.imagesUploaded}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-dark-300 text-sm">Processing</span>
-              <span className="text-yellow-400 font-medium">0</span>
+              <span className="text-yellow-400 font-medium">{stats.processing}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-dark-300 text-sm">Completed</span>
-              <span className="text-green-400 font-medium">0</span>
+              <span className="text-green-400 font-medium">{stats.completed}</span>
             </div>
           </div>
         </div>
@@ -81,10 +98,16 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <span className="text-dark-300 text-sm">Used</span>
-              <span className="text-dark-300 text-sm">0 MB</span>
+              <span className="text-dark-300 text-sm">{stats.storageUsed.toFixed(1)} MB</span>
             </div>
             <div className="w-full bg-dark-700 rounded-full h-2">
-              <div className="bg-primary-500 h-2 rounded-full" style={{ width: '0%' }}></div>
+              <div 
+                className="bg-primary-500 h-2 rounded-full transition-all duration-300" 
+                style={{ width: `${Math.min((stats.storageUsed / 1000) * 100, 100)}%` }}
+              ></div>
+            </div>
+            <div className="text-xs text-dark-400">
+              {stats.storageUsed.toFixed(1)} MB of 1 GB used
             </div>
           </div>
         </div>
