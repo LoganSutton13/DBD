@@ -1,0 +1,19 @@
+/* Additional custom styles for the app */
+.app-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+}
+
+.glass-effect {
+  background: rgba(30, 41, 59, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(71, 85, 105, 0.3);
+}
+
+.primary-gradient {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+}
+
+.primary-gradient:hover {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
