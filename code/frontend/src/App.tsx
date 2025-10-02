@@ -6,6 +6,7 @@ import UploadView from './components/UploadView';
 import GalleryView from './components/GalleryView';
 import ProcessingView from './components/ProcessingView';
 import FieldMapsView from './components/FieldMapsView';
+import PesticidePrescriptionsView from './components/PesticidePrescriptionsView';
 
 interface AppStats {
   imagesUploaded: number;
@@ -15,7 +16,7 @@ interface AppStats {
 }
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'upload' | 'gallery' | 'processing' | 'fieldmaps'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'gallery' | 'processing' | 'fieldmaps' | 'pesticides'>('upload');
   const [stats, setStats] = useState<AppStats>({
     imagesUploaded: 0,
     processing: 0,
@@ -37,6 +38,8 @@ function App() {
         return <ProcessingView />;
       case 'fieldmaps':
         return <FieldMapsView />;
+      case 'pesticides':
+        return <PesticidePrescriptionsView />;
       default:
         return <UploadView onStatsUpdate={updateStats} currentStats={stats} />;
     }

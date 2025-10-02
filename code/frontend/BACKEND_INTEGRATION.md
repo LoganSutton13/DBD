@@ -126,6 +126,44 @@ useEffect(() => {
 
 ---
 
+### 5. **PesticidePrescriptionsView.tsx** - AI-Generated Pesticide Maps
+**Location**: `src/components/PesticidePrescriptionsView.tsx`
+
+#### Current Mock Data:
+- Hardcoded pesticide prescription examples
+- Static generation states
+- Mock robot instructions
+
+#### Backend Integration Needed:
+```typescript
+useEffect(() => {
+  const fetchPrescriptions = async () => {
+    const response = await fetch('/api/pesticide-prescriptions');
+    const data = await response.json();
+    setPrescriptions(data);
+  };
+  fetchPrescriptions();
+}, []);
+
+const generatePrescription = async (fieldMapId: string, pestType: string, pesticideType: string) => {
+  const response = await fetch('/api/pesticide-prescriptions/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fieldMapId, pestType, pesticideType }),
+  });
+  return response.json();
+};
+```
+
+#### Required Backend Endpoints:
+- `GET /api/pesticide-prescriptions` - Get all prescriptions
+- `GET /api/pesticide-prescriptions/{id}` - Get specific prescription
+- `POST /api/pesticide-prescriptions/generate` - Generate new prescription
+- `GET /api/pesticide-prescriptions/{id}/robot-path` - Download robot path (GPX)
+- `POST /api/pesticide-prescriptions/{id}/send-to-robot` - Send to agricultural robot
+
+---
+
 ## 🔧 Backend API Requirements
 
 ### **Data Structures**
@@ -165,6 +203,35 @@ interface UploadFile {
     type: string;
     lastModified: number;
     name: string;
+  };
+}
+```
+
+#### PesticidePrescription Interface:
+```typescript
+interface PesticidePrescription {
+  id: string;
+  name: string;
+  createdAt: string;
+  fieldMapId: string;
+  prescriptionUrl: string;
+  thumbnailUrl: string;
+  status: 'generating' | 'ready' | 'failed';
+  metadata: {
+    fieldName: string;
+    cropType: string;
+    pestType: string;
+    pesticideType: string;
+    applicationRate: string;
+    totalArea: string;
+    estimatedCost: string;
+    robotCompatible: boolean;
+  };
+  robotInstructions: {
+    pathFile: string;
+    waypoints: number;
+    estimatedDuration: string;
+    batteryRequired: string;
   };
 }
 ```
@@ -257,6 +324,9 @@ const fetchData = async () => {
 | `/api/processing/queue` | GET | Get processing queue |
 | `/api/processing/jobs/{id}` | GET | Get job status |
 | `/api/gallery/images` | GET | Get uploaded images |
+| `/api/pesticide-prescriptions` | GET | Get all prescriptions |
+| `/api/pesticide-prescriptions/generate` | POST | Generate new prescription |
+| `/api/pesticide-prescriptions/{id}/robot-path` | GET | Download robot path |
 
 ## 💡 Tips for Integration
 
