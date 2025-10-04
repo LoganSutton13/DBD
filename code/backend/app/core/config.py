@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
     
     # Server Configuration
-    PORT: int = 8000
+    PORT: int = 8001
     HOST: str = "0.0.0.0"
     DEBUG: bool = True
     
@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     
     # Supported file formats
     SUPPORTED_FORMATS: List[str] = ["image/jpeg", "image/png", "image/tiff"]
+    
+    # Node ODM Configuration
+    NODEODM_URL: str = "http://localhost:3000"
+    NODEODM_TIMEOUT: int = 3600  # 1 hour
     
     class Config:
         env_file = ".env"

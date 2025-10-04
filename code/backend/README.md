@@ -2,7 +2,7 @@
 
 A FastAPI-based backend service for processing drone imagery using Node ODM.
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -10,6 +10,43 @@ A FastAPI-based backend service for processing drone imagery using Node ODM.
 - Node ODM service running (Docker or local installation)
 
 ### Installation
+
+#### Option 1: Using Poetry (Recommended)
+
+1. Navigate to the backend directory:
+   ```bash
+   cd code/backend
+   ```
+
+2. Install Poetry (if not already installed):
+   ```bash
+   # On Windows (PowerShell)
+   (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
+   
+   # On macOS/Linux
+   curl -sSL https://install.python-poetry.org | python3 -
+   ```
+
+3. Install dependencies and create virtual environment:
+   ```bash
+   poetry install
+   ```
+
+4. Set up environment variables:
+   ```bash
+   cp env.example .env
+   # Edit .env with your configuration
+   ```
+
+5. Run the development server:
+   ```bash
+   poetry run python run.py
+   # Or activate the virtual environment first:
+   poetry shell
+   python run.py
+   ```
+
+#### Option 2: Using pip (Alternative)
 
 1. Navigate to the backend directory:
    ```bash
@@ -36,11 +73,9 @@ A FastAPI-based backend service for processing drone imagery using Node ODM.
 5. Run the development server:
    ```bash
    python run.py
-   # Or with uvicorn directly:
-   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
    ```
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 code/backend/
@@ -70,7 +105,7 @@ The application uses environment variables for configuration. Copy `env.example`
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | 8000 | Server port |
+| `PORT` | 8001 | Server port |
 | `HOST` | 0.0.0.0 | Server host |
 | `DEBUG` | True | Debug mode |
 | `ALLOWED_ORIGINS` | http://localhost:3000,http://localhost:3001 | CORS allowed origins |
@@ -89,13 +124,13 @@ MAX_FILE_SIZE=104857600
 SUPPORTED_FORMATS=image/jpeg,image/png,image/tiff
 ```
 
-## 📚 API Documentation
+## API Documentation
 
 Once the server is running, visit:
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+- **Swagger UI**: http://localhost:8001/docs
+- **ReDoc**: http://localhost:8001/redoc
 
-## 🏗️ Architecture
+## Architecture
 
 ### Data Flow
 1. **Upload**: Files uploaded via `/api/v1/upload`
@@ -125,26 +160,26 @@ Once the server is running, visit:
 ### Using curl:
 ```bash
 # Upload a file
-curl -X POST "http://localhost:8000/api/v1/upload" \
+curl -X POST "http://localhost:8001/api/v1/upload" \
   -H "accept: application/json" \
   -H "Content-Type: multipart/form-data" \
   -F "files=@your_image.jpg"
 
 # Check upload status
-curl -X GET "http://localhost:8000/api/v1/upload/{task_id}/status"
+curl -X GET "http://localhost:8001/api/v1/upload/{task_id}/status"
 
 # List all uploads
-curl -X GET "http://localhost:8000/api/v1/upload"
+curl -X GET "http://localhost:8001/api/v1/upload"
 ```
 
 ### Using Swagger UI:
 1. Start the server: `python run.py`
-2. Open http://localhost:8000/docs
+2. Open http://localhost:8001/docs
 3. Use the interactive interface to test endpoints
 
-## 🚧 Development Status
+## Development Status
 
-### ✅ Implemented
+### Implemented
 - Basic FastAPI application structure
 - File upload endpoint with validation
 - Environment-based configuration
@@ -154,7 +189,7 @@ curl -X GET "http://localhost:8000/api/v1/upload"
 - Upload status checking
 - File cleanup functionality
 
-### 🚧 Planned Features
+### Planned Features
 - [ ] Node ODM integration for image processing
 - [ ] Database integration for task persistence
 - [ ] Background task processing
@@ -164,16 +199,26 @@ curl -X GET "http://localhost:8000/api/v1/upload"
 - [ ] Unit and integration tests
 - [ ] Logging and monitoring
 
-## 🔗 Integration
+## Integration
 
 The backend is designed to work with the frontend React application:
 - Frontend runs on port 3000/3001 (configurable)
 - Backend runs on port 8000 (configurable via .env)
 - CORS configured for frontend communication
 
-## 🛠️ Development
+## Development
 
 ### Running in Development Mode
+
+#### With Poetry:
+```bash
+poetry run python run.py
+# Or activate the virtual environment:
+poetry shell
+python run.py
+```
+
+#### With pip:
 ```bash
 python run.py
 ```
@@ -183,7 +228,35 @@ python run.py
 # Set environment variables
 export PORT=8001
 export DEBUG=True
-python run.py
+poetry run python run.py
+```
+
+### Poetry Commands
+
+```bash
+# Install dependencies
+poetry install
+
+# Add a new dependency
+poetry add package-name
+
+# Add a development dependency
+poetry add --group dev package-name
+
+# Update dependencies
+poetry update
+
+# Show dependency tree
+poetry show --tree
+
+# Activate virtual environment
+poetry shell
+
+# Run commands in virtual environment
+poetry run python script.py
+
+# Export requirements.txt (for compatibility)
+poetry export -f requirements.txt --output requirements.txt
 ```
 
 ### Project Dependencies
