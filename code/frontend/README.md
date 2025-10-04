@@ -33,7 +33,20 @@ A React-based web interface for uploading, processing, and viewing drone imagery
    npm start
    ```
 
-4. Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+4. Open your browser to view the app. The default URL is [http://localhost:3000](http://localhost:3000).
+
+### Port Configuration
+
+The development server runs on port 3000 by default. To use a different port:
+
+1. Create a `.env` file in the `code/frontend` directory
+2. Add your desired port:
+   ```
+   PORT=3001
+   ```
+3. Restart the development server with `npm start`
+
+The app will then be available at `http://localhost:YOUR_PORT`.
 
 ## 🛠️ Tech Stack
 
