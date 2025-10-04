@@ -10,6 +10,10 @@ import os
 from pathlib import Path
 import aiofiles
 from datetime import datetime
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Create router
 router = APIRouter()
@@ -21,7 +25,7 @@ async def upload_files(
     background_tasks: BackgroundTasks = None
 ):
     """
-    Upload drone imagery files for processing
+    Upload drone imagery files to NodeODM for processing
     
     Args:
         files: List of uploaded image files
@@ -39,7 +43,28 @@ async def upload_files(
     
     if len(files) > 50:  # Reasonable limit, adjust as needed
         raise HTTPException(status_code=400, detail="Too many files (maximum 50)")
-    
+
+    files_to_post = {
+        'images[]': files
+    }
+    # Create task in Node ODM
+    response = requests.post(f"{os.getenv('NODEODM_URL')}/task/new", files=files_to_post)
+    if response.status_code != 200:
+        raise HTTPException(status_code=500, detail="Failed to create task in Node ODM")
+
+    task_data = response.json()
+    task_id = task_data['id']
+    return JSONResponse(
+            status_code=201,
+            content={
+                "message": "Files uploaded successfully",
+                "task_id": task_id,
+                "file_count": len(files),
+                "status": "uploaded",
+                "files": [f.filename for f in files],
+                "created_at": datetime.utcnow().isoformat()
+            }
+        )
     # Create task directory
     task_dir = Path(f"uploads/{task_id}")
     task_dir.mkdir(parents=True, exist_ok=True)
