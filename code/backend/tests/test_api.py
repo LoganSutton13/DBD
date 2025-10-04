@@ -1,0 +1,233 @@
+"""
+API Testing Script for Drone Imagery Backend
+Test all endpoints programmatically
+"""
+
+import requests
+import json
+import os
+import time
+from pathlib import Path
+import pytest
+
+# Base URL - change if your server runs on different port
+BASE_URL = "http://localhost:8001"
+
+def print_separator(title):
+    """Print a nice separator for test sections"""
+    print(f"\n{'='*50}")
+    print(f" {title}")
+    print(f"{'='*50}")
+
+def test_health_endpoints():
+    """Test health check endpoints"""
+    print_separator("TESTING HEALTH ENDPOINTS")
+    
+    try:
+        # Test root endpoint
+        print("Testing root endpoint (/)...")
+        response = requests.get(f"{BASE_URL}/")
+        print(f"Status: {response.status_code}")
+        print(f"Response: {json.dumps(response.json(), indent=2)}")
+        
+        # Test health endpoint
+        print("\nTesting health endpoint (/health)...")
+        response = requests.get(f"{BASE_URL}/health")
+        print(f"Status: {response.status_code}")
+        print(f"Response: {json.dumps(response.json(), indent=2)}")
+        
+    except requests.exceptions.ConnectionError:
+        print("❌ ERROR: Could not connect to server. Make sure it's running on port 8001")
+        return False
+    except Exception as e:
+        print(f"❌ ERROR: {e}")
+        return False
+    
+    return True
+
+def test_health_endpoints_pytest():
+    """Test health check endpoints for pytest"""
+    try:
+        # Test root endpoint
+        response = requests.get(f"{BASE_URL}/")
+        assert response.status_code == 200
+        
+        # Test health endpoint
+        response = requests.get(f"{BASE_URL}/health")
+        assert response.status_code == 200
+        
+    except requests.exceptions.ConnectionError:
+        pytest.fail("Could not connect to server. Make sure it's running on port 8001")
+    except Exception as e:
+        pytest.fail(f"Health test failed: {e}")
+
+def create_test_image():
+    """Create a simple test image file"""
+    test_file = "test_image.jpg"
+    
+    # Create a simple test file (not a real image, but good enough for testing)
+    with open(test_file, "w") as f:
+        f.write("This is a test file for API testing")
+    
+    return test_file
+
+def test_upload_endpoint():
+    """Test file upload endpoint"""
+    print_separator("TESTING UPLOAD ENDPOINT")
+    
+    # Create test file
+    test_file = create_test_image()
+    
+    try:
+        print(f"Uploading test file: {test_file}")
+        
+        # Upload the file
+        with open(test_file, "rb") as f:
+            files = {"files": (test_file, f, "image/jpeg")}
+            response = requests.post(f"{BASE_URL}/api/v1/upload", files=files)
+        
+        print(f"Status: {response.status_code}")
+        print(f"Response: {json.dumps(response.json(), indent=2)}")
+        
+        if response.status_code == 201:
+            task_id = response.json()["task_id"]
+            print(f"✅ Upload successful! Task ID: {task_id}")
+            return task_id
+        else:
+            print(f"❌ Upload failed with status {response.status_code}")
+            return None
+    
+    except Exception as e:
+        print(f"❌ ERROR: {e}")
+        return None
+    
+    finally:
+        # Clean up test file
+        if os.path.exists(test_file):
+            os.remove(test_file)
+            print(f"Cleaned up test file: {test_file}")
+
+def test_upload_status(task_id):
+    """Test upload status endpoint"""
+    if not task_id:
+        print("❌ No task ID provided for status test")
+        return
+    
+    print_separator("TESTING UPLOAD STATUS")
+    
+    try:
+        print(f"Checking status for task: {task_id}")
+        response = requests.get(f"{BASE_URL}/api/v1/upload/{task_id}/status")
+        
+        print(f"Status: {response.status_code}")
+        print(f"Response: {json.dumps(response.json(), indent=2)}")
+        
+        if response.status_code == 200:
+            print("✅ Status check successful!")
+        else:
+            print(f"❌ Status check failed with status {response.status_code}")
+    
+    except Exception as e:
+        print(f"❌ ERROR: {e}")
+
+def test_list_uploads():
+    """Test list uploads endpoint"""
+    print_separator("TESTING LIST UPLOADS")
+    
+    try:
+        print("Fetching list of all uploads...")
+        response = requests.get(f"{BASE_URL}/api/v1/upload")
+        
+        print(f"Status: {response.status_code}")
+        print(f"Response: {json.dumps(response.json(), indent=2)}")
+        
+        if response.status_code == 200:
+            uploads = response.json().get("tasks", [])
+            print(f"✅ Found {len(uploads)} upload(s)")
+        else:
+            print(f"❌ List uploads failed with status {response.status_code}")
+    
+    except Exception as e:
+        print(f"❌ ERROR: {e}")
+
+def test_delete_upload(task_id):
+    """Test delete upload endpoint"""
+    if not task_id:
+        print("❌ No task ID provided for delete test")
+        return
+    
+    print_separator("TESTING DELETE UPLOAD")
+    
+    try:
+        print(f"Deleting task: {task_id}")
+        response = requests.delete(f"{BASE_URL}/api/v1/upload/{task_id}")
+        
+        print(f"Status: {response.status_code}")
+        print(f"Response: {json.dumps(response.json(), indent=2)}")
+        
+        if response.status_code == 200:
+            print("✅ Delete successful!")
+        else:
+            print(f"❌ Delete failed with status {response.status_code}")
+    
+    except Exception as e:
+        print(f"❌ ERROR: {e}")
+
+def test_error_cases():
+    """Test error cases and edge cases"""
+    print_separator("TESTING ERROR CASES")
+    
+    # Test upload with no files
+    print("Testing upload with no files...")
+    try:
+        response = requests.post(f"{BASE_URL}/api/v1/upload")
+        print(f"Status: {response.status_code}")
+        print(f"Response: {json.dumps(response.json(), indent=2)}")
+    except Exception as e:
+        print(f"❌ ERROR: {e}")
+    
+    # Test invalid task ID
+    print("\nTesting invalid task ID...")
+    try:
+        response = requests.get(f"{BASE_URL}/api/v1/upload/invalid-task-id/status")
+        print(f"Status: {response.status_code}")
+        print(f"Response: {json.dumps(response.json(), indent=2)}")
+    except Exception as e:
+        print(f"❌ ERROR: {e}")
+
+def main():
+    """Main test function"""
+    print("🚀 Starting API Tests for Drone Imagery Backend")
+    print(f"Testing against: {BASE_URL}")
+    
+    # Test 1: Health endpoints
+    if not test_health_endpoints():
+        print("❌ Health tests failed. Make sure the server is running.")
+        return
+    
+    # Test 2: Upload endpoint
+    task_id = test_upload_endpoint()
+    
+    # Test 3: Upload status
+    test_upload_status(task_id)
+    
+    # Test 4: List uploads
+    test_list_uploads()
+    
+    # Test 5: Error cases
+    test_error_cases()
+    
+    # Test 6: Delete upload (optional)
+    if task_id:
+        print("\n" + "="*50)
+        print(" DELETE TEST (Optional)")
+        print("="*50)
+        delete_choice = input("Do you want to test delete functionality? (y/n): ").lower()
+        if delete_choice == 'y':
+            test_delete_upload(task_id)
+    
+    print_separator("TESTING COMPLETE")
+    print("✅ All tests completed!")
+
+if __name__ == "__main__":
+    main()

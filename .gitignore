@@ -173,3 +173,5 @@ config/
 # Backup files
 *.bak
 *.backup
+
+uploads/
