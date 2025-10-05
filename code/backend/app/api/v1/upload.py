@@ -40,7 +40,7 @@ async def upload_files(
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
     
-    if len(files) > 50:  # Reasonable limit, adjust as needed
+    if len(files) > 200:  # Reasonable limit, adjust as needed
         raise HTTPException(status_code=400, detail="Too many files (maximum 50)")
 
     # Generate temporary task ID for file organization
