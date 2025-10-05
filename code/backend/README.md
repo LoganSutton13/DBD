@@ -97,7 +97,7 @@ code/backend/
 └── README.md                 # This file
 ```
 
-## 🔧 Configuration
+## Configuration
 
 The application uses environment variables for configuration. Copy `env.example` to `.env` and modify as needed:
 

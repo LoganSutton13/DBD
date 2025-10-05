@@ -86,23 +86,20 @@ async def upload_files(
         task = n.create_task(saved_files)
         nodeodm_task_id = task.uuid  # Get NodeODM's auto-generated ID
         
-        task.wait_for_completion(status_callback=lambda info: print(f"Task status: {info.status}"))
-        
         return JSONResponse(
             status_code=201,
             content={
-                "message": "Files uploaded successfully and processing completed",
+                "message": "Files uploaded successfully, processing started",
                 "task_id": task_id,
                 "nodeodm_task_id": nodeodm_task_id,  # Using NodeODM's ID as the main task ID
                 "file_count": len(files),
-                "status": "completed",
+                "status": "processing",
                 "files": [f.filename for f in files],
                 "created_at": datetime.utcnow().isoformat()
             }
         )
     except Exception as e:
-        # Clean up temporary files on error
-        # TODO
+        # TODO:Clean up temporary files on error
         
         # Handle NodeODM connection errors gracefully
         if "ConnectionRefusedError" in str(e) or "No connection could be made" in str(e):
@@ -125,7 +122,19 @@ async def get_upload_status(task_id: str):
     Returns:
         Current task status from NodeODM
     """
-    pass
+    try:
+        n = Node('localhost', 3000)
+        task = n.get_task(task_id)
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": task.status,
+                "progress": task.progress
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get task status: {str(e)}")
+    
 
 # Step 3: Delete NodeODM task
 @router.delete("/{task_id}")
