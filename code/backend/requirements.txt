@@ -1,0 +1,18 @@
+# FastAPI and server dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# File handling
+aiofiles==23.2.1
+
+# HTTP client for Node ODM integration
+httpx==0.25.2
+
+# Environment and configuration
+python-dotenv==1.0.0
+pydantic-settings==2.0.3
+
+# Development dependencies
+pytest==7.4.3
+pytest-asyncio==0.21.1
