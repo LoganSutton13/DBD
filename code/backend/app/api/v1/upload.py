@@ -19,7 +19,7 @@ load_dotenv()
 # Create router
 router = APIRouter()
 
-# Step 1: Basic file upload endpoint
+# file upload endpoint
 @router.post("/")
 async def upload_files(
     files: List[UploadFile] = File(...),
@@ -44,9 +44,9 @@ async def upload_files(
         raise HTTPException(status_code=400, detail="Too many files (maximum 50)")
 
     # Generate temporary task ID for file organization
-    temp_task_id = str(uuid.uuid4())
-    temp_dir = Path(f"temp_uploads/{temp_task_id}")
-    temp_dir.mkdir(parents=True, exist_ok=True)
+    task_id = str(uuid.uuid4())
+    dir_path = Path(f"uploads/{task_id}")
+    dir_path.mkdir(parents=True, exist_ok=True)
     
     saved_files = []
     
@@ -75,7 +75,7 @@ async def upload_files(
                 )
             
             # Save file to temporary directory
-            file_path = temp_dir / file.filename
+            file_path = dir_path / file.filename
             async with aiofiles.open(file_path, 'wb') as f:
                 await f.write(content)
             
@@ -88,15 +88,12 @@ async def upload_files(
         
         task.wait_for_completion(status_callback=lambda info: print(f"Task status: {info.status}"))
         
-        # Clean up temporary files after processing
-        import shutil
-        shutil.rmtree(temp_dir)
-        
         return JSONResponse(
             status_code=201,
             content={
                 "message": "Files uploaded successfully and processing completed",
-                "task_id": nodeodm_task_id,  # Using NodeODM's ID as the main task ID
+                "task_id": task_id,
+                "nodeodm_task_id": nodeodm_task_id,  # Using NodeODM's ID as the main task ID
                 "file_count": len(files),
                 "status": "completed",
                 "files": [f.filename for f in files],
@@ -105,9 +102,7 @@ async def upload_files(
         )
     except Exception as e:
         # Clean up temporary files on error
-        if temp_dir.exists():
-            import shutil
-            shutil.rmtree(temp_dir)
+        # TODO
         
         # Handle NodeODM connection errors gracefully
         if "ConnectionRefusedError" in str(e) or "No connection could be made" in str(e):
@@ -118,7 +113,7 @@ async def upload_files(
         else:
             raise HTTPException(status_code=500, detail=f"NodeODM processing failed: {str(e)}")
 
-# Step 2: Get upload status
+
 @router.get("/{task_id}/status")
 async def get_upload_status(task_id: str):
     """
@@ -130,19 +125,7 @@ async def get_upload_status(task_id: str):
     Returns:
         Current task status from NodeODM
     """
-    try:
-        # Query NodeODM for task status
-        n = Node('localhost', 3000)
-        task_info = n.get_task(task_id)
-        
-        return {
-            "task_id": task_id,
-            "status": task_info.status,
-            "progress": getattr(task_info, 'progress', 0),
-            "message": "Task status retrieved from NodeODM"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Task not found: {str(e)}")
+    pass
 
 # Step 3: Delete NodeODM task
 @router.delete("/{task_id}")
@@ -156,17 +139,7 @@ async def delete_upload(task_id: str):
     Returns:
         Deletion confirmation
     """
-    try:
-        # Delete task from NodeODM
-        n = Node('localhost', 3000)
-        n.delete_task(task_id)
-        
-        return {
-            "message": "Task deleted successfully from NodeODM",
-            "task_id": task_id
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Deletion failed: {str(e)}")
+    pass
 
 # Step 4: List all NodeODM tasks
 @router.get("/")
@@ -177,20 +150,4 @@ async def list_uploads():
     Returns:
         List of all NodeODM tasks
     """
-    try:
-        # Get all tasks from NodeODM
-        n = Node('localhost', 3000)
-        tasks = n.get_tasks()
-        
-        task_list = []
-        for task in tasks:
-            task_list.append({
-                "task_id": task.uuid,
-                "status": task.status,
-                "progress": getattr(task, 'progress', 0),
-                "created_at": getattr(task, 'date_created', 'unknown')
-            })
-        
-        return {"tasks": task_list}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve tasks: {str(e)}")
+    pass
