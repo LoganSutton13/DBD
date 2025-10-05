@@ -81,9 +81,14 @@ async def upload_files(
             
             saved_files.append(str(file_path))
         
-        # Create NodeODM task with saved file paths
+        # Create NodeODM task with saved file paths - simple orthophoto settings
         n = Node('localhost', 3000)
-        task = n.create_task(saved_files)
+        orthophoto_options = {
+            'skip-3dmodel': True,  # Skip 3D model to focus on orthophoto
+            'orthophoto-resolution': 3.0,  # Medium quality (3cm/pixel)
+            'orthophoto-quality': 75  # Medium JPEG quality
+        }
+        task = n.create_task(saved_files, options=orthophoto_options)
         nodeodm_task_id = task.uuid  # Get NodeODM's auto-generated ID
         
         return JSONResponse(
