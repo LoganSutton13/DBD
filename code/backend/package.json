@@ -10,7 +10,8 @@
     "start": "echo \"Starting FastAPI server...\" && poetry run python run.py",
     "dev": "echo \"Starting FastAPI server with auto-reload...\" && poetry run uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload",
     
-    "nodeodm:start": "echo \"Starting NodeODM Docker container...\" && docker run -d -p 3000:3000 --gpus all --name nodeodm-gpu opendronemap/nodeodm:gpu && echo \"[OK] NodeODM container started!\" && echo \"   Web UI: http://localhost:3000\" && echo \"   API: http://localhost:3000/api\" && echo \"   Use 'npm run nodeodm:stop' to stop it\"",
+    "nodeodm:create": "echo \"Creating NodeODM Docker container...\" && docker run -d -p 3000:3000 --gpus all --name nodeodm-gpu opendronemap/nodeodm:gpu && echo \"[OK] NodeODM container created!\" && echo \"   Web UI: http://localhost:3000\" && echo \"   API: http://localhost:3000/api\" && echo \"   Use 'npm run nodeodm:stop' to stop it\"",
+    "nodeodm:start": "echo \"Starting NodeODM Docker container...\" && docker start nodeodm-gpu && echo \"[OK] NodeODM container started!\" && echo \"   Web UI: http://localhost:3000\" && echo \"   API: http://localhost:3000/api\" && echo \"   Use 'npm run nodeodm:stop' to stop it\"",
     
     "nodeodm:stop": "echo \"Stopping NodeODM container...\" && docker stop nodeodm-gpu && echo \"[OK] NodeODM container stopped\"",
     
