@@ -131,70 +131,6 @@ def test_upload_status(nodeodm_task_id):
     except Exception as e:
         print(f"❌ ERROR: {e}")
 
-def test_list_uploads():
-    """Test list uploads endpoint"""
-    print_separator("TESTING LIST UPLOADS")
-    
-    try:
-        print("Fetching list of all uploads...")
-        response = requests.get(f"{BASE_URL}/api/v1/upload")
-        
-        print(f"Status: {response.status_code}")
-        print(f"Response: {json.dumps(response.json(), indent=2)}")
-        
-        if response.status_code == 200:
-            uploads = response.json().get("tasks", [])
-            print(f"✅ Found {len(uploads)} upload(s)")
-        else:
-            print(f"❌ List uploads failed with status {response.status_code}")
-    
-    except Exception as e:
-        print(f"❌ ERROR: {e}")
-
-def test_delete_upload(nodeodm_task_id):
-    """Test delete upload endpoint"""
-    if not nodeodm_task_id:
-        print("❌ No NodeODM task ID provided for delete test")
-        return
-    
-    print_separator("TESTING DELETE UPLOAD")
-    
-    try:
-        print(f"Deleting task: {nodeodm_task_id}")
-        response = requests.delete(f"{BASE_URL}/api/v1/upload/{nodeodm_task_id}")
-        
-        print(f"Status: {response.status_code}")
-        print(f"Response: {json.dumps(response.json(), indent=2)}")
-        
-        if response.status_code == 200:
-            print("✅ Delete successful!")
-        else:
-            print(f"❌ Delete failed with status {response.status_code}")
-    
-    except Exception as e:
-        print(f"❌ ERROR: {e}")
-
-def test_error_cases():
-    """Test error cases and edge cases"""
-    print_separator("TESTING ERROR CASES")
-    
-    # Test upload with no files
-    print("Testing upload with no files...")
-    try:
-        response = requests.post(f"{BASE_URL}/api/v1/upload")
-        print(f"Status: {response.status_code}")
-        print(f"Response: {json.dumps(response.json(), indent=2)}")
-    except Exception as e:
-        print(f"❌ ERROR: {e}")
-    
-    # Test invalid NodeODM task ID
-    print("\nTesting invalid NodeODM task ID...")
-    try:
-        response = requests.get(f"{BASE_URL}/api/v1/upload/invalid-nodeodm-task-id/status")
-        print(f"Status: {response.status_code}")
-        print(f"Response: {json.dumps(response.json(), indent=2)}")
-    except Exception as e:
-        print(f"❌ ERROR: {e}")
 
 def main():
     """Main test function"""
@@ -211,21 +147,6 @@ def main():
     
     # Test 3: Upload status
     test_upload_status(nodeodm_task_id)
-    
-    # Test 4: List uploads
-    test_list_uploads()
-    
-    # Test 5: Error cases
-    test_error_cases()
-    
-    # Test 6: Delete upload (optional)
-    if nodeodm_task_id:
-        print("\n" + "="*50)
-        print(" DELETE TEST (Optional)")
-        print("="*50)
-        delete_choice = input("Do you want to test delete functionality? (y/n): ").lower()
-        if delete_choice == 'y':
-            test_delete_upload(nodeodm_task_id)
     
     print_separator("TESTING COMPLETE")
     print("✅ All tests completed!")

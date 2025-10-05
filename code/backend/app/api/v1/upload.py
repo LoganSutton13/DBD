@@ -128,8 +128,8 @@ async def get_upload_status(task_id: str):
         return JSONResponse(
             status_code=200,
             content={
-                "status": task.status,
-                "progress": task.progress
+                "status": str(task.info().status),
+                "progress": str(task.info().progress)
             }
         )
     except Exception as e:
