@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { UploadFile } from '../types/upload';
+import { UploadFile, UploadResponse } from '../types/upload';
+import apiService from '../services/api';
 
 interface AppStats {
   imagesUploaded: number;
@@ -17,6 +18,19 @@ interface UploadViewProps {
 const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) => {
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [backendAvailable, setBackendAvailable] = useState<boolean>(true);
+  const [connectionTestResult, setConnectionTestResult] = useState<string | null>(null);
+
+  // Check backend connection on component mount
+  useEffect(() => {
+    const checkInitialConnection = async () => {
+      const isAvailable = await apiService.isBackendAvailable();
+      setBackendAvailable(isAvailable);
+    };
+    
+    checkInitialConnection();
+  }, []);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const newFiles: UploadFile[] = acceptedFiles.map((file) => ({
@@ -65,119 +79,114 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
     });
   };
 
-  // TODO: REPLACE SIMULATION WITH REAL BACKEND UPLOAD
-  // This function simulates file upload - replace with actual API call to your Python backend
-  const simulateUpload = async (file: UploadFile) => {
-    return new Promise<void>((resolve) => {
-      // SIMULATION CODE START - REMOVE WHEN CONNECTING TO BACKEND
-      const interval = setInterval(() => {
-        setUploadFiles((prev) => {
-          const updated = prev.map(f => {
-            if (f.id === file.id) {
-              const newProgress = Math.min(f.progress + Math.random() * 20, 100);
-              const newStatus: 'pending' | 'uploading' | 'completed' | 'error' = 
-                newProgress === 100 ? 'completed' : 'uploading';
-              
-              return {
-                ...f,
-                progress: newProgress,
-                status: newStatus,
-              };
-            }
-            return f;
-          });
-          return updated;
-        });
-      }, 200);
-
-      setTimeout(() => {
-        clearInterval(interval);
-        
-        // Update stats when upload completes
-        const fileSizeMB = (file.metadata?.size || 0) / (1024 * 1024);
-        onStatsUpdate((prev) => ({
-          imagesUploaded: prev.imagesUploaded + 1,
-          processing: prev.processing - 1,
-          completed: prev.completed + 1,
-          storageUsed: prev.storageUsed + fileSizeMB,
-        }));
-        
-        resolve();
-      }, 2000 + Math.random() * 3000);
-      // SIMULATION CODE END - REMOVE WHEN CONNECTING TO BACKEND
-    });
-  };
-
-  // TODO: IMPLEMENT REAL UPLOAD FUNCTION
-  // Replace the above simulation with this structure:
-  /*
-  const uploadToBackend = async (file: UploadFile) => {
+  // Real backend upload function
+  const uploadToBackend = async (files: File[]): Promise<UploadResponse> => {
     try {
-      // Create FormData for file upload
-      const formData = new FormData();
-      formData.append('file', file.file);
-      formData.append('metadata', JSON.stringify(file.metadata));
-
-      // Upload to your Python backend endpoint
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-        // Add progress tracking if needed
-        onUploadProgress: (progressEvent) => {
-          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          // Update file progress in state
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Upload failed');
-      }
-
-      const result = await response.json();
-      
-      // Update stats and file status
-      onStatsUpdate((prev) => ({
-        imagesUploaded: prev.imagesUploaded + 1,
-        processing: prev.processing - 1,
-        completed: prev.completed + 1,
-        storageUsed: prev.storageUsed + (file.metadata?.size || 0) / (1024 * 1024),
-      }));
-
-      return result;
+      setUploadError(null);
+      const response = await apiService.uploadFiles(files);
+      return response;
     } catch (error) {
-      // Handle upload error
-      console.error('Upload failed:', error);
-      // Update file status to 'error'
-      return { error: error.message };
+      const errorMessage = error instanceof Error ? error.message : 'Upload failed';
+      setUploadError(errorMessage);
+      throw error;
     }
   };
-  */
+
 
   const startUpload = async () => {
     setIsUploading(true);
+    setUploadError(null);
+    
     const pendingFiles = uploadFiles.filter(f => f.status === 'pending');
     
-    // Update processing count when upload starts
-    onStatsUpdate((prev) => ({
-      processing: prev.processing + pendingFiles.length,
-    }));
-    
-    // TODO: REPLACE WITH REAL BACKEND UPLOAD
-    // Current implementation uses simulation - replace with actual API calls
-    for (const file of pendingFiles) {
+    if (pendingFiles.length === 0) {
+      setIsUploading(false);
+      return;
+    }
+
+    // Check backend availability
+    const isAvailable = await apiService.isBackendAvailable();
+    if (!isAvailable) {
+      setBackendAvailable(false);
+      setUploadError('Backend server is not available. Please ensure the backend is running on localhost:8001');
+      setIsUploading(false);
+      return;
+    }
+    setBackendAvailable(true);
+
+    // Update all pending files to uploading status
+    setUploadFiles((prev) => 
+      prev.map(f => 
+        f.status === 'pending' ? { ...f, status: 'uploading', progress: 0 } : f
+      )
+    );
+
+    try {
+      // Upload all files at once to the backend
+      const files = pendingFiles.map(f => f.file);
+      const uploadResponse = await uploadToBackend(files);
+
+      // Update all uploading files to completed status
       setUploadFiles((prev) => 
-        prev.map(f => f.id === file.id ? { ...f, status: 'uploading' } : f)
+        prev.map(f => 
+          f.status === 'uploading' ? { ...f, status: 'completed', progress: 100 } : f
+        )
+      );
+
+      // Update stats
+      const totalSizeMB = pendingFiles.reduce((sum, f) => sum + (f.metadata?.size || 0) / (1024 * 1024), 0);
+      onStatsUpdate((prev) => ({
+        imagesUploaded: prev.imagesUploaded + pendingFiles.length,
+        processing: prev.processing + pendingFiles.length,
+        completed: prev.completed + pendingFiles.length,
+        storageUsed: prev.storageUsed + totalSizeMB,
+      }));
+
+      console.log('Upload successful:', uploadResponse);
+      
+      // Dispatch event for ProcessingView to listen to
+      console.log('Dispatching newUpload event with data:', uploadResponse);
+      
+      // Also store in localStorage as a backup
+      const existingUploads = JSON.parse(localStorage.getItem('pendingUploads') || '[]');
+      existingUploads.push(uploadResponse);
+      localStorage.setItem('pendingUploads', JSON.stringify(existingUploads));
+      console.log('Stored upload in localStorage as backup');
+      
+      const event = new CustomEvent('newUpload', { detail: uploadResponse });
+      window.dispatchEvent(event);
+      console.log('newUpload event dispatched successfully');
+      
+    } catch (error) {
+      // Update all uploading files to error status
+      setUploadFiles((prev) => 
+        prev.map(f => 
+          f.status === 'uploading' ? { 
+            ...f, 
+            status: 'error', 
+            error: error instanceof Error ? error.message : 'Upload failed' 
+          } : f
+        )
       );
       
-      // SIMULATION: Replace this with uploadToBackend(file)
-      await simulateUpload(file);
-      
-      // TODO: BACKEND INTEGRATION
-      // Replace above line with:
-      // await uploadToBackend(file);
+      console.error('Upload failed:', error);
     }
     
     setIsUploading(false);
+  };
+
+  // Test backend connection manually
+  const testBackendConnection = async () => {
+    setConnectionTestResult('Testing connection...');
+    const result = await apiService.testConnection();
+    
+    if (result.success) {
+      setConnectionTestResult('✅ Connection successful!');
+      setBackendAvailable(true);
+    } else {
+      setConnectionTestResult(`❌ Connection failed: ${result.error}`);
+      setBackendAvailable(false);
+    }
   };
 
   const clearCompleted = () => {
@@ -198,13 +207,62 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
   return (
     <div className="space-y-6">
       <div className="bg-dark-800 rounded-lg p-8 border border-dark-700">
-        <h2 className="text-2xl font-semibold text-primary-400 mb-4">
-          Upload Drone Images
-        </h2>
+        <div className="flex justify-between items-start mb-4">
+          <h2 className="text-2xl font-semibold text-primary-400">
+            Upload Drone Images
+          </h2>
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <div className={`w-2 h-2 rounded-full ${backendAvailable ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <span className={`text-xs ${backendAvailable ? 'text-green-400' : 'text-red-400'}`}>
+                {backendAvailable ? 'Backend Connected' : 'Backend Disconnected'}
+              </span>
+            </div>
+            <button
+              onClick={testBackendConnection}
+              className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors duration-200"
+            >
+              Test Connection
+            </button>
+          </div>
+        </div>
         <p className="text-dark-300 mb-6">
           Drag and drop your drone images here or click to browse. 
           Supported formats: JPEG, PNG, TIFF (Max 50MB per file)
         </p>
+        
+        {uploadError && (
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <div className="flex items-center">
+              <svg className="w-5 h-5 text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-red-400 text-sm">{uploadError}</p>
+            </div>
+          </div>
+        )}
+
+        {connectionTestResult && (
+          <div className={`mb-6 p-4 border rounded-lg ${
+            connectionTestResult.includes('✅') 
+              ? 'bg-green-500/10 border-green-500/20' 
+              : connectionTestResult.includes('❌')
+              ? 'bg-red-500/10 border-red-500/20'
+              : 'bg-blue-500/10 border-blue-500/20'
+          }`}>
+            <div className="flex items-center">
+              <p className={`text-sm ${
+                connectionTestResult.includes('✅') 
+                  ? 'text-green-400' 
+                  : connectionTestResult.includes('❌')
+                  ? 'text-red-400'
+                  : 'text-blue-400'
+              }`}>
+                {connectionTestResult}
+              </p>
+            </div>
+          </div>
+        )}
         
         {/* Upload area */}
         <div
@@ -241,7 +299,7 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
               {pendingFiles.length > 0 && (
                 <button
                   onClick={startUpload}
-                  disabled={isUploading}
+                  disabled={isUploading || !backendAvailable}
                   className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
                 >
                   {isUploading ? 'Uploading...' : `Upload ${pendingFiles.length} Files`}

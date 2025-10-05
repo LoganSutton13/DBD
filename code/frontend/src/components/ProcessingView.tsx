@@ -1,62 +1,538 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { ProcessingTask, TaskStatusResponse } from '../types/upload';
+import apiService from '../services/api';
 
 const ProcessingView: React.FC = () => {
-  // TODO: IMPLEMENT REAL PROCESSING QUEUE
-  // This component shows placeholder data - replace with real backend integration
+  const [processingTasks, setProcessingTasks] = useState<ProcessingTask[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [backendAvailable, setBackendAvailable] = useState<boolean>(true);
+  const [isPolling, setIsPolling] = useState<boolean>(false);
+
+  // Poll for task status updates
+  const pollTaskStatus = async (taskId: string) => {
+    try {
+      const statusResponse = await apiService.getTaskStatus(taskId);
+      return statusResponse;
+    } catch (error) {
+      console.error(`Failed to poll status for task ${taskId}:`, error);
+      return null;
+    }
+  };
+
+  // Check backend availability
+  const checkBackendAvailability = async () => {
+    const isAvailable = await apiService.isBackendAvailable();
+    setBackendAvailable(isAvailable);
+    return isAvailable;
+  };
+
+  // Load processing tasks from localStorage and check for pending uploads
+  useEffect(() => {
+    const loadTasks = () => {
+      const savedTasks = localStorage.getItem('processingTasks');
+      if (savedTasks) {
+        try {
+          const tasks = JSON.parse(savedTasks);
+          setProcessingTasks(tasks);
+        } catch (error) {
+          console.error('Failed to parse saved tasks:', error);
+        }
+      }
+      
+      // Check for pending uploads that might have been missed
+      const pendingUploads = localStorage.getItem('pendingUploads');
+      if (pendingUploads) {
+        try {
+          const uploads = JSON.parse(pendingUploads);
+          console.log('Found pending uploads:', uploads);
+          
+          uploads.forEach((uploadResponse: any) => {
+            console.log('Processing pending upload:', uploadResponse);
+            const newTask: ProcessingTask = {
+              id: uploadResponse.task_id,
+              nodeodm_task_id: uploadResponse.nodeodm_task_id,
+              status: uploadResponse.status || 'processing',
+              progress: 0,
+              file_count: uploadResponse.file_count || 0,
+              files: uploadResponse.files || [],
+              created_at: uploadResponse.created_at || new Date().toISOString(),
+            };
+            
+            setProcessingTasks(prev => {
+              const exists = prev.some(task => task.id === newTask.id);
+              if (!exists) {
+                const updated = [...prev, newTask];
+                localStorage.setItem('processingTasks', JSON.stringify(updated));
+                return updated;
+              }
+              return prev;
+            });
+          });
+          
+          // Clear pending uploads after processing
+          localStorage.removeItem('pendingUploads');
+        } catch (error) {
+          console.error('Failed to parse pending uploads:', error);
+        }
+      }
+    };
+
+    loadTasks();
+  }, []);
+
+  // Poll for status updates
+  useEffect(() => {
+    const pollInterval = setInterval(async () => {
+      // Get current tasks and filter for active ones
+      setProcessingTasks(currentTasks => {
+        const activeTasks = currentTasks.filter(task => 
+          task.status === 'processing' || 
+          task.status === 'queued' || 
+          task.status === 'TaskStatus.RUNNING' ||
+          task.status === 'RUNNING' ||
+          task.status === 'TaskStatus.QUEUED' ||
+          task.status === 'QUEUED'
+        );
+        
+        if (activeTasks.length === 0) {
+          return currentTasks; // No active tasks to poll
+        }
+
+        console.log(`Polling ${activeTasks.length} active tasks...`);
+        setIsPolling(true);
+
+        // Poll each active task for status updates
+        (async () => {
+          const isAvailable = await checkBackendAvailability();
+          if (!isAvailable) {
+            setError('Backend server is not available');
+            return;
+          }
+
+          setError(null);
+          
+          try {
+            // Only poll active tasks
+            const updatedTasks = await Promise.all(
+              activeTasks.map(async (task) => {
+                try {
+                  console.log(`Polling NodeODM task: ${task.nodeodm_task_id} for frontend task: ${task.id}`);
+                  const statusResponse = await pollTaskStatus(task.nodeodm_task_id);
+                  if (statusResponse) {
+                    const newStatus = statusResponse.status;
+                    const newProgress = parseFloat(statusResponse.progress) || 0;
+                    
+                    console.log(`Task ${task.id} (NodeODM: ${task.nodeodm_task_id}) status:`, {
+                      oldStatus: task.status,
+                      newStatus: newStatus,
+                      oldProgress: task.progress,
+                      newProgress: newProgress
+                    });
+                    
+                    // Debug: Log all possible status values to understand NodeODM responses
+                    console.log(`DEBUG: Raw NodeODM status response:`, statusResponse);
+
+                    // Check if task is completed or failed
+                    const isFinished = newStatus === 'completed' || 
+                                     newStatus === 'success' || 
+                                     newStatus === 'failed' || 
+                                     newStatus === 'error';
+                    
+                    if (isFinished) {
+                      console.log(`Task ${task.id} (NodeODM: ${task.nodeodm_task_id}) finished with status: ${newStatus}`);
+                    }
+
+                    return {
+                      ...task,
+                      status: newStatus,
+                      progress: newProgress,
+                    };
+                  }
+                } catch (error) {
+                  console.error(`Failed to poll task ${task.id} (NodeODM: ${task.nodeodm_task_id}):`, error);
+                  // If polling fails, mark task as failed
+                  return {
+                    ...task,
+                    status: 'failed',
+                    error: error instanceof Error ? error.message : 'Polling failed'
+                  };
+                }
+                return task;
+              })
+            );
+
+            // Update all tasks with the new information
+            const finalUpdatedTasks = currentTasks.map(task => {
+              const updatedTask = updatedTasks.find(ut => ut.id === task.id);
+              return updatedTask || task;
+            });
+
+            // Check if there are any changes
+            const hasChanges = finalUpdatedTasks.some((task, index) => 
+              task.status !== currentTasks[index].status || 
+              task.progress !== currentTasks[index].progress
+            );
+
+            if (hasChanges) {
+              localStorage.setItem('processingTasks', JSON.stringify(finalUpdatedTasks));
+              setProcessingTasks(finalUpdatedTasks);
+              
+              // Log completion summary
+              const completedCount = finalUpdatedTasks.filter(t => 
+                t.status === 'completed' || t.status === 'success'
+              ).length;
+              const failedCount = finalUpdatedTasks.filter(t => 
+                t.status === 'failed' || t.status === 'error'
+              ).length;
+              
+              if (completedCount > 0 || failedCount > 0) {
+                console.log(`Task summary: ${completedCount} completed, ${failedCount} failed`);
+              }
+            }
+          } catch (error) {
+            console.error('Polling error:', error);
+          } finally {
+            setIsPolling(false);
+          }
+        })();
+        
+        return currentTasks; // Return current state immediately
+      });
+    }, 3000); // Poll every 3 seconds automatically
+
+    return () => clearInterval(pollInterval);
+  }, []); // Run continuously, no dependencies
+
+  // Listen for new uploads from other components
+  useEffect(() => {
+    console.log('ProcessingView: Setting up newUpload event listener');
+    
+    const handleNewUpload = (event: CustomEvent) => {
+      console.log('ProcessingView: Received new upload event:', event.detail);
+      const uploadResponse = event.detail;
+      
+      // Validate the upload response
+      if (!uploadResponse || !uploadResponse.task_id || !uploadResponse.nodeodm_task_id) {
+        console.error('Invalid upload response:', uploadResponse);
+        return;
+      }
+      
+      const newTask: ProcessingTask = {
+        id: uploadResponse.task_id,
+        nodeodm_task_id: uploadResponse.nodeodm_task_id,
+        status: uploadResponse.status || 'processing',
+        progress: 0,
+        file_count: uploadResponse.file_count || 0,
+        files: uploadResponse.files || [],
+        created_at: uploadResponse.created_at || new Date().toISOString(),
+      };
+
+      console.log('Adding new task to processing queue:', newTask);
+      setProcessingTasks(prev => {
+        // Check if task already exists to avoid duplicates
+        const exists = prev.some(task => task.id === newTask.id);
+        if (exists) {
+          console.log('Task already exists, not adding duplicate:', newTask.id);
+          return prev;
+        }
+        
+        const updated = [...prev, newTask];
+        localStorage.setItem('processingTasks', JSON.stringify(updated));
+        return updated;
+      });
+    };
+
+    console.log('ProcessingView: Adding event listener for newUpload');
+    window.addEventListener('newUpload', handleNewUpload as EventListener);
+    
+    return () => {
+      console.log('ProcessingView: Removing event listener for newUpload');
+      window.removeEventListener('newUpload', handleNewUpload as EventListener);
+    };
+  }, []);
+
+
+  // Manual refresh function (triggers immediate polling)
+  const refreshProcessingQueue = async () => {
+    console.log('Manual refresh triggered');
+    
+    // Trigger the same polling logic immediately
+    const currentTasks = processingTasks;
+    const activeTasks = currentTasks.filter(task => 
+      task.status === 'processing' || 
+      task.status === 'queued' || 
+      task.status === 'TaskStatus.RUNNING' ||
+      task.status === 'RUNNING' ||
+      task.status === 'TaskStatus.QUEUED' ||
+      task.status === 'QUEUED'
+    );
+    
+    if (activeTasks.length === 0) {
+      console.log('No active tasks to refresh');
+      return;
+    }
+
+    console.log(`Manually refreshing ${activeTasks.length} active tasks`);
+    
+    try {
+      const isAvailable = await checkBackendAvailability();
+      if (!isAvailable) {
+        setError('Backend server is not available');
+        return;
+      }
+
+      setError(null);
+      
+      // Poll each active task
+      const updatedTasks = await Promise.all(
+        activeTasks.map(async (task) => {
+          try {
+            console.log(`Manual refresh - Polling NodeODM task: ${task.nodeodm_task_id} for frontend task: ${task.id}`);
+            const statusResponse = await pollTaskStatus(task.nodeodm_task_id);
+            if (statusResponse) {
+              console.log(`Manual refresh - Task ${task.id} (NodeODM: ${task.nodeodm_task_id}) status:`, statusResponse);
+              return {
+                ...task,
+                status: statusResponse.status,
+                progress: parseFloat(statusResponse.progress) || 0,
+              };
+            }
+          } catch (error) {
+            console.error(`Manual refresh failed for task ${task.id} (NodeODM: ${task.nodeodm_task_id}):`, error);
+            return {
+              ...task,
+              status: 'failed',
+              error: error instanceof Error ? error.message : 'Polling failed'
+            };
+          }
+          return task;
+        })
+      );
+
+      // Update all tasks with new information
+      const finalUpdatedTasks = currentTasks.map(task => {
+        const updatedTask = updatedTasks.find(ut => ut.id === task.id);
+        return updatedTask || task;
+      });
+
+      setProcessingTasks(finalUpdatedTasks);
+      localStorage.setItem('processingTasks', JSON.stringify(finalUpdatedTasks));
+    } catch (error) {
+      console.error('Manual refresh error:', error);
+    }
+  };
+
+  const activeTasks = processingTasks.filter(task => 
+    task.status === 'processing' || 
+    task.status === 'queued' || 
+    task.status === 'TaskStatus.RUNNING' ||
+    task.status === 'RUNNING' ||
+    task.status === 'TaskStatus.QUEUED' ||
+    task.status === 'QUEUED'
+  );
+  
+  // Separate running and queued tasks for better UI organization
+  const runningTasks = processingTasks.filter(task => 
+    task.status === 'processing' || 
+    task.status === 'TaskStatus.RUNNING' ||
+    task.status === 'RUNNING'
+  );
+  
+  const queuedTasks = processingTasks.filter(task => 
+    task.status === 'queued' ||
+    task.status === 'TaskStatus.QUEUED' ||
+    task.status === 'QUEUED'
+  );
+  const completedTasks = processingTasks.filter(task => 
+    task.status === 'completed' || task.status === 'success'
+  );
+  const failedTasks = processingTasks.filter(task => 
+    task.status === 'failed' || task.status === 'error'
+  );
   
   return (
     <div className="space-y-6">
       <div className="bg-dark-800 rounded-lg p-8 border border-dark-700">
-        <h2 className="text-2xl font-semibold text-primary-400 mb-4">
-          Processing Queue
-        </h2>
+        <div className="flex justify-between items-start mb-4">
+          <h2 className="text-2xl font-semibold text-primary-400">
+            Processing Queue
+          </h2>
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <div className={`w-2 h-2 rounded-full ${backendAvailable ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <span className={`text-xs ${backendAvailable ? 'text-green-400' : 'text-red-400'}`}>
+                {backendAvailable ? 'Backend Connected' : 'Backend Disconnected'}
+              </span>
+            </div>
+            <button
+              onClick={refreshProcessingQueue}
+              className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors duration-200"
+            >
+              Refresh Now
+            </button>
+          </div>
+        </div>
         <p className="text-dark-300 mb-6">
           Monitor your image stitching and processing jobs
         </p>
         
-        {/* TODO: BACKEND INTEGRATION NEEDED
-        Replace this static content with real processing queue data:
-        
-        useEffect(() => {
-          const fetchProcessingQueue = async () => {
-            try {
-              const response = await fetch('/api/processing/queue');
-              const data = await response.json();
-              setProcessingJobs(data);
-            } catch (error) {
-              console.error('Failed to fetch processing queue:', error);
-            }
-          };
+        {/* Debug info */}
+        <div className="mb-4 p-3 bg-dark-700 rounded-lg text-xs">
+          <p className="text-dark-400">
+            <strong>Processing Status:</strong> {processingTasks.length} total tasks, {runningTasks.length} running, {queuedTasks.length} queued
+            {activeTasks.length > 0 && (
+              <span className={`ml-2 ${isPolling ? 'text-blue-400' : 'text-green-400'}`}>
+                • {isPolling ? 'Polling now...' : 'Auto-polling every 3s'}
+              </span>
+            )}
+            {processingTasks.length > 0 && (
+              <span className="ml-2">
+                • Latest: {processingTasks[processingTasks.length - 1].id.slice(0, 8)} ({processingTasks[processingTasks.length - 1].status})
+              </span>
+            )}
+          </p>
           
-          // Poll for updates every 5 seconds
-          fetchProcessingQueue();
-          const interval = setInterval(fetchProcessingQueue, 5000);
-          return () => clearInterval(interval);
-        }, []);
-        */}
+          {/* Debug: Show all tasks and their statuses */}
+          {processingTasks.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-dark-600">
+              <p className="text-dark-400 mb-2"><strong>All Tasks Debug:</strong></p>
+              <div className="space-y-1">
+                {processingTasks.map((task, index) => (
+                  <div key={task.id} className="flex justify-between items-center text-xs">
+                    <span className="text-dark-300">
+                      #{index + 1}: {task.id.slice(0, 8)} ({task.file_count} files)
+                    </span>
+                    <span className={`px-2 py-1 rounded text-xs ${
+                      task.status === 'processing' || task.status === 'TaskStatus.RUNNING' || task.status === 'RUNNING' ? 'bg-blue-500/20 text-blue-400' :
+                      task.status === 'queued' || task.status === 'TaskStatus.QUEUED' || task.status === 'QUEUED' ? 'bg-yellow-500/20 text-yellow-400' :
+                      task.status === 'completed' || task.status === 'success' ? 'bg-green-500/20 text-green-400' :
+                      task.status === 'failed' || task.status === 'error' ? 'bg-red-500/20 text-red-400' :
+                      'bg-gray-500/20 text-gray-400'
+                    }`}>
+                      {task.status} {task.progress > 0 ? `(${Math.round(task.progress)}%)` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {error && (
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+            <div className="flex items-center">
+              <svg className="w-5 h-5 text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-red-400 text-sm">{error}</p>
+            </div>
+          </div>
+        )}
         
         {/* Processing status */}
         <div className="space-y-4">
-          {/* Active processing */}
+          {/* Running jobs */}
           <div className="bg-dark-700 rounded-lg p-6 border border-dark-600">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-medium text-primary-400">
-                Active Processing
+              <h3 className="text-lg font-medium text-blue-400">
+                Currently Running
               </h3>
-              <span className="px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded-full text-sm">
-                0 jobs
+              <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm">
+                {runningTasks.length} jobs
               </span>
             </div>
-            <div className="text-center py-8">
-              <div className="text-dark-400 mb-4">
-                <svg className="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
+            
+            {runningTasks.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="text-dark-400 mb-4">
+                  <svg className="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </div>
+                <p className="text-dark-300">
+                  No jobs currently running
+                </p>
               </div>
-              <p className="text-dark-300">
-                No active processing jobs
-              </p>
+            ) : (
+              <div className="space-y-4">
+                {runningTasks.map((task) => (
+                  <div key={task.id} className="bg-dark-600 rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <h4 className="text-dark-100 font-medium">Task {task.id.slice(0, 8)}</h4>
+                        <p className="text-dark-400 text-sm">
+                          {task.file_count} files • Started {new Date(task.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs font-medium">
+                        {task.status === 'TaskStatus.RUNNING' ? 'Running' : 
+                         task.status === 'RUNNING' ? 'Running' : 
+                         task.status === 'processing' ? 'Processing' : 
+                         task.status}
+                      </span>
+                    </div>
+                    
+                    <div className="w-full bg-dark-500 rounded-full h-2 mb-2">
+                      <div
+                        className="bg-primary-500 h-2 rounded-full transition-all duration-500"
+                        style={{ width: `${task.progress}%` }}
+                      ></div>
+                    </div>
+                    <p className="text-dark-400 text-xs">
+                      {Math.round(task.progress)}% complete
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Queued jobs */}
+          <div className="bg-dark-700 rounded-lg p-6 border border-dark-600">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-yellow-400">
+                Queued Jobs
+              </h3>
+              <span className="px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded-full text-sm">
+                {queuedTasks.length} jobs
+              </span>
             </div>
+            
+            {queuedTasks.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="text-dark-400 mb-4">
+                  <svg className="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-dark-300">
+                  No jobs in queue
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {queuedTasks.map((task) => (
+                  <div key={task.id} className="bg-dark-600 rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <h4 className="text-dark-100 font-medium">Task {task.id.slice(0, 8)}</h4>
+                        <p className="text-dark-400 text-sm">
+                          {task.file_count} files • Queued {new Date(task.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded-full text-xs font-medium">
+                        {task.status === 'TaskStatus.QUEUED' ? 'Queued' : task.status}
+                      </span>
+                    </div>
+                    
+                    <div className="text-dark-400 text-xs">
+                      <p>Waiting for processing to start...</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           
           {/* Completed jobs */}
@@ -66,20 +542,81 @@ const ProcessingView: React.FC = () => {
                 Completed Jobs
               </h3>
               <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm">
-                0 jobs
+                {completedTasks.length} jobs
               </span>
             </div>
-            <div className="text-center py-8">
-              <div className="text-dark-400 mb-4">
-                <svg className="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+            
+            {completedTasks.length === 0 ? (
+              <div className="text-center py-8">
+                <div className="text-dark-400 mb-4">
+                  <svg className="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <p className="text-dark-300">
+                  No completed jobs yet
+                </p>
               </div>
-              <p className="text-dark-300">
-                No completed jobs yet
-              </p>
-            </div>
+            ) : (
+              <div className="space-y-3">
+                {completedTasks.slice(0, 5).map((task) => (
+                  <div key={task.id} className="bg-dark-600 rounded-lg p-4">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h4 className="text-dark-100 font-medium">Task {task.id.slice(0, 8)}</h4>
+                        <p className="text-dark-400 text-sm">
+                          {task.file_count} files • Completed {new Date(task.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded-full text-xs font-medium">
+                        completed
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {completedTasks.length > 5 && (
+                  <p className="text-dark-400 text-sm text-center">
+                    And {completedTasks.length - 5} more completed jobs...
+                  </p>
+                )}
+              </div>
+            )}
           </div>
+
+          {/* Failed jobs */}
+          {failedTasks.length > 0 && (
+            <div className="bg-dark-700 rounded-lg p-6 border border-dark-600">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-red-400">
+                  Failed Jobs
+                </h3>
+                <span className="px-3 py-1 bg-red-500/20 text-red-400 rounded-full text-sm">
+                  {failedTasks.length} jobs
+                </span>
+              </div>
+              
+              <div className="space-y-3">
+                {failedTasks.slice(0, 3).map((task) => (
+                  <div key={task.id} className="bg-dark-600 rounded-lg p-4">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h4 className="text-dark-100 font-medium">Task {task.id.slice(0, 8)}</h4>
+                        <p className="text-dark-400 text-sm">
+                          {task.file_count} files • Failed {new Date(task.created_at).toLocaleString()}
+                        </p>
+                        {task.error && (
+                          <p className="text-red-400 text-xs mt-1">{task.error}</p>
+                        )}
+                      </div>
+                      <span className="px-2 py-1 bg-red-500/20 text-red-400 rounded-full text-xs font-medium">
+                        failed
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
       
