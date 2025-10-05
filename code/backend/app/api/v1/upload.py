@@ -12,6 +12,7 @@ import aiofiles
 from datetime import datetime
 import requests
 from dotenv import load_dotenv
+from pyodm import Node
 
 load_dotenv()
 
@@ -34,8 +35,6 @@ async def upload_files(
     Returns:
         Task information with unique ID
     """
-    # Generate unique task ID
-    task_id = str(uuid.uuid4())
     
     # Basic validation
     if not files:
@@ -44,42 +43,21 @@ async def upload_files(
     if len(files) > 50:  # Reasonable limit, adjust as needed
         raise HTTPException(status_code=400, detail="Too many files (maximum 50)")
 
-    files_to_post = {
-        'images[]': files
-    }
-    # Create task in Node ODM
-    response = requests.post(f"{os.getenv('NODEODM_URL')}/task/new", files=files_to_post)
-    if response.status_code != 200:
-        raise HTTPException(status_code=500, detail="Failed to create task in Node ODM")
-
-    task_data = response.json()
-    task_id = task_data['id']
-    return JSONResponse(
-            status_code=201,
-            content={
-                "message": "Files uploaded successfully",
-                "task_id": task_id,
-                "file_count": len(files),
-                "status": "uploaded",
-                "files": [f.filename for f in files],
-                "created_at": datetime.utcnow().isoformat()
-            }
-        )
-    # Create task directory
-    task_dir = Path(f"uploads/{task_id}")
-    task_dir.mkdir(parents=True, exist_ok=True)
+    # Generate temporary task ID for file organization
+    temp_task_id = str(uuid.uuid4())
+    temp_dir = Path(f"temp_uploads/{temp_task_id}")
+    temp_dir.mkdir(parents=True, exist_ok=True)
     
     saved_files = []
     
     try:
-        # Save each file
+        # Save uploaded files to temporary directory
         for file in files:
             # Validate file
             if not file.filename:
                 raise HTTPException(status_code=400, detail="File with no filename detected")
             
             # Check file size (100MB limit)
-            file_size = 0
             content = await file.read()
             file_size = len(content)
             
@@ -96,116 +74,123 @@ async def upload_files(
                     detail=f"File {file.filename} is not a valid image"
                 )
             
-            # Save file
-            file_path = task_dir / file.filename
+            # Save file to temporary directory
+            file_path = temp_dir / file.filename
             async with aiofiles.open(file_path, 'wb') as f:
                 await f.write(content)
             
             saved_files.append(str(file_path))
         
-        # TODO: Save task to database
-        # TODO: Start background processing
+        # Create NodeODM task with saved file paths
+        n = Node('localhost', 3000)
+        task = n.create_task(saved_files)
+        nodeodm_task_id = task.uuid  # Get NodeODM's auto-generated ID
+        
+        task.wait_for_completion(status_callback=lambda info: print(f"Task status: {info.status}"))
+        
+        # Clean up temporary files after processing
+        import shutil
+        shutil.rmtree(temp_dir)
         
         return JSONResponse(
             status_code=201,
             content={
-                "message": "Files uploaded successfully",
-                "task_id": task_id,
+                "message": "Files uploaded successfully and processing completed",
+                "task_id": nodeodm_task_id,  # Using NodeODM's ID as the main task ID
                 "file_count": len(files),
-                "status": "uploaded",
+                "status": "completed",
                 "files": [f.filename for f in files],
                 "created_at": datetime.utcnow().isoformat()
             }
         )
-        
     except Exception as e:
-        # Cleanup on error
-        if task_dir.exists():
+        # Clean up temporary files on error
+        if temp_dir.exists():
             import shutil
-            shutil.rmtree(task_dir)
+            shutil.rmtree(temp_dir)
         
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+        # Handle NodeODM connection errors gracefully
+        if "ConnectionRefusedError" in str(e) or "No connection could be made" in str(e):
+            raise HTTPException(
+                status_code=503, 
+                detail="NodeODM server is not running. Please start NodeODM on localhost:3000"
+            )
+        else:
+            raise HTTPException(status_code=500, detail=f"NodeODM processing failed: {str(e)}")
 
 # Step 2: Get upload status
 @router.get("/{task_id}/status")
 async def get_upload_status(task_id: str):
     """
-    Get upload status for a specific task
+    Get upload status for a specific NodeODM task
     
     Args:
-        task_id: Unique task identifier
+        task_id: NodeODM task identifier
         
     Returns:
-        Current upload status
+        Current task status from NodeODM
     """
-    # TODO: Query database for task status
-    # For now, check if directory exists
-    task_dir = Path(f"uploads/{task_id}")
-    
-    if not task_dir.exists():
-        raise HTTPException(status_code=404, detail="Task not found")
-    
-    # Count files in directory
-    files = list(task_dir.glob("*"))
-    
-    return {
-        "task_id": task_id,
-        "status": "uploaded",
-        "file_count": len(files),
-        "files": [f.name for f in files],
-        "message": "Upload completed successfully"
-    }
+    try:
+        # Query NodeODM for task status
+        n = Node('localhost', 3000)
+        task_info = n.get_task(task_id)
+        
+        return {
+            "task_id": task_id,
+            "status": task_info.status,
+            "progress": getattr(task_info, 'progress', 0),
+            "message": "Task status retrieved from NodeODM"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Task not found: {str(e)}")
 
-# Step 3: Delete uploaded files
+# Step 3: Delete NodeODM task
 @router.delete("/{task_id}")
 async def delete_upload(task_id: str):
     """
-    Delete uploaded files for a specific task
+    Delete a NodeODM task
     
     Args:
-        task_id: Unique task identifier
+        task_id: NodeODM task identifier
         
     Returns:
         Deletion confirmation
     """
-    task_dir = Path(f"uploads/{task_id}")
-    
-    if not task_dir.exists():
-        raise HTTPException(status_code=404, detail="Task not found")
-    
     try:
-        import shutil
-        shutil.rmtree(task_dir)
+        # Delete task from NodeODM
+        n = Node('localhost', 3000)
+        n.delete_task(task_id)
+        
         return {
-            "message": "Files deleted successfully",
+            "message": "Task deleted successfully from NodeODM",
             "task_id": task_id
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Deletion failed: {str(e)}")
 
-# Step 4: List all uploads (for debugging)
+# Step 4: List all NodeODM tasks
 @router.get("/")
 async def list_uploads():
     """
-    List all uploaded tasks (for debugging)
+    List all NodeODM tasks
     
     Returns:
-        List of all tasks
+        List of all NodeODM tasks
     """
-    uploads_dir = Path("uploads")
-    
-    if not uploads_dir.exists():
-        return {"tasks": []}
-    
-    tasks = []
-    for task_dir in uploads_dir.iterdir():
-        if task_dir.is_dir():
-            files = list(task_dir.glob("*"))
-            tasks.append({
-                "task_id": task_dir.name,
-                "file_count": len(files),
-                "files": [f.name for f in files],
-                "created_at": datetime.fromtimestamp(task_dir.stat().st_ctime).isoformat()
+    try:
+        # Get all tasks from NodeODM
+        n = Node('localhost', 3000)
+        tasks = n.get_tasks()
+        
+        task_list = []
+        for task in tasks:
+            task_list.append({
+                "task_id": task.uuid,
+                "status": task.status,
+                "progress": getattr(task, 'progress', 0),
+                "created_at": getattr(task, 'date_created', 'unknown')
             })
-    
-    return {"tasks": tasks}
+        
+        return {"tasks": task_list}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve tasks: {str(e)}")

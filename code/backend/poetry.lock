@@ -647,6 +647,23 @@ toml = ["tomli (>=2.0.1)"]
 yaml = ["pyyaml (>=6.0.1)"]
 
 [[package]]
+name = "pyodm"
+version = "1.5.12"
+description = "Python SDK for OpenDroneMap"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "pyodm-1.5.12-py3-none-any.whl", hash = "sha256:b235de263f82063326694d3e3e0c027d4b658d06f01473e84093fbd4d7a6eef5"},
+    {file = "pyodm-1.5.12.tar.gz", hash = "sha256:d0433182ac6d5587786391c91d0eeafe0d78c71d618336af78964620dafe87c4"},
+]
+
+[package.dependencies]
+requests = "*"
+requests-toolbelt = "*"
+urllib3 = "*"
+
+[[package]]
 name = "pytest"
 version = "7.4.4"
 description = "pytest: simple powerful testing with Python"
@@ -822,6 +839,21 @@ urllib3 = ">=1.21.1,<3"
 [package.extras]
 socks = ["PySocks (>=1.5.6,!=1.5.7)"]
 use-chardet-on-py3 = ["chardet (>=3.0.2,<6)"]
+
+[[package]]
+name = "requests-toolbelt"
+version = "1.0.0"
+description = "A utility belt for advanced users of python-requests"
+optional = false
+python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
+groups = ["main"]
+files = [
+    {file = "requests-toolbelt-1.0.0.tar.gz", hash = "sha256:7681a0a3d047012b5bdc0ee37d7f8f07ebe76ab08caeccfc3921ce23c88d5bc6"},
+    {file = "requests_toolbelt-1.0.0-py2.py3-none-any.whl", hash = "sha256:cccfdd665f0a24fcf4726e690f65639d272bb0637b9b92dfd91a5568ccf6bd06"},
+]
+
+[package.dependencies]
+requests = ">=2.0.1,<3.0.0"
 
 [[package]]
 name = "sniffio"
@@ -1203,4 +1235,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.8"
-content-hash = "f01213571fc34d669e313edf6d380653a0d2e4745ac261fc5e7a367ec564034a"
+content-hash = "04f05ec79164454f71110ac87ddd7b661f634b6b66a1bb41f42671282fff037f"
