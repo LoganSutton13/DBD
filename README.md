@@ -96,7 +96,7 @@ docker run -p 3000:3000 opendronemap/nodeodm
 
 **1. Image Upload & Management**
 - Drag-and-drop interface for uploading multiple drone images
-- Support for JPEG, PNG, and TIFF formats (up to 50MB per file)
+- Support for JPEG, PNG, and TIFF formats (up to 100MB per file)
 - Real-time upload progress tracking
 - File validation and error handling
 - Upload queue management with preview thumbnails
@@ -252,7 +252,6 @@ We welcome contributions to the DroneBasedDevelopment project! Please follow the
 - **[Backend API Documentation](code/backend/README.md)** - Detailed backend setup and API reference
 - **[Frontend Documentation](code/frontend/README.md)** - Frontend development guide and component documentation
 - **[Integration Guide](code/frontend/INTEGRATION_GUIDE.md)** - Backend-frontend integration details
-- **[Backend Integration Guide](code/frontend/BACKEND_INTEGRATION.md)** - API integration patterns
 
 ### Project Structure
 - **[Contributing Guidelines](CONTRIBUTING.md)** - Development standards and contribution process
