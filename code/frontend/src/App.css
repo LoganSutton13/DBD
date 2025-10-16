@@ -22,8 +22,11 @@
 .slider {
   -webkit-appearance: none;
   appearance: none;
-  background: transparent;
+  background: #475569;
+  height: 8px;
+  border-radius: 4px;
   cursor: pointer;
+  outline: none;
 }
 
 .slider::-webkit-slider-track {
@@ -42,6 +45,7 @@
   cursor: pointer;
   border: 2px solid #1e293b;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  margin-top: -6px;
 }
 
 .slider::-webkit-slider-thumb:hover {

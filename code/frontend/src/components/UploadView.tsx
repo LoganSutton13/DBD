@@ -330,20 +330,27 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <label className="text-dark-200 font-medium">Grid Size</label>
-                <span className="text-primary-400 font-semibold">{gridSize}</span>
+                <div className="text-right">
+                  <span className="text-primary-400 font-bold text-lg">{gridSize}</span>
+                  <span className="text-dark-300 text-sm ml-1">ft</span>
+                </div>
               </div>
               <div className="space-y-2">
-                <input
-                  type="range"
-                  min={GRID_SIZE_MIN}
-                  max={GRID_SIZE_MAX}
-                  value={gridSize}
-                  onChange={(e) => setGridSize(Number(e.target.value))}
-                  className="w-full h-2 bg-dark-600 rounded-lg appearance-none cursor-pointer slider"
-                />
-                <div className="flex justify-between text-xs text-dark-400">
-                  <span>{GRID_SIZE_MIN}</span>
-                  <span>{GRID_SIZE_MAX}</span>
+                <div className="flex items-center space-x-4">
+                  <input
+                    type="range"
+                    min={GRID_SIZE_MIN}
+                    max={GRID_SIZE_MAX}
+                    value={gridSize}
+                    onChange={(e) => setGridSize(Number(e.target.value))}
+                    className="w-3/5 h-2 bg-dark-600 rounded-lg appearance-none cursor-pointer slider"
+                  />
+                  <div className="flex-1 text-xs text-dark-400">
+                    <div className="flex justify-between">
+                      <span>{GRID_SIZE_MIN} ft</span>
+                      <span>{GRID_SIZE_MAX} ft</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -352,20 +359,27 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <label className="text-dark-200 font-medium">Boom Size</label>
-                <span className="text-primary-400 font-semibold">{boomSize}</span>
+                <div className="text-right">
+                  <span className="text-primary-400 font-bold text-lg">{boomSize}</span>
+                  <span className="text-dark-300 text-sm ml-1">ft</span>
+                </div>
               </div>
               <div className="space-y-2">
-                <input
-                  type="range"
-                  min={BOOM_SIZE_MIN}
-                  max={BOOM_SIZE_MAX}
-                  value={boomSize}
-                  onChange={(e) => setBoomSize(Number(e.target.value))}
-                  className="w-full h-2 bg-dark-600 rounded-lg appearance-none cursor-pointer slider"
-                />
-                <div className="flex justify-between text-xs text-dark-400">
-                  <span>{BOOM_SIZE_MIN}</span>
-                  <span>{BOOM_SIZE_MAX}</span>
+                <div className="flex items-center space-x-4">
+                  <input
+                    type="range"
+                    min={BOOM_SIZE_MIN}
+                    max={BOOM_SIZE_MAX}
+                    value={boomSize}
+                    onChange={(e) => setBoomSize(Number(e.target.value))}
+                    className="w-3/5 h-2 bg-dark-600 rounded-lg appearance-none cursor-pointer slider"
+                  />
+                  <div className="flex-1 text-xs text-dark-400">
+                    <div className="flex justify-between">
+                      <span>{BOOM_SIZE_MIN} ft</span>
+                      <span>{BOOM_SIZE_MAX} ft</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -374,20 +388,27 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <label className="text-dark-200 font-medium">Heading Size</label>
-                <span className="text-primary-400 font-semibold">{headingSize}</span>
+                <div className="text-right">
+                  <span className="text-primary-400 font-bold text-lg">{headingSize}</span>
+                  <span className="text-dark-300 text-sm ml-1">in</span>
+                </div>
               </div>
               <div className="space-y-2">
-                <input
-                  type="range"
-                  min={HEADING_SIZE_MIN}
-                  max={HEADING_SIZE_MAX}
-                  value={headingSize}
-                  onChange={(e) => setHeadingSize(Number(e.target.value))}
-                  className="w-full h-2 bg-dark-600 rounded-lg appearance-none cursor-pointer slider"
-                />
-                <div className="flex justify-between text-xs text-dark-400">
-                  <span>{HEADING_SIZE_MIN}</span>
-                  <span>{HEADING_SIZE_MAX}</span>
+                <div className="flex items-center space-x-4">
+                  <input
+                    type="range"
+                    min={HEADING_SIZE_MIN}
+                    max={HEADING_SIZE_MAX}
+                    value={headingSize}
+                    onChange={(e) => setHeadingSize(Number(e.target.value))}
+                    className="w-3/5 h-2 bg-dark-600 rounded-lg appearance-none cursor-pointer slider"
+                  />
+                  <div className="flex-1 text-xs text-dark-400">
+                    <div className="flex justify-between">
+                      <span>{HEADING_SIZE_MIN} in</span>
+                      <span>{HEADING_SIZE_MAX} in</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
