@@ -253,6 +253,18 @@ const ProcessingView: React.FC = () => {
   }, []);
 
 
+  // Clear local cache function
+  const clearLocalCache = () => {
+    // Clear localStorage cache
+    localStorage.removeItem('pendingUploads');
+    localStorage.removeItem('processingTasks');
+    
+    // Clear processing tasks state
+    setProcessingTasks([]);
+    
+    console.log('Local cache cleared successfully');
+  };
+
   // Manual refresh function (triggers immediate polling)
   const refreshProcessingQueue = async () => {
     console.log('Manual refresh triggered');
@@ -365,12 +377,20 @@ const ProcessingView: React.FC = () => {
                 {backendAvailable ? 'Backend Connected' : 'Backend Disconnected'}
               </span>
             </div>
-            <button
-              onClick={refreshProcessingQueue}
-              className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors duration-200"
-            >
-              Refresh Now
-            </button>
+            <div className="flex flex-col space-y-2">
+              <button
+                onClick={refreshProcessingQueue}
+                className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors duration-200"
+              >
+                Refresh Now
+              </button>
+              <button
+                onClick={clearLocalCache}
+                className="px-3 py-1 bg-orange-600 text-white text-xs rounded hover:bg-orange-700 transition-colors duration-200"
+              >
+                Clear Cache
+              </button>
+            </div>
           </div>
         </div>
         <p className="text-dark-300 mb-6">
