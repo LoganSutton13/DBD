@@ -21,6 +21,20 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [backendAvailable, setBackendAvailable] = useState<boolean>(true);
   const [connectionTestResult, setConnectionTestResult] = useState<string | null>(null);
+  
+  // Dropdown and slider states
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [gridSize, setGridSize] = useState(10);
+  const [boomSize, setBoomSize] = useState(5);
+  const [headingSize, setHeadingSize] = useState(3);
+  
+  // Configurable min/max values - easy to change as needed
+  const GRID_SIZE_MIN = 1;
+  const GRID_SIZE_MAX = 50;
+  const BOOM_SIZE_MIN = 1;
+  const BOOM_SIZE_MAX = 20;
+  const HEADING_SIZE_MIN = 1;
+  const HEADING_SIZE_MAX = 10;
 
   // Check backend connection on component mount
   useEffect(() => {
@@ -286,6 +300,99 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
             or click to browse files
           </p>
         </div>
+      </div>
+      
+      {/* Configuration Dropdown */}
+      <div className="bg-dark-800 rounded-lg p-6 border border-dark-700">
+        <button
+          onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+          className="w-full flex justify-between items-center p-4 bg-dark-700 rounded-lg hover:bg-dark-600 transition-colors duration-200"
+        >
+          <div className="flex items-center space-x-3">
+            <svg className="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+            </svg>
+            <span className="text-lg font-medium text-primary-400">Processing Configuration</span>
+          </div>
+          <svg 
+            className={`w-5 h-5 text-dark-300 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} 
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        
+        {isDropdownOpen && (
+          <div className="mt-4 space-y-6">
+            {/* Grid Size Slider */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <label className="text-dark-200 font-medium">Grid Size</label>
+                <span className="text-primary-400 font-semibold">{gridSize}</span>
+              </div>
+              <div className="space-y-2">
+                <input
+                  type="range"
+                  min={GRID_SIZE_MIN}
+                  max={GRID_SIZE_MAX}
+                  value={gridSize}
+                  onChange={(e) => setGridSize(Number(e.target.value))}
+                  className="w-full h-2 bg-dark-600 rounded-lg appearance-none cursor-pointer slider"
+                />
+                <div className="flex justify-between text-xs text-dark-400">
+                  <span>{GRID_SIZE_MIN}</span>
+                  <span>{GRID_SIZE_MAX}</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Boom Size Slider */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <label className="text-dark-200 font-medium">Boom Size</label>
+                <span className="text-primary-400 font-semibold">{boomSize}</span>
+              </div>
+              <div className="space-y-2">
+                <input
+                  type="range"
+                  min={BOOM_SIZE_MIN}
+                  max={BOOM_SIZE_MAX}
+                  value={boomSize}
+                  onChange={(e) => setBoomSize(Number(e.target.value))}
+                  className="w-full h-2 bg-dark-600 rounded-lg appearance-none cursor-pointer slider"
+                />
+                <div className="flex justify-between text-xs text-dark-400">
+                  <span>{BOOM_SIZE_MIN}</span>
+                  <span>{BOOM_SIZE_MAX}</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Heading Size Slider */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <label className="text-dark-200 font-medium">Heading Size</label>
+                <span className="text-primary-400 font-semibold">{headingSize}</span>
+              </div>
+              <div className="space-y-2">
+                <input
+                  type="range"
+                  min={HEADING_SIZE_MIN}
+                  max={HEADING_SIZE_MAX}
+                  value={headingSize}
+                  onChange={(e) => setHeadingSize(Number(e.target.value))}
+                  className="w-full h-2 bg-dark-600 rounded-lg appearance-none cursor-pointer slider"
+                />
+                <div className="flex justify-between text-xs text-dark-400">
+                  <span>{HEADING_SIZE_MIN}</span>
+                  <span>{HEADING_SIZE_MAX}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Upload queue */}
