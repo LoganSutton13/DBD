@@ -58,16 +58,42 @@ const FileViewerModal: React.FC<FileViewerModalProps> = ({ file, isOpen, onClose
             <div className="flex-1 bg-dark-900 flex items-center justify-center p-4">
               {file.fileType === 'orthophoto' || file.fileType === 'map' ? (
                 <div className="max-w-full max-h-full">
-                  <img
-                    src={file.previewUrl}
-                    alt={file.fileName}
-                    className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
-                    onError={(e) => {
-                      // Fallback for missing images
-                      const target = e.target as HTMLImageElement;
-                      target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgdmlld0JveD0iMCAwIDQwMCAzMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjMzM0MTU1Ii8+CjxwYXRoIGQ9Ik0xNzUgMTI1SDIyNVYxNzVIMTc1VjEyNVoiIGZpbGw9IiM2NDc0OGIiLz4KPHRleHQgeD0iMjAwIiB5PSIxNjAiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk0YTNhOCIgdGV4dC1hbmNob3I9Im1pZGRsZSI+UHJldmlldyBOb3QgQXZhaWxhYmxlPC90ZXh0Pgo8L3N2Zz4K';
-                    }}
-                  />
+                  {file.originalFormat === 'TIF' ? (
+                    <div className="text-center p-8">
+                      <div className="text-dark-400 mb-4">
+                        <svg className="mx-auto h-24 w-24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <h3 className="text-xl font-semibold text-primary-400 mb-2">TIF File</h3>
+                      <p className="text-dark-300 mb-4">
+                        Browsers cannot display TIF files directly. This is a georeferenced orthophoto.
+                      </p>
+                      <p className="text-dark-400 text-sm mb-6">
+                        Use the download button to get the original file for use in GIS software.
+                      </p>
+                      <div className="bg-dark-700 rounded-lg p-4 max-w-md mx-auto">
+                        <h4 className="text-dark-200 font-medium mb-2">File Information:</h4>
+                        <div className="text-sm text-dark-400 space-y-1">
+                          <p>Format: {file.originalFormat}</p>
+                          <p>Size: {formatFileSize(file.fileSize)}</p>
+                          {file.metadata.resolution && <p>Resolution: {file.metadata.resolution} cm/pixel</p>}
+                          {file.metadata.area && <p>Area: {file.metadata.area}</p>}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <img
+                      src={file.previewUrl}
+                      alt={file.fileName}
+                      className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+                      onError={(e) => {
+                        // Fallback for missing images
+                        const target = e.target as HTMLImageElement;
+                        target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgdmlld0JveD0iMCAwIDQwMCAzMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjMzM0MTU1Ii8+CjxwYXRoIGQ9Ik0xNzUgMTI1SDIyNVYxNzVIMTc1VjEyNVoiIGZpbGw9IiM2NDc0OGIiLz4KPHRleHQgeD0iMjAwIiB5PSIxNjAiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk0YTNhOCIgdGV4dC1hbmNob3I9Im1pZGRsZSI+UHJldmlldyBOb3QgQXZhaWxhYmxlPC90ZXh0Pgo8L3N2Zz4K';
+                      }}
+                    />
+                  )}
                 </div>
               ) : file.fileType === 'contour' ? (
                 <div className="max-w-full max-h-full">

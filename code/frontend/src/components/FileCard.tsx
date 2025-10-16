@@ -69,10 +69,14 @@ const FileCard: React.FC<FileCardProps> = ({ file, onClick }) => {
             src={file.previewUrl}
             alt={file.fileName}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+            onLoad={() => {
+              console.log('Image loaded successfully:', file.fileName);
+            }}
             onError={(e) => {
-              // Fallback for missing images
+              console.error('Image failed to load:', file.fileName, file.previewUrl);
+              // Fallback for missing images - use a simple colored rectangle
               const target = e.target as HTMLImageElement;
-              target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDMwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIzMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjMzM0MTU1Ii8+CjxwYXRoIGQ9Ik0xMjUgNzVIMTc1VjEyNUgxMjVWNzVaIiBmaWxsPSIjNjQ3NDhiIi8+Cjx0ZXh0IHg9IjE1MCIgeT0iMTQwIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTIiIGZpbGw9IiM5NGEzYTgiIHRleHQtYW5jaG9yPSJtaWRkbGUiPk9ydGhvcGhvdG88L3RleHQ+Cjwvc3ZnPgo=';
+              target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDMwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIzMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjMzM0MTU1Ii8+CjxyZWN0IHg9IjUwIiB5PSI1MCIgd2lkdGg9IjIwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiM2NDc0OGIiLz4KPHRleHQgeD0iMTUwIiB5PSIxMzAiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk0YTNhOCIgdGV4dC1hbmNob3I9Im1pZGRsZSI+SW1hZ2UgUHJldmlldzwvdGV4dD4KPC9zdmc+';
             }}
           />
         ) : file.fileType === 'contour' ? (
@@ -80,7 +84,11 @@ const FileCard: React.FC<FileCardProps> = ({ file, onClick }) => {
             src={file.previewUrl}
             alt={file.fileName}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+            onLoad={() => {
+              console.log('Contour image loaded successfully:', file.fileName);
+            }}
             onError={(e) => {
+              console.error('Contour image failed to load:', file.fileName, file.previewUrl);
               // Fallback for missing SVG
               const target = e.target as HTMLImageElement;
               target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDMwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIzMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjMzM0MTU1Ii8+CjxwYXRoIGQ9Ik0xMjUgNzVIMTc1VjEyNUgxMjVWNzVaIiBmaWxsPSIjNjQ3NDhiIi8+Cjx0ZXh0IHg9IjE1MCIgeT0iMTQwIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTIiIGZpbGw9IiM5NGEzYTgiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkNvbnRvdXI8L3RleHQ+Cjwvc3ZnPgo=';

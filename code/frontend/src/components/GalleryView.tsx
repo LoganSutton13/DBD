@@ -3,6 +3,7 @@ import { ProcessedOutput, FileTypeFilter, SortOption } from '../types/processedO
 import { mockProcessedOutputs } from '../data/mockData';
 import FileCard from './FileCard';
 import FileViewerModal from './FileViewerModal';
+import FileUploadSection from './FileUploadSection';
 
 const GalleryView: React.FC = () => {
   // State management
@@ -10,9 +11,10 @@ const GalleryView: React.FC = () => {
   const [sortOption, setSortOption] = useState<SortOption>('newest');
   const [selectedFile, setSelectedFile] = useState<ProcessedOutput | null>(null);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<ProcessedOutput[]>([]);
 
-  // Mock data - replace with real API calls
-  const processedOutputs = mockProcessedOutputs;
+  // Combine mock data with uploaded files
+  const processedOutputs = [...mockProcessedOutputs, ...uploadedFiles];
 
   // File type counts for stats
   const fileTypeCounts = useMemo(() => {
@@ -62,9 +64,31 @@ const GalleryView: React.FC = () => {
     setIsViewerOpen(false);
     setSelectedFile(null);
   };
+
+  // Handle file upload
+  const handleFileUploaded = (file: ProcessedOutput) => {
+    console.log('File uploaded to gallery:', file);
+    setUploadedFiles(prev => {
+      const newFiles = [file, ...prev];
+      console.log('Updated uploaded files:', newFiles);
+      return newFiles;
+    });
+  };
+
+  // Clear uploaded files
+  const clearUploadedFiles = () => {
+    // Revoke object URLs to free memory
+    uploadedFiles.forEach(file => {
+      URL.revokeObjectURL(file.previewUrl);
+    });
+    setUploadedFiles([]);
+  };
   
   return (
     <div className="space-y-6">
+      {/* Upload Section */}
+      <FileUploadSection onFileUploaded={handleFileUploaded} />
+      
       <div className="bg-dark-800 rounded-lg p-8 border border-dark-700">
         <h2 className="text-2xl font-semibold text-primary-400 mb-4">
           Image Gallery
@@ -167,6 +191,16 @@ const GalleryView: React.FC = () => {
             Gallery Controls
           </h3>
           <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4">
+            {/* Clear Uploaded Files Button */}
+            {uploadedFiles.length > 0 && (
+              <button
+                onClick={clearUploadedFiles}
+                className="px-3 py-1 bg-orange-600 text-white text-sm rounded hover:bg-orange-700 transition-colors duration-200"
+              >
+                Clear Uploaded ({uploadedFiles.length})
+              </button>
+            )}
+            
             {/* File Type Filter */}
             <div className="flex space-x-2">
               <button
