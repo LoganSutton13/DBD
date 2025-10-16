@@ -1,0 +1,31 @@
+agro manager
+- online farm management tool
+- take processed data
+- creates a task map
+- option to download the task map
+
+to use after we create shape file
+if nothing else, good reference for building 
+
+-----
+options for stitching
+- default or custom tab for slider options
+-- drop down starts closed
+	- grid size (width of robot)
+	- boom size
+	- heading
+
+Sprayer robot
+- does have gps
+- and rtk
+- maybe private LTE radio?
+
+Andrew's Plan
+- give robot a path
+- do john deere or other rate controller
+- use off the shelf gps system to run the implement
+- John deere starfire system 
+- Opp system is easy to send data to remotely
+
+John Deere setup is gonna cost as much as robot and sprayer
+- check if amiga can connect to raven rate controller
