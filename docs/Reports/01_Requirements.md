@@ -1,5 +1,5 @@
-# Sprint 1 Report (Dates from Sprint 1 to Sprint 1)
-## YouTube link of Sprint 1 Video (Make this video unlisted)
+# Sprint 1 Report (Dates from Sep 5 to Oct 5)
+## YouTube link of Sprint 1 Video https://youtu.be/VFluGSbSxKU
 ## What's New (User Facing)
 * Complete drone imagery upload system with drag-and-drop interface
 * Real-time processing queue monitoring with automatic status polling
