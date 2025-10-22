@@ -20,12 +20,6 @@ const ProcessingView: React.FC = () => {
     }
   };
 
-  // Check backend availability
-  const checkBackendAvailability = async () => {
-    const isAvailable = await apiService.isBackendAvailable();
-    setBackendAvailable(isAvailable);
-    return isAvailable;
-  };
 
   // Load processing tasks from localStorage and check for pending uploads
   useEffect(() => {
@@ -106,13 +100,6 @@ const ProcessingView: React.FC = () => {
 
         // Poll each active task for status updates
         (async () => {
-          const isAvailable = await checkBackendAvailability();
-          if (!isAvailable) {
-            setError('Backend server is not available');
-            return;
-          }
-
-          setError(null);
           
           try {
             // Only poll active tasks
@@ -279,13 +266,6 @@ const ProcessingView: React.FC = () => {
     console.log(`Manually refreshing ${activeTasks.length} active tasks`);
     
     try {
-      const isAvailable = await checkBackendAvailability();
-      if (!isAvailable) {
-        setError('Backend server is not available');
-        return;
-      }
-
-      setError(null);
       
       // Poll each active task
       const updatedTasks = await Promise.all(

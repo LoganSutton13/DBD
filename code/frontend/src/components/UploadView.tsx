@@ -104,15 +104,7 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
       return;
     }
 
-    // Check backend availability
-    const isAvailable = await apiService.isBackendAvailable();
-    if (!isAvailable) {
-      setBackendAvailable(false);
-      setUploadError('Backend server is not available. Please ensure the backend is running on localhost:8001');
-      setIsUploading(false);
-      return;
-    }
-    setBackendAvailable(true);
+    // Backend availability will be determined by the actual upload attempt
 
     // Update all pending files to uploading status
     setUploadFiles((prev) => 
@@ -143,6 +135,7 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
       }));
 
       console.log('Upload successful:', uploadResponse);
+      setBackendAvailable(true); // Backend is available since upload succeeded
       
       // Dispatch event for ProcessingView to listen to
       console.log('Dispatching newUpload event with data:', uploadResponse);
@@ -169,6 +162,8 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
         )
       );
       
+      // Set backend as unavailable if upload fails
+      setBackendAvailable(false);
       console.error('Upload failed:', error);
     }
     
