@@ -88,7 +88,8 @@ async def upload_files(
             'skip-3dmodel': True,  # Skip 3D model to focus on orthophoto
             'orthophoto-resolution': 3.0,  # Medium quality (3cm/pixel)
             'orthophoto-quality': 75,  # Medium JPEG quality
-            'pc-quality':'lowest' #lowest quality for the point cloud
+            'pc-quality':'lowest', #lowest quality for the point cloud
+            'orthophoto-png': True, #output orthophoto as png
         }
         task = n.create_task(saved_files, options=orthophoto_options, webhook=webhook_url)
         nodeodm_task_id = task.uuid  # Get NodeODM's auto-generated ID
