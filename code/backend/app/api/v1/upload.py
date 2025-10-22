@@ -139,9 +139,8 @@ async def get_upload_status(task_id: str):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get task status: {str(e)}")
-    
 
-# Step 3: Delete NodeODM task
+
 @router.delete("/{task_id}")
 async def delete_upload(task_id: str):
     """
