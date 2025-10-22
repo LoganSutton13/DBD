@@ -82,7 +82,7 @@ async def upload_files(
             saved_files.append(str(file_path))
         
         # Create NodeODM task with saved file paths - simple orthophoto settings
-        options = {'pc-quality':'loweset'}
+        options = {'pc-quality':'loweset'} #TODO: implement options for the task
         webhook_url = f"http://localhost:8001/api/v1/results/webhook/nodeodm" # webhook url to send to results endpoint
         n = Node('localhost', 3000)
         orthophoto_options = {
