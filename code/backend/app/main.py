@@ -6,6 +6,7 @@ Main FastAPI application entry point
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.upload import router as upload_router
+from app.api.v1.results import router as results_router
 from app.core.config import settings
 
 # Create FastAPI app
@@ -39,6 +40,7 @@ async def health_check():
 
 # Include API routers
 app.include_router(upload_router, prefix="/api/v1/upload", tags=["upload"])
+app.include_router(results_router, prefix="/api/v1/results", tags=["results"])
 
 if __name__ == "__main__":
     import uvicorn

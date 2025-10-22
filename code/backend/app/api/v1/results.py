@@ -19,7 +19,7 @@ load_dotenv()
 
 # Create router
 router = APIRouter()
-@router.Get("/{task_id}/{file_name}")
+@router.get("/{task_id}/{file_name}")
 async def get_processed_files(task_id: str, file_name: str):
     """
     Get a NodeODM processed task
