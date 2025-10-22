@@ -34,6 +34,8 @@ const ProcessingView: React.FC = () => {
       if (savedTasks) {
         try {
           const tasks = JSON.parse(savedTasks);
+          console.log('Loaded tasks from localStorage:', tasks);
+          console.log('Task statuses found:', tasks.map((t: ProcessingTask) => `"${t.status}"`).join(', '));
           setProcessingTasks(tasks);
         } catch (error) {
           console.error('Failed to parse saved tasks:', error);
@@ -132,6 +134,7 @@ const ProcessingView: React.FC = () => {
                     
                     // Debug: Log all possible status values to understand NodeODM responses
                     console.log(`DEBUG: Raw NodeODM status response:`, statusResponse);
+                    console.log(`DEBUG: Task ${task.id} status values - Old: "${task.status}", New: "${newStatus}"`);
 
                     // Check if task is completed or failed
                     const isFinished = newStatus === 'completed' || 
@@ -323,6 +326,47 @@ const ProcessingView: React.FC = () => {
     }
   };
 
+  // Download processed files for a completed task
+  const downloadProcessedFiles = async (task: ProcessingTask) => {
+    try {
+      console.log(`Downloading files for task ${task.id}`);
+      
+      // For now, we'll download the original files since we don't have processed file names yet
+      // In a real implementation, you'd get the list of processed files from the backend
+      const processedFileNames = [
+        'orthophoto.tif',
+        'orthophoto.png', 
+        'dsm.tif',
+        'dtm.tif',
+        'report.pdf'
+      ];
+
+      for (const fileName of processedFileNames) {
+        try {
+          const blob = await apiService.getProcessedFile(task.id, fileName);
+          
+          // Create download link
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${task.id.slice(0, 8)}_${fileName}`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          
+          console.log(`Downloaded ${fileName} for task ${task.id}`);
+        } catch (error) {
+          console.log(`File ${fileName} not available for task ${task.id}:`, error);
+          // Continue with other files even if one fails
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to download files for task ${task.id}:`, error);
+      setError(`Failed to download files: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
   const activeTasks = processingTasks.filter(task => 
     task.status === 'processing' || 
     task.status === 'queued' || 
@@ -344,9 +388,21 @@ const ProcessingView: React.FC = () => {
     task.status === 'TaskStatus.QUEUED' ||
     task.status === 'QUEUED'
   );
-  const completedTasks = processingTasks.filter(task => 
-    task.status === 'completed' || task.status === 'success'
-  );
+  const completedTasks = processingTasks.filter(task => {
+    const isCompleted = task.status === 'completed' || 
+                       task.status === 'success' ||
+                       task.status === 'COMPLETED' ||
+                       task.status === 'SUCCESS' ||
+                       task.status === 'TaskStatus.COMPLETED' ||
+                       task.status === 'TaskStatus.SUCCESS';
+    
+    // Debug logging for completed task detection
+    if (isCompleted) {
+      console.log(`Found completed task: ${task.id} with status: "${task.status}"`);
+    }
+    
+    return isCompleted;
+  });
   const failedTasks = processingTasks.filter(task => 
     task.status === 'failed' || task.status === 'error'
   );
@@ -398,22 +454,36 @@ const ProcessingView: React.FC = () => {
             <div className="mt-3 pt-3 border-t border-dark-600">
               <p className="text-dark-400 mb-2"><strong>All Tasks Debug:</strong></p>
               <div className="space-y-1">
-                {processingTasks.map((task, index) => (
-                  <div key={task.id} className="flex justify-between items-center text-xs">
-                    <span className="text-dark-300">
-                      #{index + 1}: {task.id.slice(0, 8)} ({task.file_count} files)
-                    </span>
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      task.status === 'processing' || task.status === 'TaskStatus.RUNNING' || task.status === 'RUNNING' ? 'bg-blue-500/20 text-blue-400' :
-                      task.status === 'queued' || task.status === 'TaskStatus.QUEUED' || task.status === 'QUEUED' ? 'bg-yellow-500/20 text-yellow-400' :
-                      task.status === 'completed' || task.status === 'success' ? 'bg-green-500/20 text-green-400' :
-                      task.status === 'failed' || task.status === 'error' ? 'bg-red-500/20 text-red-400' :
-                      'bg-gray-500/20 text-gray-400'
-                    }`}>
-                      {task.status} {task.progress > 0 ? `(${Math.round(task.progress)}%)` : ''}
-                    </span>
-                  </div>
-                ))}
+                {processingTasks.map((task, index) => {
+                  const isCompleted = task.status === 'completed' || 
+                                   task.status === 'success' ||
+                                   task.status === 'COMPLETED' ||
+                                   task.status === 'SUCCESS' ||
+                                   task.status === 'TaskStatus.COMPLETED' ||
+                                   task.status === 'TaskStatus.SUCCESS';
+                  
+                  return (
+                    <div key={task.id} className="flex justify-between items-center text-xs">
+                      <span className="text-dark-300">
+                        #{index + 1}: {task.id.slice(0, 8)} ({task.file_count} files)
+                        {isCompleted && <span className="text-green-400 ml-2">✓ COMPLETED</span>}
+                      </span>
+                      <span className={`px-2 py-1 rounded text-xs ${
+                        task.status === 'processing' || task.status === 'TaskStatus.RUNNING' || task.status === 'RUNNING' ? 'bg-blue-500/20 text-blue-400' :
+                        task.status === 'queued' || task.status === 'TaskStatus.QUEUED' || task.status === 'QUEUED' ? 'bg-yellow-500/20 text-yellow-400' :
+                        isCompleted ? 'bg-green-500/20 text-green-400' :
+                        task.status === 'failed' || task.status === 'error' ? 'bg-red-500/20 text-red-400' :
+                        'bg-gray-500/20 text-gray-400'
+                      }`}>
+                        "{task.status}" {task.progress > 0 ? `(${Math.round(task.progress)}%)` : ''}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-2 text-xs text-dark-400">
+                <p><strong>Completed Tasks Count:</strong> {completedTasks.length}</p>
+                <p><strong>All Tasks Count:</strong> {processingTasks.length}</p>
               </div>
             </div>
           )}
@@ -568,9 +638,20 @@ const ProcessingView: React.FC = () => {
                           {task.file_count} files • Completed {new Date(task.created_at).toLocaleString()}
                         </p>
                       </div>
-                      <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded-full text-xs font-medium">
-                        completed
-                      </span>
+                      <div className="flex items-center space-x-2">
+                        <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded-full text-xs font-medium">
+                          completed
+                        </span>
+                        <button
+                          onClick={() => downloadProcessedFiles(task)}
+                          className="px-3 py-1 bg-primary-500 text-white text-xs rounded hover:bg-primary-600 transition-colors duration-200 flex items-center space-x-1"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span>Download</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}

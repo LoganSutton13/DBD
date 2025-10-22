@@ -3,7 +3,7 @@ Upload API endpoints for drone imagery files
 """
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks
-from fastapi.responses import JSONResponse, BackgroundTask
+from fastapi.responses import JSONResponse
 from typing import List, Optional
 import uuid
 import os
@@ -88,7 +88,7 @@ async def upload_files(
             'skip-3dmodel': True,  # Skip 3D model to focus on orthophoto
             'orthophoto-resolution': 3.0,  # Medium quality (3cm/pixel)
             'orthophoto-quality': 75,  # Medium JPEG quality
-            'pc-quality':'loweset' #lowest quality for the point cloud
+            'pc-quality':'lowest' #lowest quality for the point cloud
         }
         task = n.create_task(saved_files, options=orthophoto_options, webhook=webhook_url)
         nodeodm_task_id = task.uuid  # Get NodeODM's auto-generated ID

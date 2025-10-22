@@ -37,6 +37,15 @@ class ApiService {
     return response.json();
   }
 
+  async getProcessedFile(taskId: string, fileName: string): Promise<Blob> {
+    const response = await fetch(`${this.baseUrl}/api/v1/results/${taskId}/${fileName}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to get processed file: ${response.status} ${errorText}`);
+    }
+    return response.blob();
+  }
+
   /**
    * Get task status from backend
    */
