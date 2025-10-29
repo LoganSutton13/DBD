@@ -11,9 +11,10 @@ from typing import Dict, List, Optional
 from datetime import datetime
 import hashlib
 import pyodm
+import logging
 
 from ..core.config import settings
-
+LOGGER = logging.getLogger(__name__)
 class FileStorageService:
     """Service for managing NodeODM output file storage"""
     
@@ -25,8 +26,11 @@ class FileStorageService:
         """Poll for the download of the NodeODM task"""
         while True:
             if task.info().status == 'completed':
+                LOGGER.info(f"Downloading assets for task {task_id}")
                 return task.download_assets(destination = self.results_dir / task_id)
+
             if task.info().status == 'failed':
+                LOGGER.error(f"Task {task_id} failed. Error: {task.info().last_error}")
                 return None
             time.sleep(5)
     
