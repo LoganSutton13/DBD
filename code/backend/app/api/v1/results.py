@@ -33,6 +33,8 @@ async def get_processed_files(task_id: str, file_name: str):
 
 @router.post("/webhook/nodeodm")
 async def nodeodm_webhook(request: Request):
+    # temp, may need to remove function completely
+    return None
     try:
         webhook_data = await request.json()
         

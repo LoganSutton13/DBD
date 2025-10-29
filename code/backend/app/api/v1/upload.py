@@ -14,6 +14,8 @@ import requests
 from dotenv import load_dotenv
 from pyodm import Node
 
+from app.services.file_storage import FileStorageService
+
 load_dotenv()
 
 # Create router
@@ -22,8 +24,8 @@ router = APIRouter()
 # file upload endpoint
 @router.post("/")
 async def upload_files(
-    files: List[UploadFile] = File(...),
-    background_tasks: BackgroundTasks = None
+    background_tasks: BackgroundTasks,
+    files: List[UploadFile] = File(...)
 ):
     """
     Upload drone imagery files to NodeODM for processing
@@ -93,6 +95,9 @@ async def upload_files(
         }
         task = n.create_task(saved_files, options=orthophoto_options, webhook=webhook_url)
         nodeodm_task_id = task.uuid  # Get NodeODM's auto-generated ID
+        
+        # Run polling in background
+        background_tasks.add_task(FileStorageService().poll_for_download, task, task_id)
         
         return JSONResponse(
             status_code=201,

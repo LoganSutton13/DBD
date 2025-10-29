@@ -6,6 +6,7 @@ File storage service for handling NodeODM output files
 import os
 import shutil
 import time
+import asyncio
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
@@ -15,24 +16,39 @@ import logging
 
 from ..core.config import settings
 LOGGER = logging.getLogger(__name__)
+COMPLETED_STATUS = 'taskstatus.completed'
+FAILED_STATUS = 'taskstatus.failed'
 class FileStorageService:
     """Service for managing NodeODM output file storage"""
     
     def __init__(self):
-        self.results_dir = Path(settings.UPLOAD_DIR) / "results"
+        self.results_dir = Path(settings.RESULTS_DIR)
         self.results_dir.mkdir(parents=True, exist_ok=True)
 
     async def poll_for_download(self, task : pyodm.Task, task_id: str) -> Path | None:
         """Poll for the download of the NodeODM task"""
         while True:
-            if task.info().status == 'completed':
+            status = str(task.info().status).lower()
+            LOGGER.info(f"Polling for task {task_id} status: {status}")
+            
+            if status == COMPLETED_STATUS:
                 LOGGER.info(f"Downloading assets for task {task_id}")
-                return task.download_assets(destination = self.results_dir / task_id)
+                try:
+                    return task.download_assets(destination = self.results_dir / task_id)
+                except PermissionError as e:
+                    LOGGER.error(f"Permission error downloading assets (Windows file lock): {e}")
+                    # Files were likely downloaded but couldn't be cleaned up, which is okay
+                    # Return the directory path anyway
+                    task_dir = self.results_dir / task_id
+                    if task_dir.exists():
+                        return task_dir
+                    raise
 
-            if task.info().status == 'failed':
+            if status == FAILED_STATUS:
                 LOGGER.error(f"Task {task_id} failed. Error: {task.info().last_error}")
                 return None
-            time.sleep(5)
+                
+            await asyncio.sleep(5)
     
     def store_nodeodm_files(self, task_id: str, nodeodm_task: pyodm.Task) -> Path:
         """

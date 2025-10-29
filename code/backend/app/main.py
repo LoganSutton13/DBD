@@ -3,11 +3,18 @@ Drone Imagery Backend API
 Main FastAPI application entry point
 """
 
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.upload import router as upload_router
 from app.api.v1.results import router as results_router
 from app.core.config import settings
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 # Create FastAPI app
 app = FastAPI(
