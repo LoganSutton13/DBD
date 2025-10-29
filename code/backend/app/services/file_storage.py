@@ -36,7 +36,7 @@ class FileStorageService:
                 try:
                     return task.download_assets(destination = self.results_dir / task_id)
                 except PermissionError as e:
-                    LOGGER.error(f"Permission error downloading assets (Windows file lock): {e}")
+                    LOGGER.warning(f"[Benign] Permission error downloading assets (Windows file lock): {e}")
                     # Files were likely downloaded but couldn't be cleaned up, which is okay
                     # Return the directory path anyway
                     task_dir = self.results_dir / task_id
