@@ -5,6 +5,7 @@ File storage service for handling NodeODM output files
 
 import os
 import shutil
+import time
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
@@ -19,6 +20,15 @@ class FileStorageService:
     def __init__(self):
         self.results_dir = Path(settings.UPLOAD_DIR) / "results"
         self.results_dir.mkdir(parents=True, exist_ok=True)
+
+    async def poll_for_download(self, task : pyodm.Task, task_id: str) -> Path | None:
+        """Poll for the download of the NodeODM task"""
+        while True:
+            if task.info().status == 'completed':
+                return task.download_assets(destination = self.results_dir / task_id)
+            if task.info().status == 'failed':
+                return None
+            time.sleep(5)
     
     def store_nodeodm_files(self, task_id: str, nodeodm_task: pyodm.Task) -> Path:
         """
