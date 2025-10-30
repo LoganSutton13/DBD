@@ -88,24 +88,23 @@ class FileStorageService:
         return pathToData
     
     def get_image_path(self, task_id: str) -> Optional[Path]:
-        """Get local path for a stored file"""
-        file_path = self.results_dir / task_id / Path("odm_orthophoto" / "odm_orthophoto.png")
+        """Get local path for a stored orthophoto PNG"""
+        file_path = self.results_dir / task_id / Path("odm_orthophoto") / "odm_orthophoto.png"
         LOGGER.info(f"Retrieving image path: {file_path}")
         return file_path if file_path.exists() else None
     
     def get_report_path(self, task_id: str) -> Optional[Path]:
-        """Get local path for a stored file"""
-        file_path = self.results_dir / task_id / Path("odm_report" / "report.pdf")
+        """Get local path for a stored PDF report"""
+        file_path = self.results_dir / task_id / Path("odm_report") / "report.pdf"
         LOGGER.info(f"Retrieving report path: {file_path}")
         return file_path if file_path.exists() else None
     
     def list_stored_files(self, task_id: str) -> List[Dict[str, str]]:
-        """List all stored files for a task"""
+        """List all stored files for a task (non-recursive)."""
         task_dir = self.results_dir / task_id
         if not task_dir.exists():
             return []
-        
-        files = []
+        files: List[Dict[str, str]] = []
         for file_path in task_dir.iterdir():
             if file_path.is_file():
                 files.append({
@@ -114,8 +113,28 @@ class FileStorageService:
                     'size': file_path.stat().st_size,
                     'modified': datetime.fromtimestamp(file_path.stat().st_mtime).isoformat()
                 })
-        
         return files
+
+    def list_tasks_with_orthophoto(self) -> List[Dict[str, str]]:
+        """Return tasks that have an orthophoto PNG available."""
+        tasks: List[Dict[str, str]] = []
+        if not self.results_dir.exists():
+            return tasks
+        for task_dir in self.results_dir.iterdir():
+            if not task_dir.is_dir():
+                continue
+            task_id = task_dir.name
+            png_path = task_dir / "odm_orthophoto" / "odm_orthophoto.png"
+            if png_path.exists():
+                item = {
+                    'taskId': task_id,
+                    'orthophotoPngPath': str(png_path),
+                }
+                report_path = task_dir / "odm_report" / "report.pdf"
+                if report_path.exists():
+                    item['reportPdfPath'] = str(report_path)
+                tasks.append(item)
+        return tasks
 
 # Create service instance
 file_storage_service = FileStorageService()

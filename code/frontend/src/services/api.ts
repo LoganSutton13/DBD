@@ -46,6 +46,15 @@ class ApiService {
     return response.blob();
   }
 
+  async listResults(): Promise<Array<{ taskId: string; orthophotoPngUrl: string; reportPdfUrl?: string }>> {
+    const response = await fetch(`${this.baseUrl}/api/v1/results/`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to list results: ${response.status} ${errorText}`);
+    }
+    return response.json();
+  }
+
   /**
    * Get task status from backend
    */

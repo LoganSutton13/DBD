@@ -2,7 +2,7 @@
 Results API endpoints for drone imagery files
 """
 
-from fastapi import APIRouter, Request, UploadFile, File, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from typing import List, Optional
 import uuid
@@ -19,26 +19,67 @@ load_dotenv()
 
 # Create router
 router = APIRouter()
+
 @router.get("/{task_id}")
-async def get_processed_files(task_id: str):
+async def get_task_summary(task_id: str, request: Request):
     """
-    Get a NodeODM processed task
+    Summary info for a processed task including URLs to assets.
     """
     try:
         image_path = file_storage_service.get_image_path(task_id)
         report_path = file_storage_service.get_report_path(task_id)
-        # return the file at the file path
-        return FileResponse(image_path), FileResponse(report_path)
 
+        if not image_path and not report_path:
+            raise HTTPException(status_code=404, detail="No results found for task")
+
+        base_url = str(request.base_url).rstrip('/')
+        result = {"taskId": task_id}
+        if image_path:
+            result["orthophotoPngUrl"] = f"{base_url}/api/v1/results/{task_id}/orthophoto.png"
+        if report_path:
+            result["reportPdfUrl"] = f"{base_url}/api/v1/results/{task_id}/report.pdf"
+
+        return JSONResponse(status_code=200, content=result)
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get task results: {str(e)}")
 
 @router.get("/")
-async def list_processed_files():
+async def list_processed_files(request: Request):
     """
-    Get all processed tasks
+    List all processed tasks that have an orthophoto PNG.
     """
     try:
-        return JSONResponse(status_code=200, content=file_storage_service.list_stored_files())
+        tasks = file_storage_service.list_tasks_with_orthophoto()
+        base_url = str(request.base_url).rstrip('/')
+        items = []
+        for t in tasks:
+            task_id = t["taskId"]
+            item = {
+                "taskId": task_id,
+                "orthophotoPngUrl": f"{base_url}/api/v1/results/{task_id}/orthophoto.png",
+            }
+            if "reportPdfPath" in t:
+                item["reportPdfUrl"] = f"{base_url}/api/v1/results/{task_id}/report.pdf"
+            items.append(item)
+        return JSONResponse(status_code=200, content=items)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get all processed tasks: {str(e)}")
+
+@router.get("/{task_id}/orthophoto.png")
+async def get_orthophoto_png(task_id: str):
+    """Serve the orthophoto PNG for a task."""
+    image_path = file_storage_service.get_image_path(task_id)
+    if not image_path:
+        raise HTTPException(status_code=404, detail="Orthophoto PNG not found")
+    return FileResponse(path=image_path, media_type="image/png", filename="orthophoto.png")
+
+@router.get("/{task_id}/report.pdf")
+async def get_report_pdf(task_id: str):
+    """Serve the PDF report for a task if available."""
+    report_path = file_storage_service.get_report_path(task_id)
+    if not report_path:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return FileResponse(path=report_path, media_type="application/pdf", filename="report.pdf")
