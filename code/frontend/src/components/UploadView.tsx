@@ -21,6 +21,7 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [backendAvailable, setBackendAvailable] = useState<boolean>(true);
   const [connectionTestResult, setConnectionTestResult] = useState<string | null>(null);
+  const [taskName, setTaskName] = useState<string>('');
 
   // Check backend connection on component mount
   useEffect(() => {
@@ -83,7 +84,7 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
   const uploadToBackend = async (files: File[]): Promise<UploadResponse> => {
     try {
       setUploadError(null);
-      const response = await apiService.uploadFiles(files);
+      const response = await apiService.uploadFiles(files, taskName?.trim() || undefined);
       return response;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Upload failed';
@@ -221,10 +222,23 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
             </button>
           </div>
         </div>
+        
         <p className="text-dark-300 mb-6">
           Drag and drop your drone images here or click to browse. 
           Supported formats: JPEG, PNG, TIFF (Max 50MB per file)
         </p>
+
+        <div className="mb-6">
+          <label className="block text-sm text-dark-300 mb-2" htmlFor="taskName">Task name (optional)</label>
+          <input
+            id="taskName"
+            type="text"
+            value={taskName}
+            onChange={(e) => setTaskName(e.target.value)}
+            placeholder="e.g., Field A - 2025-10-30"
+            className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
+          />
+        </div>
         
         {uploadError && (
           <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">

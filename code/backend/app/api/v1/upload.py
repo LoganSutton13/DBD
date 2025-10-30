@@ -2,7 +2,7 @@
 Upload API endpoints for drone imagery files
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks, Form
 from fastapi.responses import JSONResponse
 from typing import List, Optional
 import uuid
@@ -25,7 +25,8 @@ router = APIRouter()
 @router.post("/")
 async def upload_files(
     background_tasks: BackgroundTasks,
-    files: List[UploadFile] = File(...)
+    files: List[UploadFile] = File(...),
+    task_name: Optional[str] = Form(None)
 ):
     """
     Upload drone imagery files to NodeODM for processing
@@ -84,7 +85,6 @@ async def upload_files(
             saved_files.append(str(file_path))
         
         # Create NodeODM task with saved file paths - simple orthophoto settings
-        webhook_url = f"http://localhost:8001/api/v1/results/webhook/nodeodm" # webhook url to send to results endpoint
         n = Node('localhost', 3000)
         orthophoto_options = {
             'skip-3dmodel': True,  # Skip 3D model to focus on orthophoto
@@ -93,7 +93,11 @@ async def upload_files(
             'pc-quality':'lowest', #lowest quality for the point cloud
             'orthophoto-png': True, #output orthophoto as png
         }
-        task = n.create_task(saved_files, options=orthophoto_options, webhook=webhook_url)
+        # Pass an optional human-friendly task name to NodeODM if provided
+        if task_name and task_name.strip():
+            task = n.create_task(saved_files, options=orthophoto_options, name=task_name.strip())
+        else:
+            task = n.create_task(saved_files, options=orthophoto_options)
         nodeodm_task_id = task.uuid  # Get NodeODM's auto-generated ID
         
         # Run polling in background
@@ -108,7 +112,8 @@ async def upload_files(
                 "file_count": len(files),
                 "status": "processing",
                 "files": [f.filename for f in files],
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.utcnow().isoformat(),
+                "task_name": task_name or None
             }
         )
     except Exception as e:

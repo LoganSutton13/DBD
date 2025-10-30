@@ -23,13 +23,16 @@ class ApiService {
   /**
    * Upload files to the backend
    */
-  async uploadFiles(files: File[]): Promise<UploadResponse> {
+  async uploadFiles(files: File[], taskName?: string): Promise<UploadResponse> {
     const formData = new FormData();
     
     // Add all files to FormData
     files.forEach((file) => {
       formData.append('files', file);
     });
+    if (taskName) {
+      formData.append('task_name', taskName);
+    }
 
     const response = await fetch(`${this.baseUrl}/api/v1/upload/`, {
       method: 'POST',

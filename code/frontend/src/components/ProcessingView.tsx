@@ -8,6 +8,7 @@ const ProcessingView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [backendAvailable, setBackendAvailable] = useState<boolean>(true);
   const [isPolling, setIsPolling] = useState<boolean>(false);
+  const [isDebugOpen, setIsDebugOpen] = useState<boolean>(true);
 
   // Poll for task status updates
   const pollTaskStatus = async (taskId: string) => {
@@ -53,6 +54,7 @@ const ProcessingView: React.FC = () => {
               file_count: uploadResponse.file_count || 0,
               files: uploadResponse.files || [],
               created_at: uploadResponse.created_at || new Date().toISOString(),
+              task_name: uploadResponse.task_name,
             };
             
             setProcessingTasks(prev => {
@@ -216,6 +218,7 @@ const ProcessingView: React.FC = () => {
         file_count: uploadResponse.file_count || 0,
         files: uploadResponse.files || [],
         created_at: uploadResponse.created_at || new Date().toISOString(),
+        task_name: uploadResponse.task_name,
       };
 
       console.log('Adding new task to processing queue:', newTask);
@@ -394,18 +397,20 @@ const ProcessingView: React.FC = () => {
           <h2 className="text-2xl font-semibold text-primary-400">
             Processing Queue
           </h2>
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <div className={`w-2 h-2 rounded-full ${backendAvailable ? 'bg-green-500' : 'bg-red-500'}`}></div>
-              <span className={`text-xs ${backendAvailable ? 'text-green-400' : 'text-red-400'}`}>
-                {backendAvailable ? 'Backend Connected' : 'Backend Disconnected'}
-              </span>
-            </div>
+          <div className="min-w-[220px]">
+            {!isDebugOpen && (
+              <div className="flex items-center justify-end space-x-2 mb-2">
+                <div className={`w-2 h-2 rounded-full ${isPolling ? 'bg-blue-500' : backendAvailable ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <span className="text-xs text-dark-300">
+                  {isPolling ? 'Polling…' : backendAvailable ? 'Backend Connected' : 'Backend Disconnected'}
+                </span>
+              </div>
+            )}
             <button
-              onClick={refreshProcessingQueue}
-              className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors duration-200"
+              onClick={() => setIsDebugOpen(v => !v)}
+              className="w-full px-3 py-1 bg-dark-700 text-dark-200 text-xs rounded hover:bg-dark-600 transition-colors duration-200"
             >
-              Refresh Now
+              {isDebugOpen ? 'Hide Debug' : 'Show Debug'}
             </button>
           </div>
         </div>
@@ -414,6 +419,7 @@ const ProcessingView: React.FC = () => {
         </p>
         
         {/* Debug info */}
+        {isDebugOpen && (
         <div className="mb-4 p-3 bg-dark-700 rounded-lg text-xs">
           <p className="text-dark-400">
             <strong>Processing Status:</strong> {processingTasks.length} total tasks, {runningTasks.length} running, {queuedTasks.length} queued
@@ -468,6 +474,7 @@ const ProcessingView: React.FC = () => {
             </div>
           )}
         </div>
+        )}
         
         {error && (
           <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
@@ -510,7 +517,8 @@ const ProcessingView: React.FC = () => {
                   <div key={task.id} className="bg-dark-600 rounded-lg p-4">
                     <div className="flex justify-between items-start mb-3">
                       <div>
-                        <h4 className="text-dark-100 font-medium">Task {task.id.slice(0, 8)}</h4>
+                        <h4 className="text-dark-100 font-medium">{task.task_name || 'Untitled Task'}</h4>
+                        <p className="text-dark-400 text-xs">Task ID: {task.id.slice(0, 8)}</p>
                         <p className="text-dark-400 text-sm">
                           {task.file_count} files • Started {new Date(task.created_at).toLocaleString()}
                         </p>
@@ -566,7 +574,8 @@ const ProcessingView: React.FC = () => {
                   <div key={task.id} className="bg-dark-600 rounded-lg p-4">
                     <div className="flex justify-between items-start mb-3">
                       <div>
-                        <h4 className="text-dark-100 font-medium">Task {task.id.slice(0, 8)}</h4>
+                        <h4 className="text-dark-100 font-medium">{task.task_name || 'Untitled Task'}</h4>
+                        <p className="text-dark-400 text-xs">Task ID: {task.id.slice(0, 8)}</p>
                         <p className="text-dark-400 text-sm">
                           {task.file_count} files • Queued {new Date(task.created_at).toLocaleString()}
                         </p>
@@ -613,7 +622,8 @@ const ProcessingView: React.FC = () => {
                   <div key={task.id} className="bg-dark-600 rounded-lg p-4">
                     <div className="flex justify-between items-center">
                       <div>
-                        <h4 className="text-dark-100 font-medium">Task {task.id.slice(0, 8)}</h4>
+                        <h4 className="text-dark-100 font-medium">{task.task_name || 'Untitled Task'}</h4>
+                        <p className="text-dark-400 text-xs">Task ID: {task.id.slice(0, 8)}</p>
                         <p className="text-dark-400 text-sm">
                           {task.file_count} files • Completed {new Date(task.created_at).toLocaleString()}
                         </p>

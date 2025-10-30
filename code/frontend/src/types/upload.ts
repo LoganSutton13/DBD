@@ -28,6 +28,7 @@ export interface UploadResponse {
   status: string;
   files: string[];
   created_at: string;
+  task_name?: string;
 }
 
 export interface TaskStatusResponse {
@@ -44,4 +45,5 @@ export interface ProcessingTask {
   files: string[];
   created_at: string;
   error?: string;
+  task_name?: string;
 }
