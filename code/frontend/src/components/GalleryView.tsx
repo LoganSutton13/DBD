@@ -55,7 +55,7 @@ const GalleryView: React.FC = () => {
                 <div key={item.taskId} className="bg-dark-900 rounded-lg border border-dark-700 overflow-hidden">
                   <div className="aspect-video bg-dark-800 overflow-hidden">
                     <img
-                      src={item.orthophotoPngUrl}
+                      src={apiService.buildUrl(item.orthophotoPngUrl)}
                       alt={`Orthophoto ${item.taskId}`}
                       className="w-full h-full object-cover"
                       loading="lazy"
@@ -66,7 +66,7 @@ const GalleryView: React.FC = () => {
                       <div className="text-dark-100 font-medium">Task {item.taskId}</div>
                       {item.reportPdfUrl && (
                         <a
-                          href={item.reportPdfUrl}
+                          href={apiService.buildUrl(item.reportPdfUrl)}
                           target="_blank"
                           rel="noreferrer"
                           className="text-primary-400 text-sm hover:underline"
@@ -76,7 +76,7 @@ const GalleryView: React.FC = () => {
                       )}
                     </div>
                     <a
-                      href={item.orthophotoPngUrl}
+                      href={apiService.buildUrl(item.orthophotoPngUrl)}
                       target="_blank"
                       rel="noreferrer"
                       className="px-3 py-1.5 bg-dark-700 text-dark-200 rounded hover:bg-dark-600 transition-colors duration-200 text-sm"

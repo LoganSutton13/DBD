@@ -25,6 +25,10 @@ class FileStorageService:
         self.results_dir = Path(settings.RESULTS_DIR)
         self.results_dir.mkdir(parents=True, exist_ok=True)
 
+    def _result_url(self, task_id: str, artifact_name: str) -> str:
+        """Build a relative API URL for a task artifact."""
+        return f"/api/v1/results/{task_id}/{artifact_name}"
+
     async def poll_for_download(self, task : pyodm.Task, task_id: str) -> Path | None:
         """Poll for the download of the NodeODM task"""
         while True:
@@ -120,20 +124,24 @@ class FileStorageService:
         tasks: List[Dict[str, str]] = []
         if not self.results_dir.exists():
             return tasks
+        ORTHO_DIR = "odm_orthophoto"
+        ORTHO_FILE = "odm_orthophoto.png"
+        REPORT_DIR = "odm_report"
+        REPORT_FILE = "report.pdf"
+
         for task_dir in self.results_dir.iterdir():
             if not task_dir.is_dir():
                 continue
             task_id = task_dir.name
-            png_path = task_dir / "odm_orthophoto" / "odm_orthophoto.png"
-            if png_path.exists():
-                item = {
-                    'taskId': task_id,
-                    'orthophotoPngPath': str(png_path),
-                }
-                report_path = task_dir / "odm_report" / "report.pdf"
-                if report_path.exists():
-                    item['reportPdfPath'] = str(report_path)
-                tasks.append(item)
+            if not (task_dir / ORTHO_DIR / ORTHO_FILE).exists():
+                continue
+
+            item: Dict[str, str] = {
+                'taskId': task_id,
+                'orthophotoPngUrl': self._result_url(task_id, 'orthophoto.png'),
+                'reportPdfUrl': self._result_url(task_id, 'report.pdf'),
+            }
+            tasks.append(item)
         return tasks
 
 # Create service instance

@@ -53,18 +53,8 @@ async def list_processed_files(request: Request):
     """
     try:
         tasks = file_storage_service.list_tasks_with_orthophoto()
-        base_url = str(request.base_url).rstrip('/')
-        items = []
-        for t in tasks:
-            task_id = t["taskId"]
-            item = {
-                "taskId": task_id,
-                "orthophotoPngUrl": f"{base_url}/api/v1/results/{task_id}/orthophoto.png",
-            }
-            if "reportPdfPath" in t:
-                item["reportPdfUrl"] = f"{base_url}/api/v1/results/{task_id}/report.pdf"
-            items.append(item)
-        return JSONResponse(status_code=200, content=items)
+        # Items already include relative URLs; return as-is
+        return JSONResponse(status_code=200, content=tasks)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get all processed tasks: {str(e)}")
 

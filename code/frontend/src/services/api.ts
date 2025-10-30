@@ -13,6 +13,13 @@ class ApiService {
     this.baseUrl = baseUrl;
   }
 
+  buildUrl(pathOrUrl: string): string {
+    if (/^https?:\/\//i.test(pathOrUrl)) {
+      return pathOrUrl;
+    }
+    return `${this.baseUrl}${pathOrUrl}`;
+  }
+
   /**
    * Upload files to the backend
    */
