@@ -87,9 +87,16 @@ class FileStorageService:
         
         return pathToData
     
-    def get_file_path(self, task_id: str, file_name: str) -> Optional[Path]:
+    def get_image_path(self, task_id: str) -> Optional[Path]:
         """Get local path for a stored file"""
-        file_path = self.results_dir / task_id / file_name
+        file_path = self.results_dir / task_id / Path("odm_orthophoto" / "odm_orthophoto.png")
+        LOGGER.info(f"Retrieving image path: {file_path}")
+        return file_path if file_path.exists() else None
+    
+    def get_report_path(self, task_id: str) -> Optional[Path]:
+        """Get local path for a stored file"""
+        file_path = self.results_dir / task_id / Path("odm_report" / "report.pdf")
+        LOGGER.info(f"Retrieving report path: {file_path}")
         return file_path if file_path.exists() else None
     
     def list_stored_files(self, task_id: str) -> List[Dict[str, str]]:
