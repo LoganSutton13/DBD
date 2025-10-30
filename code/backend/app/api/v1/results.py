@@ -72,4 +72,9 @@ async def get_report_pdf(task_id: str):
     report_path = file_storage_service.get_report_path(task_id)
     if not report_path:
         raise HTTPException(status_code=404, detail="Report not found")
-    return FileResponse(path=report_path, media_type="application/pdf", filename="report.pdf")
+    return FileResponse(
+        path=report_path,
+        media_type="application/pdf",
+        filename="report.pdf",
+        headers={"Content-Disposition": "inline; filename=report.pdf"}
+    )
