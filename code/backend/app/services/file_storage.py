@@ -29,6 +29,32 @@ class FileStorageService:
         """Build a relative API URL for a task artifact."""
         return f"/api/v1/results/{task_id}/{artifact_name}"
 
+    def _manifest_path(self, task_id: str) -> Path:
+        return self.results_dir / task_id / "manifest.json"
+
+    def write_manifest(self, task_id: str, data: Dict[str, str]) -> None:
+        task_dir = self.results_dir / task_id
+        task_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = self._manifest_path(task_id)
+        try:
+            import json
+            with open(manifest_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            LOGGER.warning(f"Failed to write manifest for task {task_id}: {e}")
+
+    def read_manifest(self, task_id: str) -> Optional[Dict[str, str]]:
+        manifest_path = self._manifest_path(task_id)
+        if not manifest_path.exists():
+            return None
+        try:
+            import json
+            with open(manifest_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            LOGGER.warning(f"Failed to read manifest for task {task_id}: {e}")
+            return None
+
     async def poll_for_download(self, task : pyodm.Task, task_id: str) -> Path | None:
         """Poll for the download of the NodeODM task"""
         while True:
@@ -108,6 +134,8 @@ class FileStorageService:
         task_dir = self.results_dir / task_id
         if not task_dir.exists():
             return []
+        manifest = self.read_manifest(task_id) or {}
+        task_name = manifest.get('task_name') or manifest.get('taskName') or None
         files: List[Dict[str, str]] = []
         for file_path in task_dir.iterdir():
             if file_path.is_file():
@@ -115,7 +143,9 @@ class FileStorageService:
                     'name': file_path.name,
                     'path': str(file_path),
                     'size': file_path.stat().st_size,
-                    'modified': datetime.fromtimestamp(file_path.stat().st_mtime).isoformat()
+                    'modified': datetime.fromtimestamp(file_path.stat().st_mtime).isoformat(),
+                    'taskId': task_id,
+                    **({'taskName': task_name} if task_name else {})
                 })
         return files
 
@@ -141,6 +171,11 @@ class FileStorageService:
                 'orthophotoPngUrl': self._result_url(task_id, 'orthophoto.png'),
                 'reportPdfUrl': self._result_url(task_id, 'report.pdf'),
             }
+            manifest = self.read_manifest(task_id)
+            if manifest and isinstance(manifest, dict):
+                task_name = manifest.get('task_name') or manifest.get('taskName')
+                if task_name:
+                    item['taskName'] = task_name
             tasks.append(item)
         return tasks
 

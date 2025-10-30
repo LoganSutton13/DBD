@@ -50,6 +50,15 @@ async def upload_files(
     task_id = str(uuid.uuid4())
     dir_path = Path(f"uploads/{task_id}")
     dir_path.mkdir(parents=True, exist_ok=True)
+    # Pre-create manifest with task_name and created_at so it's available with results
+    try:
+        FileStorageService().write_manifest(task_id, {
+            'task_id': task_id,
+            'task_name': task_name or '',
+            'created_at': datetime.utcnow().isoformat(),
+        })
+    except Exception:
+        pass
     
     saved_files = []
     
