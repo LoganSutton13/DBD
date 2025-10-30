@@ -32,3 +32,13 @@ async def get_processed_files(task_id: str):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get task results: {str(e)}")
+
+@router.get("/")
+async def list_processed_files():
+    """
+    Get all processed tasks
+    """
+    try:
+        return JSONResponse(status_code=200, content=file_storage_service.list_stored_files())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get all processed tasks: {str(e)}")
