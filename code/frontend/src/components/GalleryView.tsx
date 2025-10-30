@@ -3,7 +3,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import apiService from '../services/api';
 
 const GalleryView: React.FC = () => {
-  const [items, setItems] = useState<Array<{ taskId: string; orthophotoPngUrl: string; reportPdfUrl?: string }>>([]);
+  const [items, setItems] = useState<Array<{ taskId: string; orthophotoPngUrl: string; reportPdfUrl?: string; taskName?: string }>>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState<boolean>(false);
@@ -133,7 +133,7 @@ const GalleryView: React.FC = () => {
                   </button>
                   <div className="p-4 flex items-center justify-between">
                     <div>
-                      <div className="text-dark-100 font-medium">Task {item.taskId}</div>
+                      <div className="text-dark-100 font-medium">{item.taskName || `Task ${item.taskId}`}</div>
                       {item.reportPdfUrl && (
                         <button
                           type="button"

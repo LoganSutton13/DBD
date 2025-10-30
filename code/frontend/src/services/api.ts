@@ -56,7 +56,7 @@ class ApiService {
     return response.blob();
   }
 
-  async listResults(): Promise<Array<{ taskId: string; orthophotoPngUrl: string; reportPdfUrl?: string }>> {
+  async listResults(): Promise<Array<{ taskId: string; orthophotoPngUrl: string; reportPdfUrl?: string; taskName?: string }>> {
     const response = await fetch(`${this.baseUrl}/api/v1/results/`);
     if (!response.ok) {
       const errorText = await response.text();
