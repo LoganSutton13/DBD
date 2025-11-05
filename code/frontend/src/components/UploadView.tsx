@@ -7,7 +7,6 @@ interface AppStats {
   imagesUploaded: number;
   processing: number;
   completed: number;
-  storageUsed: number;
 }
 
 interface UploadViewProps {
@@ -134,12 +133,10 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
       );
 
       // Update stats
-      const totalSizeMB = pendingFiles.reduce((sum, f) => sum + (f.metadata?.size || 0) / (1024 * 1024), 0);
       onStatsUpdate((prev) => ({
         imagesUploaded: prev.imagesUploaded + pendingFiles.length,
         processing: prev.processing + pendingFiles.length,
         completed: prev.completed + pendingFiles.length,
-        storageUsed: prev.storageUsed + totalSizeMB,
       }));
 
       console.log('Upload successful:', uploadResponse);

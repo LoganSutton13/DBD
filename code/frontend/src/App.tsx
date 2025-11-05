@@ -12,7 +12,6 @@ interface AppStats {
   imagesUploaded: number;
   processing: number;
   completed: number;
-  storageUsed: number; // in MB
 }
 
 function App() {
@@ -21,7 +20,6 @@ function App() {
     imagesUploaded: 0,
     processing: 0,
     completed: 0,
-    storageUsed: 0,
   });
 
   const updateStats = (updateFn: (prev: AppStats) => Partial<AppStats>) => {

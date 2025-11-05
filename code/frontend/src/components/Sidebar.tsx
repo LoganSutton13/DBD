@@ -4,7 +4,6 @@ interface AppStats {
   imagesUploaded: number;
   processing: number;
   completed: number;
-  storageUsed: number;
 }
 
 interface SidebarProps {
@@ -97,26 +96,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, stats }) => {
             <div className="flex justify-between items-center">
               <span className="text-dark-300 text-sm">Completed</span>
               <span className="text-green-400 font-medium">{stats.completed}</span>
-            </div>
-          </div>
-        </div>
-        
-        {/* Storage Info */}
-        <div className="mt-6 pt-6 border-t border-dark-700">
-          <h3 className="text-sm font-medium text-dark-400 mb-3">Storage</h3>
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="text-dark-300 text-sm">Used</span>
-              <span className="text-dark-300 text-sm">{stats.storageUsed.toFixed(1)} MB</span>
-            </div>
-            <div className="w-full bg-dark-700 rounded-full h-2">
-              <div 
-                className="bg-primary-500 h-2 rounded-full transition-all duration-300" 
-                style={{ width: `${Math.min((stats.storageUsed / 1000) * 100, 100)}%` }}
-              ></div>
-            </div>
-            <div className="text-xs text-dark-400">
-              {stats.storageUsed.toFixed(1)} MB of 1 GB used
             </div>
           </div>
         </div>
