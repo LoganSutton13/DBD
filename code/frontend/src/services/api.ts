@@ -23,7 +23,7 @@ class ApiService {
   /**
    * Upload files to the backend
    */
-  async uploadFiles(files: File[], taskName?: string): Promise<UploadResponse> {
+  async uploadFiles(files: File[], taskName?: string, heading?: number, gridSize?: number): Promise<UploadResponse> {
     const formData = new FormData();
     
     // Add all files to FormData
@@ -32,6 +32,12 @@ class ApiService {
     });
     if (taskName) {
       formData.append('task_name', taskName);
+    }
+    if (heading !== undefined) {
+      formData.append('heading', heading.toString());
+    }
+    if (gridSize !== undefined) {
+      formData.append('grid_size', gridSize.toString());
     }
 
     const response = await fetch(`${this.baseUrl}/api/v1/upload/`, {
