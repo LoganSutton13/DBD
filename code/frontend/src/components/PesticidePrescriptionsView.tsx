@@ -26,10 +26,15 @@ interface PesticidePrescription {
   };
 }
 
+type SprayLevel = 'high' | 'low' | 'no';
+
 const PesticidePrescriptionsView: React.FC = () => {
   const [selectedPrescription, setSelectedPrescription] = useState<PesticidePrescription | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [filterStatus, setFilterStatus] = useState<'all' | 'ready' | 'generating' | 'failed'>('all');
+  const [sprayMap, setSprayMap] = useState<SprayLevel[][]>([]);
+  const [selectedSprayLevel, setSelectedSprayLevel] = useState<SprayLevel>('high');
+  const [gridSize, setGridSize] = useState({ rows: 8, cols: 12 });
 
   // TODO: REPLACE MOCK DATA WITH REAL BACKEND API CALL
   // Mock data - this would come from your Python backend after pesticide analysis
@@ -176,6 +181,54 @@ const PesticidePrescriptionsView: React.FC = () => {
     }
   };
   */
+
+  // Initialize spray map grid when prescription is selected
+  React.useEffect(() => {
+    if (selectedPrescription) {
+      const initialGrid: SprayLevel[][] = Array(gridSize.rows)
+        .fill(null)
+        .map(() => Array(gridSize.cols).fill('no' as SprayLevel));
+      setSprayMap(initialGrid);
+    } else {
+      setSprayMap([]);
+    }
+  }, [selectedPrescription, gridSize.rows, gridSize.cols]);
+
+  const handleGridCellClick = (row: number, col: number) => {
+    const newSprayMap = sprayMap.map((r, rIdx) =>
+      r.map((cell, cIdx) => (rIdx === row && cIdx === col ? selectedSprayLevel : cell))
+    );
+    setSprayMap(newSprayMap);
+  };
+
+  const handleBulkApply = (level: SprayLevel) => {
+    const newSprayMap = sprayMap.map(row => row.map(() => level));
+    setSprayMap(newSprayMap);
+  };
+
+  const getSprayLevelColor = (level: SprayLevel) => {
+    switch (level) {
+      case 'high':
+        return 'bg-red-500/80 hover:bg-red-500';
+      case 'low':
+        return 'bg-yellow-500/80 hover:bg-yellow-500';
+      case 'no':
+        return 'bg-gray-600/50 hover:bg-gray-600';
+      default:
+        return 'bg-gray-600/50';
+    }
+  };
+
+  const getSprayLevelLabel = (level: SprayLevel) => {
+    switch (level) {
+      case 'high':
+        return 'High Spray';
+      case 'low':
+        return 'Low Spray';
+      case 'no':
+        return 'No Spray';
+    }
+  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -440,7 +493,7 @@ const PesticidePrescriptionsView: React.FC = () => {
       {/* Prescription Detail Modal */}
       {selectedPrescription && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-dark-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+          <div className="bg-dark-800 rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden">
             <div className="p-6 border-b border-dark-700">
               <div className="flex justify-between items-center">
                 <div>
@@ -462,26 +515,122 @@ const PesticidePrescriptionsView: React.FC = () => {
             
             <div className="p-6 max-h-[70vh] overflow-y-auto">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Prescription Map */}
+                {/* Prescription Map with Spray Settings */}
                 <div>
-                  <h4 className="text-lg font-medium text-primary-400 mb-4">Prescription Map</h4>
-                  <div className="aspect-video bg-dark-700 rounded-lg flex items-center justify-center">
-                    {selectedPrescription.status === 'generating' ? (
-                      <div className="text-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mx-auto mb-4"></div>
-                        <p className="text-dark-300">Generating prescription map...</p>
+                  <h4 className="text-lg font-medium text-primary-400 mb-4">Spray Map Settings</h4>
+                  
+                  {/* Spray Level Selector */}
+                  <div className="bg-dark-700 rounded-lg p-4 mb-4">
+                    <label className="block text-sm font-medium text-dark-200 mb-3">
+                      Select Spray Level
+                    </label>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => setSelectedSprayLevel('high')}
+                        className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+                          selectedSprayLevel === 'high'
+                            ? 'bg-red-500 text-white'
+                            : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                        }`}
+                      >
+                        High Spray
+                      </button>
+                      <button
+                        onClick={() => setSelectedSprayLevel('low')}
+                        className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+                          selectedSprayLevel === 'low'
+                            ? 'bg-yellow-500 text-white'
+                            : 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30'
+                        }`}
+                      >
+                        Low Spray
+                      </button>
+                      <button
+                        onClick={() => setSelectedSprayLevel('no')}
+                        className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+                          selectedSprayLevel === 'no'
+                            ? 'bg-gray-600 text-white'
+                            : 'bg-gray-600/20 text-gray-400 hover:bg-gray-600/30'
+                        }`}
+                      >
+                        No Spray
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Bulk Apply Buttons */}
+                  <div className="bg-dark-700 rounded-lg p-4 mb-4">
+                    <label className="block text-sm font-medium text-dark-200 mb-3">
+                      Bulk Apply to Entire Field
+                    </label>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => handleBulkApply('high')}
+                        className="flex-1 px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors duration-200 text-sm font-medium"
+                      >
+                        Apply High
+                      </button>
+                      <button
+                        onClick={() => handleBulkApply('low')}
+                        className="flex-1 px-3 py-2 bg-yellow-500/20 text-yellow-400 rounded-lg hover:bg-yellow-500/30 transition-colors duration-200 text-sm font-medium"
+                      >
+                        Apply Low
+                      </button>
+                      <button
+                        onClick={() => handleBulkApply('no')}
+                        className="flex-1 px-3 py-2 bg-gray-600/20 text-gray-400 rounded-lg hover:bg-gray-600/30 transition-colors duration-200 text-sm font-medium"
+                      >
+                        Apply No Spray
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Grid Field Map */}
+                  <div className="bg-dark-700 rounded-lg p-4">
+                    <div className="flex justify-between items-center mb-3">
+                      <label className="block text-sm font-medium text-dark-200">
+                        Field Map Grid
+                      </label>
+                      <p className="text-xs text-dark-400">
+                        Click cells to apply {getSprayLevelLabel(selectedSprayLevel).toLowerCase()}
+                      </p>
+                    </div>
+                    <div className="bg-dark-800 rounded-lg p-3 overflow-auto">
+                      {sprayMap.length > 0 ? (
+                        <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${gridSize.cols}, minmax(0, 1fr))` }}>
+                          {sprayMap.map((row, rowIdx) =>
+                            row.map((cell, colIdx) => (
+                              <button
+                                key={`${rowIdx}-${colIdx}`}
+                                onClick={() => handleGridCellClick(rowIdx, colIdx)}
+                                className={`aspect-square min-w-[24px] rounded transition-all duration-150 ${getSprayLevelColor(cell)} border border-dark-600 hover:border-dark-400`}
+                                title={`Row ${rowIdx + 1}, Col ${colIdx + 1}: ${getSprayLevelLabel(cell)}`}
+                              />
+                            ))
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-dark-400">
+                          <p>Loading field map grid...</p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Legend */}
+                    <div className="mt-4 flex justify-center space-x-4 text-xs">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 bg-red-500/80 rounded"></div>
+                        <span className="text-dark-300">High Spray</span>
                       </div>
-                    ) : (
-                      <div className="text-center">
-                        <svg className="w-16 h-16 text-green-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                        </svg>
-                        <p className="text-dark-300">Prescription map viewer will be implemented here</p>
-                        <p className="text-dark-400 text-sm mt-2">
-                          This would show the AI-generated pesticide application map with intensity zones
-                        </p>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 bg-yellow-500/80 rounded"></div>
+                        <span className="text-dark-300">Low Spray</span>
                       </div>
-                    )}
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 bg-gray-600/50 rounded"></div>
+                        <span className="text-dark-300">No Spray</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 
