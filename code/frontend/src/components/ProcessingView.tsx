@@ -8,7 +8,7 @@ const ProcessingView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [backendAvailable, setBackendAvailable] = useState<boolean>(true);
   const [isPolling, setIsPolling] = useState<boolean>(false);
-  const [isDebugOpen, setIsDebugOpen] = useState<boolean>(true);
+  const [isDebugOpen, setIsDebugOpen] = useState<boolean>(false);
 
   // Poll for task status updates
   const pollTaskStatus = async (taskId: string) => {
