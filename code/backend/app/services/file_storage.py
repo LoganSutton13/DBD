@@ -1,0 +1,183 @@
+# app/services/file_storage.py
+"""
+File storage service for handling NodeODM output files
+"""
+
+import os
+import shutil
+import time
+import asyncio
+from pathlib import Path
+from typing import Dict, List, Optional
+from datetime import datetime
+import hashlib
+import pyodm
+import logging
+
+from ..core.config import settings
+LOGGER = logging.getLogger(__name__)
+COMPLETED_STATUS = 'taskstatus.completed'
+FAILED_STATUS = 'taskstatus.failed'
+class FileStorageService:
+    """Service for managing NodeODM output file storage"""
+    
+    def __init__(self):
+        self.results_dir = Path(settings.RESULTS_DIR)
+        self.results_dir.mkdir(parents=True, exist_ok=True)
+
+    def _result_url(self, task_id: str, artifact_name: str) -> str:
+        """Build a relative API URL for a task artifact."""
+        return f"/api/v1/results/{task_id}/{artifact_name}"
+
+    def _manifest_path(self, task_id: str) -> Path:
+        return self.results_dir / task_id / "manifest.json"
+
+    def write_manifest(self, task_id: str, data: Dict[str, str]) -> None:
+        task_dir = self.results_dir / task_id
+        task_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = self._manifest_path(task_id)
+        try:
+            import json
+            with open(manifest_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            LOGGER.warning(f"Failed to write manifest for task {task_id}: {e}")
+
+    def read_manifest(self, task_id: str) -> Optional[Dict[str, str]]:
+        manifest_path = self._manifest_path(task_id)
+        if not manifest_path.exists():
+            return None
+        try:
+            import json
+            with open(manifest_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            LOGGER.warning(f"Failed to read manifest for task {task_id}: {e}")
+            return None
+
+    async def poll_for_download(self, task : pyodm.Task, task_id: str) -> Path | None:
+        """Poll for the download of the NodeODM task"""
+        while True:
+            status = str(task.info().status).lower()
+            LOGGER.info(f"Polling for task {task_id} status: {status}")
+            
+            if status == COMPLETED_STATUS:
+                LOGGER.info(f"Downloading assets for task {task_id}")
+                try:
+                    return task.download_assets(destination = self.results_dir / task_id)
+                except PermissionError as e:
+                    LOGGER.warning(f"[Benign] Permission error downloading assets (Windows file lock): {e}")
+                    # Files were likely downloaded but couldn't be cleaned up, which is okay
+                    # Return the directory path anyway
+                    task_dir = self.results_dir / task_id
+                    if task_dir.exists():
+                        return task_dir
+                    raise
+
+            if status == FAILED_STATUS:
+                LOGGER.error(f"Task {task_id} failed. Error: {task.info().last_error}")
+                return None
+                
+            await asyncio.sleep(5)
+    
+    def store_nodeodm_files(self, task_id: str, nodeodm_task: pyodm.Task) -> Path:
+        """
+        Store NodeODM output files locally
+        
+        Args:
+            task_id: Our internal task ID
+            nodeodm_task: NodeODM task object
+            
+        Returns:
+            Dictionary mapping file types to local storage paths
+        """
+        task_dir = self.results_dir / task_id
+        task_dir.mkdir(parents=True, exist_ok=True)
+        
+        stored_files = {}
+        
+        # List of files to retrieve from NodeODM
+        files_to_store = [
+            'orthophoto.tif',
+            'orthophoto.png', 
+            'odm_orthophoto',
+            'odm_dem',
+            'odm_report',
+            'odm_logs'
+        ]
+        
+        for file_type in files_to_store:
+            try:
+                # Download assets from NodeODM
+                pathToData : Path = Path(nodeodm_task.download_assets(destination = task_dir))
+            except Exception as e:
+                # Log error but continue with other files
+                print(f"Failed to store {file_type}: {e}")
+                continue
+        
+        return pathToData
+    
+    def get_image_path(self, task_id: str) -> Optional[Path]:
+        """Get local path for a stored orthophoto PNG"""
+        file_path = self.results_dir / task_id / Path("odm_orthophoto") / "odm_orthophoto.png"
+        LOGGER.info(f"Retrieving image path: {file_path}")
+        return file_path if file_path.exists() else None
+    
+    def get_report_path(self, task_id: str) -> Optional[Path]:
+        """Get local path for a stored PDF report"""
+        file_path = self.results_dir / task_id / Path("odm_report") / "report.pdf"
+        LOGGER.info(f"Retrieving report path: {file_path}")
+        return file_path if file_path.exists() else None
+    
+    def list_stored_files(self, task_id: str) -> List[Dict[str, str]]:
+        """List all stored files for a task (non-recursive)."""
+        task_dir = self.results_dir / task_id
+        if not task_dir.exists():
+            return []
+        manifest = self.read_manifest(task_id) or {}
+        task_name = manifest.get('task_name') or manifest.get('taskName') or None
+        files: List[Dict[str, str]] = []
+        for file_path in task_dir.iterdir():
+            if file_path.is_file():
+                files.append({
+                    'name': file_path.name,
+                    'path': str(file_path),
+                    'size': file_path.stat().st_size,
+                    'modified': datetime.fromtimestamp(file_path.stat().st_mtime).isoformat(),
+                    'taskId': task_id,
+                    **({'taskName': task_name} if task_name else {})
+                })
+        return files
+
+    def list_tasks_with_orthophoto(self) -> List[Dict[str, str]]:
+        """Return tasks that have an orthophoto PNG available."""
+        tasks: List[Dict[str, str]] = []
+        if not self.results_dir.exists():
+            return tasks
+        ORTHO_DIR = "odm_orthophoto"
+        ORTHO_FILE = "odm_orthophoto.png"
+        REPORT_DIR = "odm_report"
+        REPORT_FILE = "report.pdf"
+
+        for task_dir in self.results_dir.iterdir():
+            if not task_dir.is_dir():
+                continue
+            task_id = task_dir.name
+            if not (task_dir / ORTHO_DIR / ORTHO_FILE).exists():
+                continue
+
+            item: Dict[str, str] = {
+                'taskId': task_id,
+                'orthophotoPngUrl': self._result_url(task_id, 'orthophoto.png'),
+                'reportPdfUrl': self._result_url(task_id, 'report.pdf'),
+            }
+            manifest = self.read_manifest(task_id)
+            if manifest and isinstance(manifest, dict):
+                task_name = manifest.get('task_name') or manifest.get('taskName')
+                if task_name:
+                    item['taskName'] = task_name
+            tasks.append(item)
+        return tasks
+
+# Create service instance
+file_storage_service = FileStorageService()

@@ -13,16 +13,32 @@ class ApiService {
     this.baseUrl = baseUrl;
   }
 
+  buildUrl(pathOrUrl: string): string {
+    if (/^https?:\/\//i.test(pathOrUrl)) {
+      return pathOrUrl;
+    }
+    return `${this.baseUrl}${pathOrUrl}`;
+  }
+
   /**
    * Upload files to the backend
    */
-  async uploadFiles(files: File[]): Promise<UploadResponse> {
+  async uploadFiles(files: File[], taskName?: string, heading?: number, gridSize?: number): Promise<UploadResponse> {
     const formData = new FormData();
     
     // Add all files to FormData
     files.forEach((file) => {
       formData.append('files', file);
     });
+    if (taskName) {
+      formData.append('task_name', taskName);
+    }
+    if (heading !== undefined) {
+      formData.append('heading', heading.toString());
+    }
+    if (gridSize !== undefined) {
+      formData.append('grid_size', gridSize.toString());
+    }
 
     const response = await fetch(`${this.baseUrl}/api/v1/upload/`, {
       method: 'POST',
@@ -34,6 +50,24 @@ class ApiService {
       throw new Error(`Upload failed: ${response.status} ${errorText}`);
     }
 
+    return response.json();
+  }
+
+  async getProcessedFile(taskId: string, fileName: string): Promise<Blob> {
+    const response = await fetch(`${this.baseUrl}/api/v1/results/${taskId}/${fileName}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to get processed file: ${response.status} ${errorText}`);
+    }
+    return response.blob();
+  }
+
+  async listResults(): Promise<Array<{ taskId: string; orthophotoPngUrl: string; reportPdfUrl?: string; taskName?: string }>> {
+    const response = await fetch(`${this.baseUrl}/api/v1/results/`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to list results: ${response.status} ${errorText}`);
+    }
     return response.json();
   }
 

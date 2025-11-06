@@ -2,7 +2,7 @@
 Upload API endpoints for drone imagery files
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks, Form
 from fastapi.responses import JSONResponse
 from typing import List, Optional
 import uuid
@@ -14,6 +14,8 @@ import requests
 from dotenv import load_dotenv
 from pyodm import Node
 
+from app.services.file_storage import FileStorageService
+
 load_dotenv()
 
 # Create router
@@ -22,8 +24,9 @@ router = APIRouter()
 # file upload endpoint
 @router.post("/")
 async def upload_files(
+    background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
-    background_tasks: BackgroundTasks = None
+    task_name: Optional[str] = Form(None)
 ):
     """
     Upload drone imagery files to NodeODM for processing
@@ -41,12 +44,21 @@ async def upload_files(
         raise HTTPException(status_code=400, detail="No files provided")
     
     if len(files) > 200:  # Reasonable limit, adjust as needed
-        raise HTTPException(status_code=400, detail="Too many files (maximum 50)")
+        raise HTTPException(status_code=400, detail="Too many files (maximum 200)")
 
     # Generate temporary task ID for file organization
     task_id = str(uuid.uuid4())
     dir_path = Path(f"uploads/{task_id}")
     dir_path.mkdir(parents=True, exist_ok=True)
+    # Pre-create manifest with task_name and created_at so it's available with results
+    try:
+        FileStorageService().write_manifest(task_id, {
+            'task_id': task_id,
+            'task_name': task_name or '',
+            'created_at': datetime.utcnow().isoformat(),
+        })
+    except Exception:
+        pass
     
     saved_files = []
     
@@ -86,10 +98,19 @@ async def upload_files(
         orthophoto_options = {
             'skip-3dmodel': True,  # Skip 3D model to focus on orthophoto
             'orthophoto-resolution': 3.0,  # Medium quality (3cm/pixel)
-            'orthophoto-quality': 75  # Medium JPEG quality
+            'orthophoto-quality': 75,  # Medium JPEG quality
+            'pc-quality':'lowest', #lowest quality for the point cloud
+            'orthophoto-png': True, #output orthophoto as png
         }
-        task = n.create_task(saved_files, options=orthophoto_options)
+        # Pass an optional human-friendly task name to NodeODM if provided
+        if task_name and task_name.strip():
+            task = n.create_task(saved_files, options=orthophoto_options, name=task_name.strip())
+        else:
+            task = n.create_task(saved_files, options=orthophoto_options)
         nodeodm_task_id = task.uuid  # Get NodeODM's auto-generated ID
+        
+        # Run polling in background
+        background_tasks.add_task(FileStorageService().poll_for_download, task, task_id)
         
         return JSONResponse(
             status_code=201,
@@ -100,7 +121,8 @@ async def upload_files(
                 "file_count": len(files),
                 "status": "processing",
                 "files": [f.filename for f in files],
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.utcnow().isoformat(),
+                "task_name": task_name or None
             }
         )
     except Exception as e:
@@ -139,9 +161,8 @@ async def get_upload_status(task_id: str):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get task status: {str(e)}")
-    
 
-# Step 3: Delete NodeODM task
+
 @router.delete("/{task_id}")
 async def delete_upload(task_id: str):
     """

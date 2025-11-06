@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     
     # File Storage
     UPLOAD_DIR: str = "./uploads"
+    RESULTS_DIR: str = "./results"
     MAX_FILE_SIZE: int = 104857600  # 100MB in bytes
     
     # Supported file formats
