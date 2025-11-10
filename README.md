@@ -104,9 +104,12 @@ docker run -p 3000:3000 opendronemap/nodeodm
 **2. Automated Image Processing**
 - Integration with Node ODM for professional-grade image stitching
 - Automatic orthophoto generation with configurable quality settings
-- Background processing with real-time status updates
+- Background processing with real-time status updates and automatic polling
 - Task queuing and progress monitoring
 - Support for large image sets (up to 200 images per batch)
+- Automatic asset downloading upon task completion
+- Task naming capability for better organization
+- Configurable processing parameters (heading, grid size)
 
 **3. Processing Monitoring**
 - Real-time processing queue with status indicators
@@ -116,15 +119,20 @@ docker run -p 3000:3000 opendronemap/nodeodm
 - Processing history and task management
 
 **4. Field Map Visualization**
-- Gallery view for processed images and orthophotos
+- Gallery view for processed images and orthophotos with backend integration
 - Grid-based layout for easy browsing
-- Image metadata display
-- Lightbox viewer for detailed inspection
+- Image metadata display with task names
+- Lightbox viewer for detailed inspection with full-screen preview
+- PDF report viewing with page navigation
 - Export functionality for processed results
+- Real-time task listing from backend API
+- Automatic image and report retrieval
 
 **5. Agricultural Analysis Tools**
 - Field map generation for agricultural planning
-- Pesticide prescription mapping interface
+- Pesticide prescription mapping interface with spray map functionality
+- Interactive spray level selection with color-coded visualization
+- Grid-based spray map editing
 - Crop health analysis tools
 - Integration with agricultural data systems
 
@@ -149,9 +157,12 @@ docker run -p 3000:3000 opendronemap/nodeodm
 
 4. **View Results**
    - Access the Gallery tab to see processed images
-   - Browse orthophotos and field maps
+   - Browse orthophotos and field maps from the backend
+   - Click on images to view full-screen previews
+   - View PDF reports directly in the browser
+   - Download processed orthophotos and reports
    - Use the Field Maps tab for agricultural analysis
-   - Generate pesticide prescriptions as needed
+   - Generate pesticide prescriptions with spray maps as needed
 
 
 ## Known Problems
@@ -161,39 +172,60 @@ docker run -p 3000:3000 opendronemap/nodeodm
 **1. Node ODM Integration**
 - **Issue**: Backend requires Node ODM to be running on localhost:3000
 - **Impact**: Uploads will fail with 503 error if Node ODM is not available
-- **Location**: `code/backend/app/api/v1/upload.py` lines 110-116
+- **Location**: `code/backend/app/api/v1/upload.py`
 - **Workaround**: Ensure Node ODM Docker container is running before starting the backend
+- **Status**: ✅ Improved error handling in Sprint 2
 
 **2. File Cleanup**
 - **Issue**: Temporary uploaded files are not cleaned up on processing errors
 - **Impact**: Disk space may accumulate over time with failed uploads
-- **Location**: `code/backend/app/api/v1/upload.py` line 107 (TODO comment)
+- **Location**: `code/backend/app/api/v1/upload.py`
 - **Workaround**: Manually clean the `uploads/` directory periodically
+- **Status**: 🔄 Background polling implemented in Sprint 2, cleanup still pending
 
 **3. Task Status Polling**
 - **Issue**: Frontend polling may not handle all Node ODM status responses correctly
 - **Impact**: Some tasks may show incorrect status or get stuck in processing state
-- **Location**: `code/frontend/src/components/ProcessingView.tsx` lines 133-140
+- **Location**: `code/frontend/src/components/ProcessingView.tsx`
 - **Workaround**: Use manual refresh button to force status updates
+- **Status**: ✅ Background polling implemented in Sprint 2 for automatic status updates
 
-**4. CORS Configuration**
-- **Issue**: CORS settings may be too permissive in debug mode
-- **Impact**: Potential security concerns in production
-- **Location**: `code/backend/app/main.py` line 23
-- **Workaround**: Configure specific allowed origins for production deployment
+**4. Field Maps Backend Integration**
+- **Issue**: Field maps view still uses mock data instead of backend API
+- **Impact**: Users cannot view actual processed field maps in Field Maps tab
+- **Location**: `code/frontend/src/components/FieldMapsView.tsx`
+- **Workaround**: Use Gallery view to see processed orthophotos
+- **Status**: 🔄 Planned for future sprint
 
-**5. Error Handling**
-- **Issue**: Limited error recovery mechanisms for failed processing tasks
-- **Impact**: Users may need to restart processing for failed tasks
-- **Location**: Various locations in processing pipeline
-- **Workaround**: Clear failed tasks and re-upload images
+**5. Pesticide Prescription Backend Integration**
+- **Issue**: Pesticide prescription generation uses mock data
+- **Impact**: Cannot generate actual prescription maps from processed orthophotos
+- **Location**: `code/frontend/src/components/PesticidePrescriptionsView.tsx`
+- **Workaround**: Spray map functionality is available but needs backend integration
+- **Status**: 🔄 Planned for future sprint
+
+**6. Database Integration**
+- **Issue**: No database persistence for tasks and results
+- **Impact**: Task history and metadata are file-based only
+- **Location**: Backend architecture
+- **Workaround**: Current file-based storage works but lacks query capabilities
+- **Status**: 🔄 Planned for future sprint
 
 ### Development Notes
 
-- The application is currently in active development
+- The application is currently in active development (Sprint 2 completed)
+- **Sprint 2 Achievements**: 
+  - ✅ Results API with orthophoto and PDF report retrieval
+  - ✅ Gallery view backend integration with real data
+  - ✅ PDF report viewing functionality
+  - ✅ Task naming and metadata storage
+  - ✅ Automatic background polling for task completion
+  - ✅ File storage service with manifest management
+  - ✅ Enhanced upload parameters (heading, grid size)
+  - ✅ Spray map functionality in pesticide prescriptions
 - Some features like database persistence and authentication are planned but not yet implemented
-- The frontend uses localStorage for task persistence, which may not be suitable for production
-- Node ODM integration is functional but may require additional configuration for production use
+- Node ODM integration is functional with automatic polling and asset downloading
+- File-based storage with manifest files is currently used for task metadata
 
 
 ## Contributing
@@ -256,6 +288,8 @@ We welcome contributions to the DroneBasedDevelopment project! Please follow the
 ### Project Structure
 - **[Contributing Guidelines](CONTRIBUTING.md)** - Development standards and contribution process
 - **[Project Requirements](docs/Reports/DBD_Assignment1_Requirements.pdf)** - Original project specifications
+- **[Sprint 1 Report](docs/Reports/01_Requirements.md)** - Sprint 1 accomplishments and documentation
+- **[Sprint 2 Report](docs/Reports/02_Requirements.md)** - Sprint 2 accomplishments and documentation
 - **[Meeting Minutes](docs/Mom/)** - Project meeting documentation and templates
 
 ### Resources

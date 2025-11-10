@@ -54,15 +54,26 @@ The app will then be available at `http://localhost:YOUR_PORT`.
 - **TypeScript** - Type-safe JavaScript
 - **Tailwind CSS** - Utility-first CSS framework
 - **Create React App** - Build tooling and development server
+- **react-pdf** - PDF viewing and rendering library
+- **react-dropzone** - Drag-and-drop file upload functionality
 
 ## 📁 Project Structure
 
 ```
 src/
 ├── components/
-│   ├── Navigation.tsx      # Tab navigation component
+│   ├── Header.tsx          # Application header
+│   ├── Sidebar.tsx         # Sidebar navigation
 │   ├── UploadView.tsx      # File upload interface
-│   └── GalleryView.tsx     # Image gallery display
+│   ├── ProcessingView.tsx  # Processing queue monitoring
+│   ├── GalleryView.tsx     # Image gallery with backend integration
+│   ├── FieldMapsView.tsx   # Field maps visualization
+│   └── PesticidePrescriptionsView.tsx  # Pesticide prescriptions with spray maps
+├── services/
+│   └── api.ts             # API service for backend communication
+├── types/
+│   ├── upload.ts          # Upload-related type definitions
+│   └── index.ts           # General type definitions
 ├── App.tsx                 # Main application component
 ├── App.css                 # Custom styles and utilities
 ├── index.tsx              # Application entry point
@@ -71,18 +82,19 @@ src/
 
 ## 🎯 Current Features
 
-### ✅ Implemented
-- **Navigation System**: Tab-based navigation between Upload and Gallery views
+### ✅ Implemented (Sprint 2)
+- **Navigation System**: Tab-based navigation between Upload, Gallery, Processing, Field Maps, and Pesticides views
 - **Dark Theme**: Red and black color scheme throughout
 - **Responsive Design**: Works on desktop, tablet, and mobile
-- **Upload Interface**: Drag-and-drop area with visual feedback
-- **Gallery View**: Grid layout ready for image display
-- **Empty States**: Clear placeholders for future functionality
-
-### 🚧 In Progress
-- File upload functionality (drag & drop, file validation)
-- Image processing and stitching integration
-- Gallery image display and management
+- **Upload Interface**: Drag-and-drop area with visual feedback, task naming, and parameter configuration
+- **Gallery View**: Backend-integrated gallery with real processed images, PDF report viewing, and full-screen previews
+- **Processing View**: Real-time processing queue monitoring with status updates
+- **Field Maps View**: Field maps visualization interface (UI ready, backend integration pending)
+- **Pesticide Prescriptions**: Spray map functionality with color-coded levels and grid editing
+- **Backend Integration**: Complete API service for upload, processing, and results retrieval
+- **PDF Viewing**: PDF report viewing with react-pdf library and page navigation
+- **Task Management**: Task naming, metadata display, and organization
+- **Real-time Updates**: Automatic status polling and progress tracking
 
 ## 🎨 UI Components
 
@@ -98,10 +110,27 @@ src/
 - Progress indicators
 
 ### Gallery View
-- Responsive image grid layout
-- Filter and sort controls
-- Image metadata display
-- Lightbox viewer for full-screen viewing
+- Responsive image grid layout with backend integration
+- Real-time task listing from backend API
+- Image metadata display with task names
+- Lightbox viewer for full-screen image previews
+- PDF report viewing with page navigation
+- Download functionality for orthophotos and reports
+- Empty state handling for no processed tasks
+
+### Processing View
+- Real-time processing queue monitoring
+- Task status indicators and progress tracking
+- Automatic status polling
+- Error handling and display
+- Task history and management
+
+### Pesticide Prescriptions View
+- Spray map functionality with interactive grid
+- Color-coded spray level selection
+- Bulk apply options for spray levels
+- Grid initialization based on prescriptions
+- Prescription metadata display
 
 ## 🎨 Color Palette
 
@@ -138,18 +167,42 @@ dark-300: #cbd5e1     /* Text primary */
 1. **Component Development**: Create new components in `src/components/`
 2. **Styling**: Use Tailwind classes with custom red/black theme
 3. **State Management**: Currently using React useState (can be upgraded to Redux/Zustand)
-4. **API Integration**: Ready for backend integration with Python API
+4. **API Integration**: Complete backend integration via `src/services/api.ts`
+5. **Type Safety**: TypeScript types defined in `src/types/` directory
+6. **Backend Communication**: API service handles all backend requests with error handling
 
 ## 🔮 Future Enhancements
 
-- Real-time upload progress
-- Image preview before upload
-- Batch image processing
-- Advanced gallery filters
-- Export functionality
+- Field maps backend integration
+- Pesticide prescription backend integration
+- Advanced gallery filters and sorting
+- Image annotation tools
 - Offline support
 - Keyboard shortcuts
-- Image annotation tools
+- Batch operations for tasks
+- Task deletion functionality
+- Advanced search and filtering
+- User authentication and authorization
+
+## Sprint 2 Updates
+
+### New Features
+- **Gallery Backend Integration**: Gallery view now fetches and displays real processed tasks from backend
+- **PDF Report Viewing**: Full PDF viewing functionality with react-pdf library
+- **Task Naming**: Users can name tasks during upload for better organization
+- **Enhanced Upload**: Added heading and grid size parameter configuration
+- **Spray Map Functionality**: Interactive spray map editing in pesticide prescriptions view
+- **Results API Integration**: Complete integration with backend results API
+- **Full-Screen Previews**: Lightbox viewer for images and PDF reports
+- **Download Functionality**: Download orthophotos and reports directly from gallery
+
+### Improvements
+- Replaced all mock data in Gallery view with real backend data
+- Enhanced error handling and user feedback
+- Improved loading states and empty state handling
+- Better task organization with task names
+- Real-time status updates and progress tracking
+- Enhanced API service with comprehensive error handling
 
 ## 🤝 Contributing
 

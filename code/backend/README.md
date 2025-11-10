@@ -85,12 +85,17 @@ code/backend/
 │   ├── core/                   # Core configuration
 │   │   ├── __init__.py
 │   │   └── config.py          # Settings and configuration
-│   └── api/                   # API endpoints
+│   ├── api/                   # API endpoints
+│   │   ├── __init__.py
+│   │   └── v1/                # API version 1
+│   │       ├── __init__.py
+│   │       ├── upload.py      # File upload endpoints
+│   │       └── results.py     # Results retrieval endpoints
+│   └── services/              # Service layer
 │       ├── __init__.py
-│       └── v1/                # API version 1
-│           ├── __init__.py
-│           └── upload.py      # File upload endpoints
+│       └── file_storage.py   # File storage and polling service
 ├── uploads/                   # Uploaded files storage
+├── results/                   # Processed results storage
 ├── requirements.txt           # Python dependencies
 ├── env.example               # Environment variables template
 ├── run.py                    # Development server runner
@@ -110,8 +115,11 @@ The application uses environment variables for configuration. Copy `env.example`
 | `DEBUG` | True | Debug mode |
 | `ALLOWED_ORIGINS` | http://localhost:3000,http://localhost:3001 | CORS allowed origins |
 | `UPLOAD_DIR` | ./uploads | Directory for uploaded files |
+| `RESULTS_DIR` | ./results | Directory for processed results |
 | `MAX_FILE_SIZE` | 104857600 | Maximum file size in bytes (100MB) |
 | `SUPPORTED_FORMATS` | image/jpeg,image/png,image/tiff | Supported file formats |
+| `NODEODM_URL` | http://localhost:3000 | Node ODM service URL |
+| `NODEODM_TIMEOUT` | 3600 | Node ODM timeout in seconds |
 
 ### Example .env file:
 ```env
@@ -133,9 +141,11 @@ Once the server is running, visit:
 ## Architecture
 
 ### Data Flow
-1. **Upload**: Files uploaded via `/api/v1/upload`
-2. **Processing**: Task submitted to Node ODM (planned)
-3. **Results**: Processed field maps retrieved (planned)
+1. **Upload**: Files uploaded via `/api/v1/upload` with optional task name and parameters
+2. **Processing**: Task submitted to Node ODM with configurable options
+3. **Polling**: Background polling monitors task completion automatically
+4. **Download**: Assets downloaded automatically upon completion
+5. **Results**: Processed orthophotos and reports retrieved via `/api/v1/results`
 
 ### Key Components
 - **FastAPI**: Modern, fast web framework with automatic documentation
@@ -146,10 +156,16 @@ Once the server is running, visit:
 ## 🔗 API Endpoints
 
 ### Upload Endpoints
-- `POST /api/v1/upload` - Upload drone imagery files
-- `GET /api/v1/upload/{task_id}/status` - Check upload status
-- `DELETE /api/v1/upload/{task_id}` - Delete uploaded files
+- `POST /api/v1/upload` - Upload drone imagery files with optional task name and parameters (heading, grid size)
+- `GET /api/v1/upload/{task_id}/status` - Check upload/processing status
+- `DELETE /api/v1/upload/{task_id}` - Delete uploaded files (planned)
 - `GET /api/v1/upload` - List all uploads (debug)
+
+### Results Endpoints
+- `GET /api/v1/results` - List all processed tasks with orthophotos
+- `GET /api/v1/results/{task_id}` - Get task summary with URLs to assets
+- `GET /api/v1/results/{task_id}/orthophoto.png` - Serve orthophoto PNG image
+- `GET /api/v1/results/{task_id}/report.pdf` - Serve PDF report
 
 ### Health Check
 - `GET /` - Root endpoint
@@ -168,8 +184,17 @@ curl -X POST "http://localhost:8001/api/v1/upload" \
 # Check upload status
 curl -X GET "http://localhost:8001/api/v1/upload/{task_id}/status"
 
-# List all uploads
-curl -X GET "http://localhost:8001/api/v1/upload"
+# List all processed results
+curl -X GET "http://localhost:8001/api/v1/results"
+
+# Get task summary
+curl -X GET "http://localhost:8001/api/v1/results/{task_id}"
+
+# Download orthophoto
+curl -X GET "http://localhost:8001/api/v1/results/{task_id}/orthophoto.png" -o orthophoto.png
+
+# Download report
+curl -X GET "http://localhost:8001/api/v1/results/{task_id}/report.pdf" -o report.pdf
 ```
 
 ### Using Swagger UI:
@@ -179,25 +204,34 @@ curl -X GET "http://localhost:8001/api/v1/upload"
 
 ## Development Status
 
-### Implemented
-- Basic FastAPI application structure
-- File upload endpoint with validation
-- Environment-based configuration
-- CORS configuration for frontend
-- File size and type validation
-- Task ID generation and tracking
-- Upload status checking
-- File cleanup functionality
+### Implemented (Sprint 2)
+- ✅ Basic FastAPI application structure
+- ✅ File upload endpoint with validation and task naming
+- ✅ Environment-based configuration
+- ✅ CORS configuration for frontend
+- ✅ File size and type validation (up to 200 files per batch)
+- ✅ Task ID generation and tracking
+- ✅ Upload status checking
+- ✅ Node ODM integration for image processing
+- ✅ Background task processing with automatic polling
+- ✅ Result delivery endpoints (orthophoto and PDF reports)
+- ✅ File storage service with manifest management
+- ✅ Automatic asset downloading upon task completion
+- ✅ Task metadata storage in manifest files
+- ✅ Configurable Node ODM options (orthophoto resolution, quality)
+- ✅ Enhanced error handling for Node ODM connection issues
+- ✅ Logging and monitoring
 
 ### Planned Features
-- [ ] Node ODM integration for image processing
 - [ ] Database integration for task persistence
-- [ ] Background task processing
-- [ ] Result delivery endpoints
-- [ ] Comprehensive error handling
+- [ ] Task deletion functionality
 - [ ] Authentication and security
-- [ ] Unit and integration tests
-- [ ] Logging and monitoring
+- [ ] Comprehensive unit and integration tests
+- [ ] Pagination for results listing
+- [ ] Caching mechanisms for frequently accessed files
+- [ ] Task scheduling and queue management
+- [ ] Field maps backend integration
+- [ ] Pesticide prescription backend integration
 
 ## Integration
 
@@ -264,15 +298,36 @@ poetry export -f requirements.txt --output requirements.txt
 - **Uvicorn**: ASGI server
 - **Pydantic Settings**: Configuration management
 - **aiofiles**: Async file operations
-- **httpx**: HTTP client for Node ODM integration
+- **pyodm**: Python client for Node ODM integration
+- **python-multipart**: Support for file uploads
 
 ## 📝 TODO
 
-- [ ] Implement Node ODM client functionality
-- [ ] Add database models and migrations
-- [ ] Implement task status tracking
-- [ ] Add comprehensive error handling
-- [ ] Create unit tests
-- [ ] Add logging and monitoring
-- [ ] Implement authentication
-- [ ] Add file processing pipeline
+- [ ] Add database models and migrations for persistent storage
+- [ ] Implement task deletion functionality
+- [ ] Create comprehensive unit and integration tests
+- [ ] Implement authentication and security
+- [ ] Add pagination for results listing
+- [ ] Implement caching mechanisms for improved performance
+- [ ] Add task scheduling and queue management
+- [ ] Field maps backend integration
+- [ ] Pesticide prescription backend integration
+- [ ] Robot path generation functionality
+
+## Sprint 2 Updates
+
+### New Features
+- **Results API**: Complete API for retrieving processed orthophotos and PDF reports
+- **File Storage Service**: Automated polling, asset downloading, and manifest management
+- **Task Naming**: Users can name tasks during upload for better organization
+- **Enhanced Upload**: Support for heading and grid size parameters
+- **Background Polling**: Automatic monitoring of task completion
+- **Manifest System**: Metadata storage for tasks with task names and timestamps
+
+### Improvements
+- Enhanced error handling for Node ODM connection issues
+- Improved logging for task status updates
+- Better file organization in results directory
+- Automatic asset downloading upon task completion
+- Support for PNG orthophoto output
+- Configurable processing options (resolution, quality, point cloud quality)
