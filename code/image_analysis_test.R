@@ -45,13 +45,13 @@ map_rows <- ceiling((ymax(EX1.5b.Indices$NDVI) - ymin(EX1.5b.Indices$NDVI)) / un
 #EX1.Shape<-fieldShape_render(mosaic = EX1.5b.Indices$NDVI,ncols = 86, nrows = 44)
 #EX1.Shape<-fieldShape_render(mosaic = EX1.5b,ncols = 86, nrows = 44)
 source("fieldShapeModified.R")
-EX1.Shape<-fieldShapeAuto(mosaic = EX1.5b.Indices$NDVI, ncols = map_cols, nrows = map_rows, heading = 45)
-fieldView(mosaic = EX1.5b.Indices$NDVI, fieldShape = EX1.Shape, type = 2, alpha = 0.2)
+EX1.Shape$plots<-fieldShapeAuto(mosaic = EX1.5b.Indices$NDVI, heading = 45)
+fieldView(mosaic = EX1.5b.Indices$NDVI, fieldShape = EX1.Shape$plots, type = 2, alpha = 0.2)
 
 # Extracting data using the same fieldShape file from step 5:
 #EX1.5b.InfoNDRE <- fieldInfo_extra(mosaic = EX1.5b.Indices$NDRE, fieldShape = EX1.Shape, fun="max")
 #EX1.5b.InfoNDRE <- na.omit(EX1.5b.InfoNDRE)
-EX1.5b.InfoNDVI <- fieldInfo_extra(mosaic = EX1.5b.Indices$NDVI, fieldShape = EX1.Shape, fun="max")
+EX1.5b.InfoNDVI <- fieldInfo_extra(mosaic = EX1.5b.Indices$NDVI, fieldShape = EX1.Shape$plots, fun="max")
 EX1.5b.InfoNDVI <- na.omit(EX1.5b.InfoNDVI)
 #EX1.5b.Info <- fieldInfo_extra(mosaic = EX1.5b.Indices, fieldShape = EX1.Shape, fun="max")
 #EX1.5b.Info <- na.omit(EX1.5b.Info)
@@ -79,8 +79,8 @@ NDVIDataCSV <- EX1.5b.InfoNDVI %>%
     latitude = utm2lonlat(easting = easting,
                             northing = northing,
                             zone = 11,
-                            hemisphere = "N")$latitude
-  ) %>%
+                            hemisphere = "N")$latitude,
+    ) %>%
   select(PlotID, NDVI_max, latitude, longitude) %>%
   st_drop_geometry()
 write.csv(NDVIDataCSV, file = "NDVI_Test-Field.csv", row.names=FALSE)
@@ -95,6 +95,9 @@ table(dbscan_result$cluster) # view the cluster results
 
 #  PRESCRIPTION MAPPING - cover field in least number of turns
 # create our graph in matrix form
+
+# Identify edges of our field
+
 edges <- matrix()
 for (data in rownames(NDVIData)) {
   if ((as.numeric(data) - 1) %in% rownames(NDVIData)) {
@@ -107,11 +110,11 @@ for (data in rownames(NDVIData)) {
   }
   if ((as.numeric(data) - map_cols) %in% rownames(NDVIData)) {
     edges <- rbind(edges, as.numeric(data))
-    edges <- rbind(edges, as.numeric(data) - map_cols)
+    edges <- rbind(edges, as.numeric(data) - EX1.Shape$rows)
   }
   if ((as.numeric(data) + map_cols) %in% rownames(NDVIData)) {
     edges <- rbind(edges, as.numeric(data))
-    edges <- rbind(edges, as.numeric(data) + map_cols)
+    edges <- rbind(edges, as.numeric(data) + EX1.Shape$rows)
   }
 }
 edges <- edges[-1, ]

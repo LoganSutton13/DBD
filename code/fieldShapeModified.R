@@ -29,7 +29,7 @@ require(dplyr)
 require(oce)
 
 # Automatically finds the bounds of the field and outputs a grid from there. Modified code from FIELDimageR.Extra::fieldShape_render
-fieldShapeAuto <- function (mosaic, ncols, nrows, fieldData = NULL, fieldMap = NULL, heading = 0,
+fieldShapeAuto <- function (mosaic, fieldData = NULL, fieldMap = NULL, heading = 0,
           PlotID = NULL, buffer = NULL, plot_size = NULL, r = 1, g = 2, 
           b = 3, color_options = viridisLite::viridis, max_pixels = 1e+08, 
           downsample = 5) 
@@ -240,7 +240,7 @@ fieldShapeAuto <- function (mosaic, ncols, nrows, fieldData = NULL, fieldMap = N
       }
     }
     print("End!")
-    return(plots)
+    return(list(plots = plots, rows = nrows))
   }
   else {
     cat("\033[31m", "Error: Select four points only. Points must be set at the corners of the field of interest under the plots space", 
