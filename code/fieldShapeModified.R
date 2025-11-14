@@ -29,7 +29,7 @@ require(dplyr)
 require(oce)
 
 # Automatically finds the bounds of the field and outputs a grid from there. Modified code from FIELDimageR.Extra::fieldShape_render
-fieldShapeAuto <- function (mosaic, ncols, nrows, fieldData = NULL, fieldMap = NULL, heading = NA,
+fieldShapeAuto <- function (mosaic, ncols, nrows, fieldData = NULL, fieldMap = NULL, heading = 0,
           PlotID = NULL, buffer = NULL, plot_size = NULL, r = 1, g = 2, 
           b = 3, color_options = viridisLite::viridis, max_pixels = 1e+08, 
           downsample = 5) 
@@ -62,19 +62,21 @@ fieldShapeAuto <- function (mosaic, ncols, nrows, fieldData = NULL, fieldMap = N
     }
   }
   
+  # obtain the bounds of the SpatRaster and place it within the expected variable
+  length_from_centerpoint = ceiling(max((xmax(mosaic) - xmin(mosaic)), (ymax(mosaic) - ymin(mosaic))) / 2)
+  centerpoint_x = (xmin(mosaic) + xmax(mosaic)) / 2
+  centerpoint_y = (ymin(mosaic) + ymax(mosaic)) / 2
+
+  corner_nw <- utm2lonlat(easting = centerpoint_x - length_from_centerpoint, northing = centerpoint_y + length_from_centerpoint, zone = 11, hemisphere = "N")
+  corner_ne <- utm2lonlat(easting = centerpoint_x + length_from_centerpoint, northing = centerpoint_y + length_from_centerpoint, zone = 11, hemisphere = "N")
+  corner_sw <- utm2lonlat(easting = centerpoint_x - length_from_centerpoint, northing = centerpoint_y - length_from_centerpoint, zone = 11, hemisphere = "N")
+  corner_se <- utm2lonlat(easting = centerpoint_x + length_from_centerpoint, northing = centerpoint_y - length_from_centerpoint, zone = 11, hemisphere = "N")
+  
+  nrows = ceiling((length_from_centerpoint * 2) / 4.572)
+  ncols <- nrows
   print(paste("Number of rows: ", nrows))
   print(paste("Number of columns: ", ncols))
-  
-  if (is.na(heading)) {
-    # obtain the bounds of the SpatRaster and place it within the expected variable
-    corner_nw <- utm2lonlat(easting = xmin(mosaic), northing = ymax(mosaic), zone = 11, hemisphere = "N")
-    corner_ne <- utm2lonlat(easting = xmax(mosaic), northing = ymax(mosaic), zone = 11, hemisphere = "N")
-    corner_sw <- utm2lonlat(easting = xmin(mosaic), northing = ymin(mosaic), zone = 11, hemisphere = "N")
-    corner_se <- utm2lonlat(easting = xmax(mosaic), northing = ymin(mosaic), zone = 11, hemisphere = "N")
-  }
-  else {
-    # TODO: implement custom headings for grid alignment
-  }
+
   four_point <- NA
   four_point$finished <- NA
   four_point$finished$geometry = st_sfc(st_point(c(corner_nw$longitude, corner_nw$latitude)), 
@@ -82,8 +84,6 @@ fieldShapeAuto <- function (mosaic, ncols, nrows, fieldData = NULL, fieldMap = N
                  st_point(c(corner_se$longitude, corner_se$latitude)),
                  st_point(c(corner_sw$longitude, corner_sw$latitude))) %>%
     st_set_crs(4326)
-  # four_point$finished = c(corner_nw, corner_ne, corner_sw, corner_se)
-  # four_point$finished$geometry = c(corner_nw, corner_ne, corner_sw, corner_se)
   print(four_point$finished$geometry)
   if (length(four_point$finished$geometry) == 4) {
     grids <- st_make_grid(four_point$finished$geometry, 
@@ -101,6 +101,32 @@ fieldShapeAuto <- function (mosaic, ncols, nrows, fieldData = NULL, fieldMap = N
     geometry <- grids * parameters + intercept
     grid_shapefile <- st_sf(geometry, crs = st_crs(mosaic)) %>% 
       mutate(ID = seq(1:length(geometry)))
+    
+    # -- INSERTED ROTATION CODE
+    if (!is.na(heading)) {
+      # mosaic CRS is expected on grid_shapefile already; ensure we're in a projected CRS
+      if (st_is_longlat(grid_shapefile)) {
+        message("Warning: grid is in lon/lat — temporarily projecting to EPSG:3857 for rotation.")
+        grid_shapefile <- st_transform(grid_shapefile, 3857)
+      }
+      
+      # Convert heading (clockwise from North) to math angle (radians, CCW from East)
+      theta <- (heading) * pi / 180
+      R <- matrix(c(cos(theta), -sin(theta),
+                    sin(theta),  cos(theta)), nrow = 2, byrow = TRUE)
+      
+      ga  <- st_geometry(grid_shapefile)
+      cga <- st_centroid(st_union(ga))   # single centroid for whole grid
+      
+      # shift -> rotate -> shift back
+      grid_shapefile$geometry <- (ga - cga) * R + cga
+      
+      # if we temporarily projected, transform back to original CRS
+      # (original CRS is st_crs(mosaic))
+      grid_shapefile <- st_set_crs(grid_shapefile, st_crs(mosaic))
+    }
+    ## END INSERTED CODE
+    
     rect_around_point <- function(x, xsize, ysize) {
       bbox <- st_bbox(x)
       bbox <- bbox + c(xsize/2, ysize/2, -xsize/2, -ysize/2)

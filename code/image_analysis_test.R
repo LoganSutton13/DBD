@@ -24,8 +24,10 @@ EX1.5b <- rast("../data/odm_orthophoto.tif") # Andrew's test field orthophoto
 
 # Rotating the image using the same theta (TODO: Adjust to farmer's specific heading)
 heading = 2.3
-EX1.5b.Rotated<-fieldRotate(EX1.5b, theta = 2.3, plot = T)
-fieldView(mosaic = EX1.5b.Rotated, fieldShape = EX1.Shape, type = 2, alpha = 0.2)
+EX1.5b.Rotated<-fieldRotate(EX1.5b, theta = 40, plot = T)
+#crs(EX1.5b.Rotated)<-crs(EX1.5b)
+#extent(EX1.5b.Rotated)<-extent(EX1.5b)
+#fieldView(mosaic = EX1.5b.Rotated, fieldShape = EX1.Shape, type = 2, alpha = 0.2)
 
 # Removing the soil using index and mask
 EX1.5b.RemSoil<-fieldMask(EX1.5b,Red=1,Green=2,Blue=3,index="HUE",cropValue=0,cropAbove=T,plot=T)
@@ -41,8 +43,9 @@ map_rows <- ceiling((ymax(EX1.5b.Indices$NDVI) - ymin(EX1.5b.Indices$NDVI)) / un
 
 #plot(EX1.5b.Indices)
 #EX1.Shape<-fieldShape_render(mosaic = EX1.5b.Indices$NDVI,ncols = 86, nrows = 44)
+#EX1.Shape<-fieldShape_render(mosaic = EX1.5b,ncols = 86, nrows = 44)
 source("fieldShapeModified.R")
-EX1.Shape<-fieldShapeAuto(mosaic = EX1.5b.Indices$NDVI, ncols = map_cols, nrows = map_rows)
+EX1.Shape<-fieldShapeAuto(mosaic = EX1.5b.Indices$NDVI, ncols = map_cols, nrows = map_rows, heading = 45)
 fieldView(mosaic = EX1.5b.Indices$NDVI, fieldShape = EX1.Shape, type = 2, alpha = 0.2)
 
 # Extracting data using the same fieldShape file from step 5:
@@ -52,15 +55,6 @@ EX1.5b.InfoNDVI <- fieldInfo_extra(mosaic = EX1.5b.Indices$NDVI, fieldShape = EX
 EX1.5b.InfoNDVI <- na.omit(EX1.5b.InfoNDVI)
 #EX1.5b.Info <- fieldInfo_extra(mosaic = EX1.5b.Indices, fieldShape = EX1.Shape, fun="max")
 #EX1.5b.Info <- na.omit(EX1.5b.Info)
-
-# TODO: create an exportable csv file version of this data
-# CSVData <- EX1.5bInfoNDVI %>%
-#   mutate(
-#     lonlat <- utm2lonlat(easting = easting_coord, 
-#                                 northing = northing_coord, 
-#                                 zone = utm_zone, 
-#                                 hemisphere = hemisphere_val)
-#   )
 
 # create our dataset to be clustered
 NDVIData <- EX1.5b.InfoNDVI %>%
@@ -72,6 +66,24 @@ NDVIData <- EX1.5b.InfoNDVI %>%
     mutate(NDVI_max = NDVI_max * 10) %>%  # 3-dimensional radius means we need to spread out our NDVI Values more
     select(NDVI_max, easting, northing) %>%
     st_drop_geometry()
+
+NDVIDataCSV <- EX1.5b.InfoNDVI %>%
+  mutate(
+    centerpoint = st_centroid(geometry),
+    easting = st_coordinates(centerpoint)[, 1],
+    northing = st_coordinates(centerpoint)[, 2],
+    longitude = utm2lonlat(easting = easting,
+                         northing = northing,
+                         zone = 11,
+                         hemisphere = "N")$longitude,
+    latitude = utm2lonlat(easting = easting,
+                            northing = northing,
+                            zone = 11,
+                            hemisphere = "N")$latitude
+  ) %>%
+  select(PlotID, NDVI_max, latitude, longitude) %>%
+  st_drop_geometry()
+write.csv(NDVIDataCSV, file = "NDVI_Test-Field.csv", row.names=FALSE)
 
 # run dbscan in 3-dimensions (latitude, longitude, NDVI)
 dbscan_result <- dbscan(NDVIData, eps = 6, minPts = 4)
