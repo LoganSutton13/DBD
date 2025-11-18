@@ -16,3 +16,16 @@ pydantic-settings==2.0.3
 # Development dependencies
 pytest==7.4.3
 pytest-asyncio==0.21.1
+
+# Field image analysis dependencies
+numpy
+rasterio
+rioxarray
+xarray
+geopandas
+shapely
+rasterstats
+scikit-learn
+pyproj
+matplotlib
+pandas
