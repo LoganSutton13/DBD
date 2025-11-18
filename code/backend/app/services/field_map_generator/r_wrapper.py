@@ -6,6 +6,9 @@ import subprocess
 import logging
 from pathlib import Path
 from typing import Optional, Dict, Any
+import asyncio
+import argparse
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +110,7 @@ class RScriptRunner:
             }
 
 
-def run_field_shape_auto(
+async def run_field_shape_auto(
     mosaic_path: str,
     output_dir: str,
     nir_band: int = 4,
@@ -180,6 +183,41 @@ def run_field_shape_auto(
             "R script failed" if not run_result["success"] else "Output file not created"
         )
     }
+
+
+
+
+
+def main() -> int:
+    """Simple CLI so you can edit the mosaic and output paths and run the function."""
+    INPUT = Path(__file__).parent / "example_images" / "odm_orthophoto.tif"
+    OUTPUT = Path(__file__).parent / "output"
+
+    try:
+        result = asyncio.run(
+            run_field_shape_auto(
+                mosaic_path= str(INPUT),
+                output_dir= str(OUTPUT),
+            )
+        )
+    except Exception as e:
+        print(f"Error running field shape: {e}")
+        return 2
+
+    if result.get("success"):
+        print("Success:\nOutput file:", result.get("output_file"))
+        if result.get("stdout"):
+            print("R stdout:\n", result.get("stdout"))
+        return 0
+    else:
+        print("Failure:\n", result.get("error"))
+        if result.get("stderr"):
+            print("R stderr:\n", result.get("stderr"))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
 
 
 
