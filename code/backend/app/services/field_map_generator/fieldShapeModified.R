@@ -10,6 +10,9 @@
 # Description of changes:
 # - fieldShape function reworked such that no human input is required
 #   in obtaining the field boundaries.
+# - Added NDVI computation per grid cell using NIR and Red bands.
+# - Added GeoJSON export functionality for frontend visualization.
+#   Output file contains: geometry (polygons), ndvi_mean, and id fields.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -27,12 +30,15 @@
 
 require(dplyr)
 require(oce)
+require(terra)
+require(sf)
 
 # Automatically finds the bounds of the field and outputs a grid from there. Modified code from FIELDimageR.Extra::fieldShape_render
 fieldShapeAuto <- function (mosaic, fieldData = NULL, fieldMap = NULL, heading = 0,
           PlotID = NULL, buffer = NULL, plot_size = NULL, r = 1, g = 2, 
-          b = 3, color_options = viridisLite::viridis, max_pixels = 1e+08, 
-          downsample = 5) 
+          b = 3, nir = 4, red = 1, compute_ndvi = TRUE, export_geojson = TRUE,
+          geojson_path = "field_ndvi.geojson", color_options = viridisLite::viridis, 
+          max_pixels = 1e+08, downsample = 5) 
 {
   print("Starting analysis ...")
   if (is.null(mosaic)) {
@@ -239,6 +245,66 @@ fieldShapeAuto <- function (mosaic, fieldData = NULL, fieldMap = NULL, heading =
         plots <- grid_shapefile
       }
     }
+    
+    # -- NDVI COMPUTATION AND EXPORT
+    if (compute_ndvi && !is.null(plots)) {
+      print("Computing NDVI ...")
+      
+      # Check if mosaic has enough bands for NDVI calculation
+      n_bands <- nlyr(mosaic)
+      if (n_bands >= max(nir, red) && nir != red) {
+        # Extract NIR and Red bands
+        nir_band <- mosaic[[nir]]
+        red_band <- mosaic[[red]]
+        
+        # Compute NDVI: (NIR - Red) / (NIR + Red)
+        ndvi <- (nir_band - red_band) / (nir_band + red_band)
+        
+        # Extract mean NDVI per plot polygon
+        print("Extracting NDVI values per plot ...")
+        plots_vect <- vect(plots)
+        ndvi_extract <- terra::extract(ndvi, plots_vect, fun = mean, na.rm = TRUE)
+        
+        # Add NDVI mean values to plots
+        plots$ndvi_mean <- ndvi_extract[, 2]  # Column 1 is ID, column 2 is NDVI
+        
+        print(paste("NDVI computed. Range:", round(min(plots$ndvi_mean, na.rm = TRUE), 3), 
+                    "to", round(max(plots$ndvi_mean, na.rm = TRUE), 3)))
+      } else {
+        warning("Insufficient bands or invalid band indices for NDVI calculation. Skipping NDVI computation.")
+        plots$ndvi_mean <- NA
+      }
+    } else if (!is.null(plots)) {
+      # If NDVI computation is disabled, add NA column
+      plots$ndvi_mean <- NA
+    }
+    
+    # Export to GeoJSON if requested
+    if (export_geojson && !is.null(plots)) {
+      print(paste("Exporting to GeoJSON:", geojson_path))
+      
+      # Prepare output with required fields: geometry, ndvi_mean, id
+      # Use PlotID as id if available, otherwise use ID
+      if ("PlotID" %in% names(plots)) {
+        plots_export <- plots %>%
+          mutate(id = as.character(PlotID))
+      } else if ("ID" %in% names(plots)) {
+        plots_export <- plots %>%
+          mutate(id = as.character(ID))
+      } else {
+        plots_export <- plots %>%
+          mutate(id = as.character(seq(1, nrow(plots))))
+      }
+      
+      # Select only required columns (geometry is automatically preserved in sf objects)
+      plots_export <- plots_export %>%
+        select(id, ndvi_mean)
+      
+      # Write to GeoJSON (geometry is automatically included)
+      st_write(plots_export, geojson_path, delete_dsn = TRUE, quiet = TRUE)
+      print(paste("GeoJSON exported successfully to:", geojson_path))
+    }
+    
     print("End!")
     return(list(plots = plots, rows = nrows))
   }
@@ -246,4 +312,45 @@ fieldShapeAuto <- function (mosaic, fieldData = NULL, fieldMap = NULL, heading =
     cat("\033[31m", "Error: Select four points only. Points must be set at the corners of the field of interest under the plots space", 
         "\033[0m", "\n")
   }
+}
+
+# Command-line execution
+if (!interactive()) {
+  args <- commandArgs(trailingOnly = TRUE)
+  
+  if (length(args) < 1) {
+    stop("Usage: Rscript fieldShapeModified.R <tif_file_path> [output_geojson_path] [nir_band] [red_band] [heading]")
+  }
+  
+  tif_path <- args[1]
+  geojson_path <- if (length(args) >= 2) args[2] else "field_ndvi.geojson"
+  nir_band <- if (length(args) >= 3) as.integer(args[3]) else 4
+  red_band <- if (length(args) >= 4) as.integer(args[4]) else 1
+  heading <- if (length(args) >= 5) as.numeric(args[5]) else 0.0
+  
+  # Check if file exists
+  if (!file.exists(tif_path)) {
+    stop(paste("Error: File not found:", tif_path))
+  }
+  
+  # Load the mosaic
+  print(paste("Loading mosaic from:", tif_path))
+  mosaic <- rast(tif_path)
+  
+  # Run fieldShapeAuto
+  result <- fieldShapeAuto(
+    mosaic = mosaic,
+    nir = nir_band,
+    red = red_band,
+    heading = heading,
+    compute_ndvi = TRUE,
+    export_geojson = TRUE,
+    geojson_path = geojson_path
+  )
+  
+  print("SUCCESS: Field shape analysis completed")
+  print(paste("Rows:", result$rows))
+  print(paste("Plots:", nrow(result$plots)))
+  print(paste("NDVI range:", round(min(result$plots$ndvi_mean, na.rm=TRUE), 3), "to", 
+              round(max(result$plots$ndvi_mean, na.rm=TRUE), 3)))
 }
