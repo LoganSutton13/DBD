@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, GeoJSON, useMap, ImageOverlay } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -37,6 +37,7 @@ interface FieldMap {
   createdAt: string;
   geojsonUrl: string;
   geojsonData: GeoJSONData | null;
+  imageUrl?: string; // Optional JPEG image URL for the field
   metadata: {
     fieldName: string;
     area: string; // in acres/hectares
@@ -48,20 +49,56 @@ interface FieldMap {
   status: 'processing' | 'completed' | 'failed';
 }
 
-// Component to fit map bounds to GeoJSON
-function FitBounds({ geojsonData }: { geojsonData: GeoJSONData | null }) {
+// Component to fit map bounds to GeoJSON or image
+function FitBounds({ geojsonData, imageBounds }: { geojsonData: GeoJSONData | null; imageBounds?: L.LatLngBounds }) {
   const map = useMap();
   
   useEffect(() => {
-    if (geojsonData && geojsonData.features.length > 0) {
+    if (imageBounds && imageBounds.isValid()) {
+      // If we have image bounds, use those
+      map.fitBounds(imageBounds, { padding: [20, 20] });
+    } else if (geojsonData && geojsonData.features.length > 0) {
+      // Otherwise use GeoJSON bounds
       const bounds = L.geoJSON(geojsonData as any).getBounds();
       if (bounds.isValid()) {
         map.fitBounds(bounds, { padding: [20, 20] });
       }
     }
-  }, [geojsonData, map]);
+  }, [geojsonData, imageBounds, map]);
   
   return null;
+}
+
+// Calculate bounds from GeoJSON for image overlay
+function calculateGeoJSONBounds(geojsonData: GeoJSONData | null): L.LatLngBounds | null {
+  if (!geojsonData || geojsonData.features.length === 0) return null;
+  
+  const bounds = L.geoJSON(geojsonData as any).getBounds();
+  return bounds.isValid() ? bounds : null;
+}
+
+// Component to render either image overlay or tile layer
+function BaseMapLayer({ imageUrl, geojsonData }: { imageUrl?: string; geojsonData: GeoJSONData | null }) {
+  const imageBounds = geojsonData ? calculateGeoJSONBounds(geojsonData) : null;
+  
+  if (imageUrl && imageBounds) {
+    // Use image overlay if image URL and bounds are available
+    return (
+      <ImageOverlay
+        url={imageUrl}
+        bounds={imageBounds}
+        opacity={1}
+      />
+    );
+  }
+  
+  // Fall back to tile layer if no image
+  return (
+    <TileLayer
+      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    />
+  );
 }
 
 // Component to style GeoJSON features based on NDVI
@@ -122,9 +159,13 @@ const FieldMapsView: React.FC = () => {
         setLoading(true);
         setError(null);
 
-        // List of known GeoJSON files (you can expand this or fetch from an API)
+        // List of known GeoJSON files with their corresponding images (you can expand this or fetch from an API)
         const geojsonFiles = [
-          { filename: 'field_ndvi_python.geojson', name: 'Field NDVI Analysis' }
+          { 
+            filename: 'field_ndvi_python.geojson', 
+            name: 'Field NDVI Analysis',
+            imageUrl: '/images/field_ndvi_python.jpg' // Optional: path to corresponding JPEG image
+          }
         ];
 
         const loadedMaps: FieldMap[] = [];
@@ -187,12 +228,16 @@ const FieldMapsView: React.FC = () => {
             // This is a rough estimate; for accurate area, you'd need proper coordinate transformation
             const areaInAcres = (totalArea * 0.000247105) || 0; // Rough conversion
 
+            // Calculate bounds for image overlay
+            const bounds = calculateGeoJSONBounds(geojsonData);
+
             const map: FieldMap = {
               id: file.filename.replace('.geojson', ''),
               name: file.name || file.filename.replace('.geojson', '').replace(/_/g, ' '),
               createdAt: new Date().toISOString(), // You might want to get this from file metadata
               geojsonUrl: `/geojson/${file.filename}`,
               geojsonData: geojsonData,
+              imageUrl: file.imageUrl, // Optional image URL
               metadata: {
                 fieldName: file.name || 'Field',
                 area: areaInAcres > 0 ? `${areaInAcres.toFixed(2)} acres` : 'N/A',
@@ -421,12 +466,9 @@ const FieldMapsView: React.FC = () => {
                         zoomControl={false}
                         attributionControl={false}
                       >
-                        <TileLayer
-                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                        />
+                        <BaseMapLayer imageUrl={map.imageUrl} geojsonData={map.geojsonData} />
                         <GeoJSONLayer data={map.geojsonData} />
-                        <FitBounds geojsonData={map.geojsonData} />
+                        <FitBounds geojsonData={map.geojsonData} imageBounds={map.imageUrl ? (calculateGeoJSONBounds(map.geojsonData) || undefined) : undefined} />
                       </MapContainer>
                     </div>
                   ) : (
@@ -479,12 +521,9 @@ const FieldMapsView: React.FC = () => {
                         zoomControl={false}
                         attributionControl={false}
                       >
-                        <TileLayer
-                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                        />
+                        <BaseMapLayer imageUrl={map.imageUrl} geojsonData={map.geojsonData} />
                         <GeoJSONLayer data={map.geojsonData} />
-                        <FitBounds geojsonData={map.geojsonData} />
+                        <FitBounds geojsonData={map.geojsonData} imageBounds={map.imageUrl ? (calculateGeoJSONBounds(map.geojsonData) || undefined) : undefined} />
                       </MapContainer>
                     </div>
                   ) : (
@@ -599,12 +638,9 @@ const FieldMapsView: React.FC = () => {
                     style={{ height: '100%', width: '100%' }}
                     className="z-0"
                   >
-                    <TileLayer
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    />
+                    <BaseMapLayer imageUrl={selectedMap.imageUrl} geojsonData={selectedMap.geojsonData} />
                     <GeoJSONLayer data={selectedMap.geojsonData} />
-                    <FitBounds geojsonData={selectedMap.geojsonData} />
+                    <FitBounds geojsonData={selectedMap.geojsonData} imageBounds={selectedMap.imageUrl ? (calculateGeoJSONBounds(selectedMap.geojsonData) || undefined) : undefined} />
                   </MapContainer>
                 </div>
               ) : (
