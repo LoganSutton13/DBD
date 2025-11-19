@@ -154,6 +154,7 @@ data/processed/
 *.h5
 *.hdf5
 *.model
+*.tif
 
 # Image files (if very large or temporary)
 *.tmp
