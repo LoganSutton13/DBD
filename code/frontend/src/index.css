@@ -37,3 +37,37 @@ code {
 ::-webkit-scrollbar-thumb:hover {
   background: #64748b; /* dark-500 */
 }
+
+/* Leaflet map styling for dark theme */
+.leaflet-container {
+  background-color: #1e293b; /* dark-800 */
+}
+
+.leaflet-popup-content-wrapper {
+  background-color: #1e293b; /* dark-800 */
+  color: #f1f5f9; /* dark-100 */
+  border-radius: 8px;
+}
+
+.leaflet-popup-tip {
+  background-color: #1e293b; /* dark-800 */
+}
+
+.leaflet-control {
+  background-color: rgba(30, 41, 59, 0.9); /* dark-800 with opacity */
+  border: 1px solid #334155; /* dark-700 */
+}
+
+.leaflet-control a {
+  color: #f1f5f9; /* dark-100 */
+  background-color: #1e293b; /* dark-800 */
+}
+
+.leaflet-control a:hover {
+  background-color: #334155; /* dark-700 */
+}
+
+.leaflet-bar a.leaflet-disabled {
+  color: #64748b; /* dark-500 */
+  background-color: #1e293b; /* dark-800 */
+}

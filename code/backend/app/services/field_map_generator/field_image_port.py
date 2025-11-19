@@ -13,7 +13,7 @@ import numpy as np
 import rasterio
 from rasterio.enums import Resampling
 from rasterio.transform import Affine
-import rioxarray as rxr
+import rioxarray as rxrt
 import xarray as xr
 import geopandas as gpd
 from shapely.geometry import box, Point
@@ -27,7 +27,7 @@ import pandas as pd
 # ------------ Helper functions ------------
 def load_raster(tif_path, downsample_factor=None):
     """Load raster as xarray DataArray via rioxarray. Bands are first dimension (1..N)."""
-    da = rxr.open_rasterio(tif_path, masked=True).squeeze()  # dims: band, y, x
+    da = rxrt.open_rasterio(tif_path, masked=True).squeeze()  # dims: band, y, x
     if downsample_factor and downsample_factor > 1:
         # simple resample (nearest)
         new_shape = (da.sizes["band"], da.sizes["y"] // downsample_factor, da.sizes["x"] // downsample_factor)
@@ -164,12 +164,12 @@ def main(
     print("Grid size rows,cols:", nrows, ncols, "cells:", len(gdf_grid))
 
     # 6) Optionally rotate grid geometry around grid centroid by heading_deg (clockwise)
-    if heading_deg is not None and abs(heading_deg) > 0.001:
-        print("Rotating grid polygons by", heading_deg, "degrees")
-        centroid = gdf_grid.unary_union.centroid
+    #if heading_deg is not None and abs(heading_deg) > 0.001:
+        #print("Rotating grid polygons by", heading_deg, "degrees")
+        #centroid = gdf_grid.unary_union.centroid
         # shapely.rotate uses degrees CCW by default, so convert clockwise->ccw by negative angle
-        gdf_grid["geometry"] = gdf_grid.geometry.apply(lambda geom: shapely_rotate(geom, -heading_deg, origin=centroid))
-        gdf_grid.set_crs(raster_crs, inplace=True)
+        #gdf_grid["geometry"] = gdf_grid.geometry.apply(lambda geom: shapely_rotate(geom, -heading_deg, origin=centroid))
+        #gdf_grid.set_crs(raster_crs, inplace=True)
 
     # 7) Extract per-plot maximum NDVI (like fieldInfo_extra with fun='max')
     print("Extracting zonal max NDVI per plot (this may take a while) ...")
@@ -193,6 +193,7 @@ def main(
     # transform to lon/lat (EPSG:4326)
     transformer = Transformer.from_crs(raster_crs, "EPSG:4326", always_xy=True)
     lonlat = [transformer.transform(x, y) for x, y in zip(gdf_nonan.easting, gdf_nonan.northing)]
+    print(lonlat[:5])  # print first 5 for sanity check
     gdf_nonan["longitude"] = [p[0] for p in lonlat]
     gdf_nonan["latitude"] = [p[1] for p in lonlat]
     csv_df = gdf_nonan[["PlotID", "NDVI_max", "latitude", "longitude"]].copy()
@@ -216,6 +217,8 @@ def main(
     out_gdf = gdf_nonan[["PlotID", "NDVI_max", "NDVI_mean", "cluster", "geometry"]].copy()
     # ensure PlotID is string like in R export
     out_gdf["id"] = out_gdf["PlotID"].astype(str)
+    # Transform geometry from UTM to lat/lon (EPSG:4326) for GeoJSON export
+    out_gdf = out_gdf.to_crs("EPSG:4326")
     out_gdf.to_file(output_geojson, driver="GeoJSON")
     print("GeoJSON saved.")
 

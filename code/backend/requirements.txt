@@ -29,3 +29,4 @@ scikit-learn
 pyproj
 matplotlib
 pandas
+rpy2
