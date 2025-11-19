@@ -587,40 +587,68 @@ const FieldMapsView: React.FC = () => {
         )}
       </div>
 
-      {/* Field Map Modal with Interactive Map */}
+      {/* Field Map Modal with Expanded View */}
       {selectedMap && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-dark-800 rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-dark-700">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="text-xl font-semibold text-primary-400">{selectedMap.name}</h3>
-                  <div className="mt-2 flex flex-wrap gap-4 text-sm text-dark-300">
-                    <span><span className="font-medium">Field:</span> {selectedMap.metadata.fieldName}</span>
-                    <span><span className="font-medium">Area:</span> {selectedMap.metadata.area}</span>
-                    <span><span className="font-medium">Plots:</span> {selectedMap.metadata.plotCount}</span>
+        <div 
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto"
+          onClick={(e) => {
+            // Close modal when clicking on backdrop
+            if (e.target === e.currentTarget) {
+              setSelectedMap(null);
+            }
+          }}
+        >
+          <div className="bg-dark-800 rounded-lg max-w-7xl w-full my-8 overflow-hidden flex flex-col shadow-2xl border border-dark-700">
+            {/* Header */}
+            <div className="p-6 border-b border-dark-700 bg-dark-800/95 backdrop-blur-sm sticky top-0 z-10">
+              <div className="flex justify-between items-start">
+                <div className="flex-1">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <h3 className="text-2xl font-semibold text-primary-400">{selectedMap.name}</h3>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium flex items-center space-x-1 ${getStatusColor(selectedMap.status)}`}>
+                      {getStatusIcon(selectedMap.status)}
+                      <span className="capitalize">{selectedMap.status}</span>
+                    </span>
+                  </div>
+                  
+                  {/* Quick Stats */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                    <div className="bg-dark-700 rounded-lg p-3">
+                      <div className="text-xs text-dark-400 mb-1">Field Name</div>
+                      <div className="text-sm font-medium text-dark-100">{selectedMap.metadata.fieldName}</div>
+                    </div>
+                    <div className="bg-dark-700 rounded-lg p-3">
+                      <div className="text-xs text-dark-400 mb-1">Total Area</div>
+                      <div className="text-sm font-medium text-dark-100">{selectedMap.metadata.area}</div>
+                    </div>
+                    <div className="bg-dark-700 rounded-lg p-3">
+                      <div className="text-xs text-dark-400 mb-1">Plot Count</div>
+                      <div className="text-sm font-medium text-dark-100">{selectedMap.metadata.plotCount}</div>
+                    </div>
                     {selectedMap.metadata.avgNDVI !== undefined && (
-                      <span><span className="font-medium">Avg NDVI:</span> {selectedMap.metadata.avgNDVI.toFixed(3)}</span>
-                    )}
-                    {selectedMap.metadata.minNDVI !== undefined && (
-                      <span><span className="font-medium">Min NDVI:</span> {selectedMap.metadata.minNDVI.toFixed(3)}</span>
-                    )}
-                    {selectedMap.metadata.maxNDVI !== undefined && (
-                      <span><span className="font-medium">Max NDVI:</span> {selectedMap.metadata.maxNDVI.toFixed(3)}</span>
+                      <div className="bg-dark-700 rounded-lg p-3">
+                        <div className="text-xs text-dark-400 mb-1">Avg NDVI</div>
+                        <div className="text-sm font-medium text-primary-400">{selectedMap.metadata.avgNDVI.toFixed(3)}</div>
+                      </div>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center space-x-2">
+                
+                <div className="flex items-center space-x-2 ml-4">
                   <button
                     onClick={() => downloadGeoJSON(selectedMap)}
-                    className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200 text-sm"
+                    className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200 text-sm flex items-center space-x-2"
                     title="Download GeoJSON"
                   >
-                    Download
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span>Download</span>
                   </button>
                   <button
                     onClick={() => setSelectedMap(null)}
-                    className="text-dark-400 hover:text-dark-100 transition-colors duration-200"
+                    className="p-2 text-dark-400 hover:text-dark-100 hover:bg-dark-700 rounded-lg transition-colors duration-200"
+                    title="Close"
                   >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -629,30 +657,193 @@ const FieldMapsView: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* Content Area */}
             <div className="flex-1 p-6 overflow-hidden">
-              {selectedMap.geojsonData ? (
-                <div className="w-full h-full rounded-lg overflow-hidden border border-dark-700">
-                  <MapContainer
-                    center={[0, 0]}
-                    zoom={2}
-                    style={{ height: '100%', width: '100%' }}
-                    className="z-0"
-                  >
-                    <BaseMapLayer imageUrl={selectedMap.imageUrl} geojsonData={selectedMap.geojsonData} />
-                    <GeoJSONLayer data={selectedMap.geojsonData} />
-                    <FitBounds geojsonData={selectedMap.geojsonData} imageBounds={selectedMap.imageUrl ? (calculateGeoJSONBounds(selectedMap.geojsonData) || undefined) : undefined} />
-                  </MapContainer>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+                {/* Main Map View - Takes 2/3 of space */}
+                <div className="lg:col-span-2 flex flex-col">
+                  <div className="flex-1 rounded-lg overflow-hidden border border-dark-700 bg-dark-900 min-h-[500px]">
+                    {selectedMap.geojsonData ? (
+                      <MapContainer
+                        center={[0, 0]}
+                        zoom={2}
+                        style={{ height: '100%', width: '100%' }}
+                        className="z-0"
+                      >
+                        <BaseMapLayer imageUrl={selectedMap.imageUrl} geojsonData={selectedMap.geojsonData} />
+                        <GeoJSONLayer data={selectedMap.geojsonData} />
+                        <FitBounds geojsonData={selectedMap.geojsonData} imageBounds={selectedMap.imageUrl ? (calculateGeoJSONBounds(selectedMap.geojsonData) || undefined) : undefined} />
+                      </MapContainer>
+                    ) : (
+                      <div className="w-full h-full bg-dark-700 flex items-center justify-center">
+                        <div className="text-center">
+                          <svg className="w-16 h-16 text-primary-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m0 0L9 7" />
+                          </svg>
+                          <p className="text-dark-300">No GeoJSON data available</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Image Preview if available */}
+                  {selectedMap.imageUrl && (
+                    <div className="mt-4 bg-dark-700 rounded-lg p-4 border border-dark-600">
+                      <div className="text-sm font-medium text-dark-300 mb-2">Field Image</div>
+                      <div className="rounded-lg overflow-hidden border border-dark-600">
+                        <img 
+                          src={selectedMap.imageUrl} 
+                          alt={selectedMap.name}
+                          className="w-full h-auto max-h-48 object-cover"
+                          onError={(e) => {
+                            // Hide image if it fails to load
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="aspect-video bg-dark-700 rounded-lg flex items-center justify-center">
-                  <div className="text-center">
-                    <svg className="w-16 h-16 text-primary-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m0 0L9 7" />
-                    </svg>
-                    <p className="text-dark-300">No GeoJSON data available</p>
+
+                {/* Details Sidebar - Takes 1/3 of space */}
+                <div className="lg:col-span-1 space-y-4 overflow-y-auto">
+                  {/* NDVI Statistics */}
+                  {(selectedMap.metadata.avgNDVI !== undefined || selectedMap.metadata.minNDVI !== undefined || selectedMap.metadata.maxNDVI !== undefined) && (
+                    <div className="bg-dark-700 rounded-lg p-4 border border-dark-600">
+                      <h4 className="text-sm font-semibold text-primary-400 mb-3">NDVI Statistics</h4>
+                      <div className="space-y-3">
+                        {selectedMap.metadata.avgNDVI !== undefined && (
+                          <div>
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-xs text-dark-400">Average</span>
+                              <span className="text-sm font-medium text-dark-100">{selectedMap.metadata.avgNDVI.toFixed(3)}</span>
+                            </div>
+                            <div className="w-full bg-dark-600 rounded-full h-2">
+                              <div 
+                                className="bg-primary-500 h-2 rounded-full" 
+                                style={{ width: `${Math.min(100, (selectedMap.metadata.avgNDVI + 1) * 50)}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        )}
+                        {selectedMap.metadata.minNDVI !== undefined && (
+                          <div>
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-xs text-dark-400">Minimum</span>
+                              <span className="text-sm font-medium text-dark-100">{selectedMap.metadata.minNDVI.toFixed(3)}</span>
+                            </div>
+                            <div className="w-full bg-dark-600 rounded-full h-2">
+                              <div 
+                                className="bg-red-500 h-2 rounded-full" 
+                                style={{ width: `${Math.min(100, (selectedMap.metadata.minNDVI + 1) * 50)}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        )}
+                        {selectedMap.metadata.maxNDVI !== undefined && (
+                          <div>
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-xs text-dark-400">Maximum</span>
+                              <span className="text-sm font-medium text-dark-100">{selectedMap.metadata.maxNDVI.toFixed(3)}</span>
+                            </div>
+                            <div className="w-full bg-dark-600 rounded-full h-2">
+                              <div 
+                                className="bg-green-500 h-2 rounded-full" 
+                                style={{ width: `${Math.min(100, (selectedMap.metadata.maxNDVI + 1) * 50)}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Field Information */}
+                  <div className="bg-dark-700 rounded-lg p-4 border border-dark-600">
+                    <h4 className="text-sm font-semibold text-primary-400 mb-3">Field Information</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-dark-400">Field Name:</span>
+                        <span className="text-dark-100 font-medium">{selectedMap.metadata.fieldName}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-dark-400">Total Area:</span>
+                        <span className="text-dark-100 font-medium">{selectedMap.metadata.area}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-dark-400">Plot Count:</span>
+                        <span className="text-dark-100 font-medium">{selectedMap.metadata.plotCount}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-dark-400">Created:</span>
+                        <span className="text-dark-100 font-medium">{formatDate(selectedMap.createdAt)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* NDVI Color Legend */}
+                  <div className="bg-dark-700 rounded-lg p-4 border border-dark-600">
+                    <h4 className="text-sm font-semibold text-primary-400 mb-3">NDVI Color Legend</h4>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 rounded bg-[#d73027]"></div>
+                        <span className="text-dark-300">Low (&lt; 0.2)</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 rounded bg-[#f46d43]"></div>
+                        <span className="text-dark-300">Low-Medium (0.2-0.4)</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 rounded bg-[#fee08b]"></div>
+                        <span className="text-dark-300">Medium (0.4-0.5)</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 rounded bg-[#abdda4]"></div>
+                        <span className="text-dark-300">Medium-High (0.5-0.6)</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 rounded bg-[#66c2a5]"></div>
+                        <span className="text-dark-300">High (0.6-0.7)</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 rounded bg-[#3288bd]"></div>
+                        <span className="text-dark-300">Very High (&gt; 0.7)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* File Information */}
+                  <div className="bg-dark-700 rounded-lg p-4 border border-dark-600">
+                    <h4 className="text-sm font-semibold text-primary-400 mb-3">File Information</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-dark-400">GeoJSON:</span>
+                        <a 
+                          href={selectedMap.geojsonUrl} 
+                          download
+                          className="text-primary-400 hover:text-primary-300 underline"
+                        >
+                          Download
+                        </a>
+                      </div>
+                      {selectedMap.imageUrl && (
+                        <div className="flex justify-between">
+                          <span className="text-dark-400">Image:</span>
+                          <a 
+                            href={selectedMap.imageUrl} 
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary-400 hover:text-primary-300 underline"
+                          >
+                            View Full
+                          </a>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              )}
+              </div>
             </div>
           </div>
         </div>
