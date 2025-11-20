@@ -57,11 +57,25 @@ function FitBounds({ geojsonData, imageBounds }: { geojsonData: GeoJSONData | nu
     if (imageBounds && imageBounds.isValid()) {
       // If we have image bounds, use those
       map.fitBounds(imageBounds, { padding: [20, 20] });
+      // Constrain panning/zooming to (slightly padded) image bounds
+      const padded = imageBounds.pad(0.05);
+      map.setMaxBounds(padded);
+      // Ensure users can't zoom out so far that the image becomes tiny
+      const targetZoom = map.getBoundsZoom(padded, false);
+      if (!isNaN(targetZoom)) {
+        map.setMinZoom(targetZoom - 1);
+      }
     } else if (geojsonData && geojsonData.features.length > 0) {
       // Otherwise use GeoJSON bounds
       const bounds = L.geoJSON(geojsonData as any).getBounds();
       if (bounds.isValid()) {
         map.fitBounds(bounds, { padding: [20, 20] });
+        const padded = bounds.pad(0.05);
+        map.setMaxBounds(padded);
+        const targetZoom = map.getBoundsZoom(padded, false);
+        if (!isNaN(targetZoom)) {
+          map.setMinZoom(targetZoom - 1);
+        }
       }
     }
   }, [geojsonData, imageBounds, map]);
