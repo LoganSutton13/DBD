@@ -77,7 +77,7 @@ function calculateGeoJSONBounds(geojsonData: GeoJSONData | null): L.LatLngBounds
   return bounds.isValid() ? bounds : null;
 }
 
-// Component to render either image overlay or tile layer
+// Component to render either image overlay or, if unavailable, no external basemap
 function BaseMapLayer({ imageUrl, geojsonData }: { imageUrl?: string; geojsonData: GeoJSONData | null }) {
   const imageBounds = geojsonData ? calculateGeoJSONBounds(geojsonData) : null;
   
@@ -92,13 +92,8 @@ function BaseMapLayer({ imageUrl, geojsonData }: { imageUrl?: string; geojsonDat
     );
   }
   
-  // Fall back to tile layer if no image
-  return (
-    <TileLayer
-      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    />
-  );
+  // No external basemap when offline; rely on GeoJSON styling alone
+  return null;
 }
 
 // Component to style GeoJSON features based on NDVI
@@ -164,7 +159,7 @@ const FieldMapsView: React.FC = () => {
           { 
             filename: 'field_ndvi_python.geojson', 
             name: 'Field NDVI Analysis',
-            imageUrl: '/images/field_ndvi_python.jpg' // Optional: path to corresponding JPEG image
+            imageUrl: '/geojson/odm_orthophoto.png' // ODM orthophoto background image
           }
         ];
 
@@ -457,7 +452,7 @@ const FieldMapsView: React.FC = () => {
                         <p className="text-dark-300">Processing...</p>
                       </div>
                     </div>
-                  ) : map.geojsonData ? (
+                  ) : map.geojsonData && !selectedMap ? (
                     <div className="w-full h-full">
                       <MapContainer
                         center={[0, 0]}
@@ -512,7 +507,7 @@ const FieldMapsView: React.FC = () => {
                 <div className="w-20 h-20 bg-dark-600 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
                   {map.status === 'processing' ? (
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
-                  ) : map.geojsonData ? (
+                  ) : map.geojsonData && !selectedMap ? (
                     <div className="w-full h-full">
                       <MapContainer
                         center={[0, 0]}
