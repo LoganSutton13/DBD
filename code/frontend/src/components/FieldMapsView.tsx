@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, GeoJSON, useMap, ImageOverlay } from 'react-leaflet';
+import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -37,7 +37,6 @@ interface FieldMap {
   createdAt: string;
   geojsonUrl: string;
   geojsonData: GeoJSONData | null;
-  imageUrl?: string; // Optional JPEG image URL for the field
   metadata: {
     fieldName: string;
     area: string; // in acres/hectares
@@ -49,24 +48,12 @@ interface FieldMap {
   status: 'processing' | 'completed' | 'failed';
 }
 
-// Component to fit map bounds to GeoJSON or image
-function FitBounds({ geojsonData, imageBounds }: { geojsonData: GeoJSONData | null; imageBounds?: L.LatLngBounds }) {
+// Component to fit map bounds to GeoJSON
+function FitBounds({ geojsonData }: { geojsonData: GeoJSONData | null }) {
   const map = useMap();
   
   useEffect(() => {
-    if (imageBounds && imageBounds.isValid()) {
-      // If we have image bounds, use those
-      map.fitBounds(imageBounds, { padding: [20, 20] });
-      // Constrain panning/zooming to (slightly padded) image bounds
-      const padded = imageBounds.pad(0.05);
-      map.setMaxBounds(padded);
-      // Ensure users can't zoom out so far that the image becomes tiny
-      const targetZoom = map.getBoundsZoom(padded, false);
-      if (!isNaN(targetZoom)) {
-        map.setMinZoom(targetZoom - 1);
-      }
-    } else if (geojsonData && geojsonData.features.length > 0) {
-      // Otherwise use GeoJSON bounds
+    if (geojsonData && geojsonData.features.length > 0) {
       const bounds = L.geoJSON(geojsonData as any).getBounds();
       if (bounds.isValid()) {
         map.fitBounds(bounds, { padding: [20, 20] });
@@ -78,36 +65,26 @@ function FitBounds({ geojsonData, imageBounds }: { geojsonData: GeoJSONData | nu
         }
       }
     }
-  }, [geojsonData, imageBounds, map]);
+  }, [geojsonData, map]);
   
   return null;
 }
 
-// Calculate bounds from GeoJSON for image overlay
-function calculateGeoJSONBounds(geojsonData: GeoJSONData | null): L.LatLngBounds | null {
-  if (!geojsonData || geojsonData.features.length === 0) return null;
-  
-  const bounds = L.geoJSON(geojsonData as any).getBounds();
-  return bounds.isValid() ? bounds : null;
-}
-
-// Component to render either image overlay or, if unavailable, no external basemap
-function BaseMapLayer({ imageUrl, geojsonData }: { imageUrl?: string; geojsonData: GeoJSONData | null }) {
-  const imageBounds = geojsonData ? calculateGeoJSONBounds(geojsonData) : null;
-  
-  if (imageUrl && imageBounds) {
-    // Use image overlay if image URL and bounds are available
-    return (
-      <ImageOverlay
-        url={imageUrl}
-        bounds={imageBounds}
-        opacity={1}
-      />
-    );
+// Component to render OpenStreetMap tiles when online
+function BaseMapLayer({ isOnline }: { isOnline: boolean }) {
+  if (!isOnline) {
+    // No tile layer when offline - blank background
+    return null;
   }
   
-  // No external basemap when offline; rely on GeoJSON styling alone
-  return null;
+  // Use OpenStreetMap tiles when online
+  return (
+    <TileLayer
+      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      maxZoom={19}
+    />
+  );
 }
 
 // Component to style GeoJSON features based on NDVI
@@ -160,6 +137,32 @@ const FieldMapsView: React.FC = () => {
   const [fieldMaps, setFieldMaps] = useState<FieldMap[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState<boolean>(true);
+
+  // Check internet connectivity
+  useEffect(() => {
+    const checkConnectivity = async () => {
+      try {
+        // Try to fetch a small resource from OpenStreetMap
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        
+        const response = await fetch('https://tile.openstreetmap.org/0/0/0.png', {
+          method: 'HEAD',
+          signal: controller.signal,
+          cache: 'no-cache'
+        });
+        
+        clearTimeout(timeoutId);
+        setIsOnline(response.ok);
+      } catch (err) {
+        // If fetch fails, we're offline
+        setIsOnline(false);
+      }
+    };
+
+    checkConnectivity();
+  }, []);
 
   // Load GeoJSON files from public/geojson folder
   useEffect(() => {
@@ -168,12 +171,11 @@ const FieldMapsView: React.FC = () => {
         setLoading(true);
         setError(null);
 
-        // List of known GeoJSON files with their corresponding images (you can expand this or fetch from an API)
+        // List of known GeoJSON files (you can expand this or fetch from an API)
         const geojsonFiles = [
           { 
             filename: 'field_ndvi_python.geojson', 
-            name: 'Field NDVI Analysis',
-            imageUrl: '/geojson/odm_orthophoto.png' // ODM orthophoto background image
+            name: 'Field NDVI Analysis'
           }
         ];
 
@@ -237,16 +239,12 @@ const FieldMapsView: React.FC = () => {
             // This is a rough estimate; for accurate area, you'd need proper coordinate transformation
             const areaInAcres = (totalArea * 0.000247105) || 0; // Rough conversion
 
-            // Calculate bounds for image overlay
-            const bounds = calculateGeoJSONBounds(geojsonData);
-
             const map: FieldMap = {
               id: file.filename.replace('.geojson', ''),
               name: file.name || file.filename.replace('.geojson', '').replace(/_/g, ' '),
               createdAt: new Date().toISOString(), // You might want to get this from file metadata
               geojsonUrl: `/geojson/${file.filename}`,
               geojsonData: geojsonData,
-              imageUrl: file.imageUrl, // Optional image URL
               metadata: {
                 fieldName: file.name || 'Field',
                 area: areaInAcres > 0 ? `${areaInAcres.toFixed(2)} acres` : 'N/A',
@@ -475,9 +473,9 @@ const FieldMapsView: React.FC = () => {
                         zoomControl={false}
                         attributionControl={false}
                       >
-                        <BaseMapLayer imageUrl={map.imageUrl} geojsonData={map.geojsonData} />
+                        <BaseMapLayer isOnline={isOnline} />
                         <GeoJSONLayer data={map.geojsonData} />
-                        <FitBounds geojsonData={map.geojsonData} imageBounds={map.imageUrl ? (calculateGeoJSONBounds(map.geojsonData) || undefined) : undefined} />
+                        <FitBounds geojsonData={map.geojsonData} />
                       </MapContainer>
                     </div>
                   ) : (
@@ -530,9 +528,9 @@ const FieldMapsView: React.FC = () => {
                         zoomControl={false}
                         attributionControl={false}
                       >
-                        <BaseMapLayer imageUrl={map.imageUrl} geojsonData={map.geojsonData} />
+                        <BaseMapLayer isOnline={isOnline} />
                         <GeoJSONLayer data={map.geojsonData} />
-                        <FitBounds geojsonData={map.geojsonData} imageBounds={map.imageUrl ? (calculateGeoJSONBounds(map.geojsonData) || undefined) : undefined} />
+                        <FitBounds geojsonData={map.geojsonData} />
                       </MapContainer>
                     </div>
                   ) : (
@@ -680,9 +678,9 @@ const FieldMapsView: React.FC = () => {
                         style={{ height: '100%', width: '100%' }}
                         className="z-0"
                       >
-                        <BaseMapLayer imageUrl={selectedMap.imageUrl} geojsonData={selectedMap.geojsonData} />
+                        <BaseMapLayer isOnline={isOnline} />
                         <GeoJSONLayer data={selectedMap.geojsonData} />
-                        <FitBounds geojsonData={selectedMap.geojsonData} imageBounds={selectedMap.imageUrl ? (calculateGeoJSONBounds(selectedMap.geojsonData) || undefined) : undefined} />
+                        <FitBounds geojsonData={selectedMap.geojsonData} />
                       </MapContainer>
                     ) : (
                       <div className="w-full h-full bg-dark-700 flex items-center justify-center">
@@ -695,24 +693,6 @@ const FieldMapsView: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  
-                  {/* Image Preview if available */}
-                  {selectedMap.imageUrl && (
-                    <div className="mt-4 bg-dark-700 rounded-lg p-4 border border-dark-600">
-                      <div className="text-sm font-medium text-dark-300 mb-2">Field Image</div>
-                      <div className="rounded-lg overflow-hidden border border-dark-600">
-                        <img 
-                          src={selectedMap.imageUrl} 
-                          alt={selectedMap.name}
-                          className="w-full h-auto max-h-48 object-cover"
-                          onError={(e) => {
-                            // Hide image if it fails to load
-                            (e.target as HTMLImageElement).style.display = 'none';
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 {/* Details Sidebar - Takes 1/3 of space */}
@@ -836,19 +816,12 @@ const FieldMapsView: React.FC = () => {
                           Download
                         </a>
                       </div>
-                      {selectedMap.imageUrl && (
-                        <div className="flex justify-between">
-                          <span className="text-dark-400">Image:</span>
-                          <a 
-                            href={selectedMap.imageUrl} 
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary-400 hover:text-primary-300 underline"
-                          >
-                            View Full
-                          </a>
-                        </div>
-                      )}
+                      <div className="flex justify-between">
+                        <span className="text-dark-400">Map Status:</span>
+                        <span className={isOnline ? 'text-green-400' : 'text-yellow-400'}>
+                          {isOnline ? 'Online (OSM)' : 'Offline'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
