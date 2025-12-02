@@ -17,7 +17,60 @@ library(dbscan)
 
 # Uploading multispectral mosaic:
 # EX1.5b <- rast("../data/EX1_5band.tif") # test orthophoto from online
+EX1.5b <- rast("../data/DJI_202508020944_001_Shop/DJI_20250802095421_0206_MS_R.TIF")
 EX1.5b <- rast("../data/odm_orthophoto.tif") # Andrew's test field orthophoto
+
+### Pipeline with Pix4d pre-rendered NDVI Data ###
+Andrew_NDVI <- rast("../data/NDVI.data.tif") # Andrew's pre-rendered NDVI data with Pix4d
+source("fieldShapeModified.R")
+Field_Shape<-fieldShapeAuto(mosaic = Andrew_NDVI, heading = 0)
+fieldView(mosaic = Andrew_NDVI, fieldShape = Field_Shape$plots, type = 2, alpha = 0.2)
+
+InfoNDVI <- fieldInfo_extra(mosaic = Andrew_NDVI, fieldShape = Field_Shape$plots, fun="max")
+InfoNDVI <- na.omit(InfoNDVI)
+
+NDVIData <- InfoNDVI %>%
+  mutate(
+    centerpoint = st_centroid(geometry),
+    easting = st_coordinates(centerpoint)[, 1],
+    northing = st_coordinates(centerpoint)[, 2]
+  ) %>%
+  mutate(Gray_max = Gray_max * 100) %>%  # 3-dimensional radius means we need to spread out our NDVI Values more
+  select(Gray_max, easting, northing) %>%
+  st_drop_geometry()
+
+# normalization (PREFERRED OPTION)
+NDVIData_Scaled <- NDVIData %>%
+  mutate(
+    easting = (easting - min(easting)) / (max(easting) - min(easting)),
+    northing = (northing - min(northing)) / (max(northing) - min(northing)),
+    Gray_max = (Gray_max - min(Gray_max)) / (max(Gray_max) - min(Gray_max))
+  )
+
+# OR Standardization
+NDVIData_Scaled <- NDVIData %>%
+  mutate(
+    easting = (easting - mean(easting)) / sd(easting),
+    northing = (northing - mean(northing)) / sd(northing),
+    Gray_max = (Gray_max - mean(Gray_max)) / sd(Gray_max)
+  )
+
+dbscan_result <- dbscan(NDVIData_Scaled, eps = 0.03, minPts = 10)
+table(dbscan_result$cluster) # view the cluster results
+plot(NDVIData_Scaled[,2], NDVIData_Scaled[,3],
+     col = dbscan_result$cluster + 1,
+     pch = 20)
+
+idx <- dbscan_result$cluster == 8
+cols <- dbscan_result$cluster[idx] + 1  # or any mapping you use
+
+plot(NDVIData_Scaled[idx, 2], NDVIData_Scaled[idx, 3],
+     col = cols,
+     pch = 20)
+
+
+### END NDVI PIPELINE TEST
+
 
 # Cropping the image using the previous shape (We probably don't need to do this)
 #EX1.5b.Crop <- fieldCrop(mosaic = EX1.5b, plot = T, fast.plot = T)
@@ -45,7 +98,7 @@ map_rows <- ceiling((ymax(EX1.5b.Indices$NDVI) - ymin(EX1.5b.Indices$NDVI)) / un
 #EX1.Shape<-fieldShape_render(mosaic = EX1.5b.Indices$NDVI,ncols = 86, nrows = 44)
 #EX1.Shape<-fieldShape_render(mosaic = EX1.5b,ncols = 86, nrows = 44)
 source("fieldShapeModified.R")
-EX1.Shape$plots<-fieldShapeAuto(mosaic = EX1.5b.Indices$NDVI, heading = 45)
+EX1.Shape<-fieldShapeAuto(mosaic = EX1.5b.Indices$NDVI, heading = 45)
 fieldView(mosaic = EX1.5b.Indices$NDVI, fieldShape = EX1.Shape$plots, type = 2, alpha = 0.2)
 
 # Extracting data using the same fieldShape file from step 5:
@@ -63,8 +116,8 @@ NDVIData <- EX1.5b.InfoNDVI %>%
       easting = st_coordinates(centerpoint)[, 1],
       northing = st_coordinates(centerpoint)[, 2]
     ) %>%
-    mutate(NDVI_max = NDVI_max * 10) %>%  # 3-dimensional radius means we need to spread out our NDVI Values more
-    select(NDVI_max, easting, northing) %>%
+    mutate(Gray_max = Gray_max * 100) %>%  # 3-dimensional radius means we need to spread out our NDVI Values more
+    select(Gray_max, easting, northing) %>%
     st_drop_geometry()
 
 NDVIDataCSV <- EX1.5b.InfoNDVI %>%
@@ -88,7 +141,11 @@ write.csv(NDVIDataCSV, file = "NDVI_Test-Field.csv", row.names=FALSE)
 # run dbscan in 3-dimensions (latitude, longitude, NDVI)
 dbscan_result <- dbscan(NDVIData, eps = 6, minPts = 4)
 table(dbscan_result$cluster) # view the cluster results
+plot(NDVIData_Scaled[,2], NDVIData_Scaled[,3],
+     +      col = dbscan_result$cluster + 1,
+     +      pch = 20)
 
+plot(dbscan_result$cluster, NDVIData_Scaled)
 #  
 
 

@@ -8,7 +8,8 @@ library(terra)
 library(mapview)
 library(sf)
 library(stars)
-library(dbscan)
+
+library(jsonlite)
 
 detect_edges <- function(cells, row_count, margins = 2) {
   cells$edge <- FALSE
@@ -41,7 +42,7 @@ detect_edges <- function(cells, row_count, margins = 2) {
     # final condition:
     # A row is NOT edge only if:
     #   both neighbors exist AND both neighbors have edge = TRUE
-    print("Finishing up...")
+    print("Finding edges...")
     cells$edge <- !(
       up_exists & !up_edge &
         down_exists & !down_edge &
@@ -51,8 +52,35 @@ detect_edges <- function(cells, row_count, margins = 2) {
     margins <- margins - 1
   }
   
-  return(cells)
+  return(as.data.frame(cells))
   # Check your work
   # library(ggplot2); ggplot(data=edges_map, aes(x=easting, y=northing, color=edge)) + geom_point() + scale_color_manual(values = c("TRUE" = "red", "FALSE" = "blue"))
 }
 
+generate_waypoints <- function (cells_edges, starting_cell_num = NA, row_count) {
+  column_offset <- 0
+  direction <- 1
+  iterations <- 1
+  if (is.na(starting_cell)) {
+    # Obtain the smallest cell number containing a non-edge
+    starting_cell_num = min(as.numeric(rownames(cells_edges)[cells_edges$edge==FALSE]))
+  }
+  current_cell <- cells_edges[row.names(cells_edges) == starting_cell_num]
+  waypoints <- list(current_cell)
+  
+  while (current_cell$edge == FALSE) {
+    current_cell <- cells_edges[row.names(cells_edges) == starting_cell_num + row_count * iterations,]
+    while (current_cell$edge == FALSE) {
+      waypoints <- c(waypoints, current_cell)
+      iterations <- iterations + direction
+      current_cell <- cells_edges[row.names(cells_edges) == starting_cell_num + row_count * iterations,]
+    }
+    # add our edge cells, set up for next heading line
+    waypoints <- c(waypoints, current_cell)
+    column_offset <- column_offset + 1
+    direction <- direction * -1
+    starting_cell <- cells_edges[row.names(cells_edges) == starting_cell_num + column_offset + row_count * iterations,]
+    waypoints <- c(waypoints, current_cell)
+    iterations <- iterations + direction
+  }
+}
