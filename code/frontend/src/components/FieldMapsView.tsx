@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import area from '@turf/area';
 import 'leaflet/dist/leaflet.css';
 
 // Fix for default marker icons in Leaflet with webpack
@@ -216,28 +217,10 @@ const FieldMapsView: React.FC = () => {
               .map(f => f.properties.NDVI_max ?? f.properties.NDVI_mean)
               .filter((v): v is number => v !== undefined && !isNaN(v));
 
-            // Calculate area from geometries (approximate)
-            let totalArea = 0;
-            features.forEach(feature => {
-              if (feature.geometry.type === 'Polygon' && feature.geometry.coordinates[0]) {
-                const coords = feature.geometry.coordinates[0] as number[][];
-                // Simple shoelace formula for polygon area
-                let area = 0;
-                for (let i = 0; i < coords.length - 1; i++) {
-                  const x1 = coords[i][0] as number;
-                  const y1 = coords[i][1] as number;
-                  const x2 = coords[i + 1][0] as number;
-                  const y2 = coords[i + 1][1] as number;
-                  area += x1 * y2;
-                  area -= x2 * y1;
-                }
-                totalArea += Math.abs(area) / 2;
-              }
-            });
-
-            // Convert to acres (rough approximation: 1 degree ≈ 69 miles, 1 square degree ≈ 4761 square miles)
-            // This is a rough estimate; for accurate area, you'd need proper coordinate transformation
-            const areaInAcres = (totalArea * 0.000247105) || 0; // Rough conversion
+            // Calculate total area using Turf.js (returns square meters)
+            const areaInSquareMeters = area(geojsonData as any);
+            // Convert to acres (1 acre = 4046.86 square meters)
+            const areaInAcres = areaInSquareMeters / 4046.86;
 
             const map: FieldMap = {
               id: file.filename.replace('.geojson', ''),
