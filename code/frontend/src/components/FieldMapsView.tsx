@@ -177,6 +177,10 @@ const FieldMapsView: React.FC = () => {
           { 
             filename: 'field_ndvi_python.geojson', 
             name: 'Field NDVI Analysis'
+          },
+          { 
+            filename: 'field_ndvi_python_1.geojson', 
+            name: 'Field NDVI Analysis (Python 1)'
           }
         ];
 

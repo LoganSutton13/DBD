@@ -52,22 +52,30 @@ def rgb_to_hue_mask(r, g, b, crop_value=0.0, crop_above=True):
     """
     # Flatten all channels to Nx3
     flat = np.stack([r.flatten(), g.flatten(), b.flatten()], axis=1).astype(np.float32)
-
-    # Normalize to [0,1] for matplotlib
-    max_val = flat.max()
-    if max_val > 1.0:
-        flat /= max_val
-
-    # RGB→HSV
-    hsv = mcolors.rgb_to_hsv(flat)
-
-    hue = hsv[:, 0]  # extract hue channel
+    
+    # Create a mask for valid (non-NaN) pixels
+    valid_mask = ~np.isnan(flat).any(axis=1)
+    
+    # Normalize to [0,1] for matplotlib (only consider valid values)
+    valid_flat = flat[valid_mask]
+    if len(valid_flat) > 0:
+        max_val = np.nanmax(flat)
+        if max_val > 1.0:
+            flat /= max_val
+    
+    # Initialize output with False (will be masked out)
+    hue = np.zeros(flat.shape[0], dtype=np.float32)
+    
+    # RGB→HSV only for valid pixels
+    if valid_mask.sum() > 0:
+        hsv = mcolors.rgb_to_hsv(flat[valid_mask])
+        hue[valid_mask] = hsv[:, 0]  # extract hue channel
 
     # Mask threshold
     if crop_above:
-        mask = (hue > crop_value)
+        mask = (hue > crop_value) & valid_mask
     else:
-        mask = (hue < crop_value)
+        mask = (hue < crop_value) & valid_mask
 
     # Reshape back to raster
     return mask.reshape(r.shape)
@@ -104,10 +112,10 @@ def extract_zonal_stats(geom_gdf, raster_ndarray, transform, stats=["max", "mean
 
 # ------------ Main workflow ------------
 def main(
-    tif_path="C:\\Users\\fastw\\OneDrive\\Documents\\repos\\DroneBasedDevelopment\\code\\backend\\app\\services\\field_map_generator\\example_images\\odm_orthophoto.tif",
-    output_geojson="field_ndvi_python.geojson",
-    output_csv="NDVI_Test-Field_py.csv",
-    nir_band=5,
+    tif_path="C:\\Users\\Logan\\Documents\\repos\\DBD\\code\\backend\\app\\services\\field_map_generator\\example_images\\NDVI.rgb.tif",
+    output_geojson="field_ndvi_python_1.geojson",
+    output_csv="NDVI_Test-Field_py_1.csv",
+    nir_band=4,
     red_band=1,
     rededge_band=4,
     heading_deg=45.0,
