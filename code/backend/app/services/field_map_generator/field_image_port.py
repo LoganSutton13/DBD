@@ -56,12 +56,24 @@ def rgb_to_hue_mask(r, g, b, crop_value=0.0, crop_above=True):
     # Create a mask for valid (non-NaN) pixels
     valid_mask = ~np.isnan(flat).any(axis=1)
     
-    # Normalize to [0,1] for matplotlib (only consider valid values)
-    valid_flat = flat[valid_mask]
-    if len(valid_flat) > 0:
+    # Normalize to [0,1] for matplotlib using min-max scaling
+    # Global normalization preserves RGB ratios, which is important for accurate hue calculation
+    # This handles negative values, values > 1, and any range by mapping [min, max] -> [0, 1]
+    if valid_mask.sum() > 0:
+        # Find min and max values across ALL channels and ALL valid pixels
+        # This preserves the relative color relationships (R:G:B ratios) needed for hue
+        min_val = np.nanmin(flat)
         max_val = np.nanmax(flat)
-        if max_val > 1.0:
-            flat /= max_val
+        
+        # Normalize to [0, 1] range using min-max scaling: (x - min) / (max - min)
+        if max_val > min_val:
+            flat = (flat - min_val) / (max_val - min_val)
+        elif max_val == min_val:
+            # All values are the same - set to 0.5 (middle of range)
+            flat = np.full_like(flat, 0.5)
+        
+        # Final clamp to ensure exactly [0, 1] (handles floating point edge cases)
+        flat = np.clip(flat, 0.0, 1.0)
     
     # Initialize output with False (will be masked out)
     hue = np.zeros(flat.shape[0], dtype=np.float32)
@@ -112,7 +124,7 @@ def extract_zonal_stats(geom_gdf, raster_ndarray, transform, stats=["max", "mean
 
 # ------------ Main workflow ------------
 def main(
-    tif_path="C:\\Users\\Logan\\Documents\\repos\\DBD\\code\\backend\\app\\services\\field_map_generator\\example_images\\NDVI.rgb.tif",
+    tif_path="C:\\Users\\Logan\\Documents\\repos\\DBD\\code\\backend\\app\\services\\field_map_generator\\example_images\\test.tif",
     output_geojson="field_ndvi_python_1.geojson",
     output_csv="NDVI_Test-Field_py_1.csv",
     nir_band=4,
