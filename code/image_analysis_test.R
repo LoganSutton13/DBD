@@ -35,7 +35,7 @@ NDVIData <- InfoNDVI %>%
     easting = st_coordinates(centerpoint)[, 1],
     northing = st_coordinates(centerpoint)[, 2]
   ) %>%
-  mutate(Gray_max = Gray_max * 100) %>%  # 3-dimensional radius means we need to spread out our NDVI Values more
+  #mutate(Gray_max = Gray_max * 100) %>%  # 3-dimensional radius means we need to spread out our NDVI Values more
   select(Gray_max, easting, northing) %>%
   st_drop_geometry()
 
@@ -55,12 +55,14 @@ NDVIData_Scaled <- NDVIData %>%
     Gray_max = (Gray_max - mean(Gray_max)) / sd(Gray_max)
   )
 
+
 dbscan_result <- dbscan(NDVIData_Scaled, eps = 0.03, minPts = 10)
 table(dbscan_result$cluster) # view the cluster results
 plot(NDVIData_Scaled[,2], NDVIData_Scaled[,3],
      col = dbscan_result$cluster + 1,
      pch = 20)
 
+# view only certain clusters
 idx <- dbscan_result$cluster == 8
 cols <- dbscan_result$cluster[idx] + 1  # or any mapping you use
 
@@ -86,7 +88,7 @@ EX1.5b.Rotated<-fieldRotate(EX1.5b, theta = 40, plot = T)
 EX1.5b.RemSoil<-fieldMask(EX1.5b,Red=1,Green=2,Blue=3,index="HUE",cropValue=0,cropAbove=T,plot=T)
 
 # Building indices (NDVI and NDRE)
-EX1.5b.Indices <- fieldIndex(EX1.5b,Red=1,Green=2,Blue=3,RedEdge=4,NIR=5,
+EX1.5b.Indices <- fieldIndex(EX1.5b,Red=1,Green=2,NIR=3,RedEdge=4,
                              index = c("NDVI","NDRE"))
 
 unitSize = 4.572 # 15ft in meters
