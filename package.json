@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@turf/area": "^7.3.1"
+  }
+}
