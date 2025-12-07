@@ -4,11 +4,11 @@
 
 ### One-sentence description of the project
 
-A full-stack web application that processes drone imagery through automated image stitching and orthophoto generation using Node ODM, providing farmers and agricultural professionals with high-quality field maps and analysis tools.
+A full-stack web application that processes drone imagery through automated image stitching and orthophoto generation using Node ODM, providing farmers and agricultural professionals with high-quality field maps, NDVI analysis, path planning, and agricultural analysis tools.
 
 ### Additional information about the project
 
-DroneBasedDevelopment is a comprehensive drone imagery processing platform designed for agricultural applications. The system combines a modern React frontend with a Python FastAPI backend to provide seamless upload, processing, and visualization of drone-captured field imagery. Users can upload multiple drone images, which are automatically processed using Node ODM to create orthophotos and field maps. The platform features a dark-themed UI with real-time processing monitoring, file management, and integration with agricultural analysis tools for pesticide prescription mapping and field assessment.
+DroneBasedDevelopment is a comprehensive drone imagery processing platform designed for agricultural applications. The system combines a modern React frontend with a Python FastAPI backend to provide seamless upload, processing, and visualization of drone-captured field imagery. Users can upload multiple drone images, which are automatically processed using Node ODM to create orthophotos and field maps. The platform features a dark-themed UI with real-time processing monitoring, file management, NDVI analysis with DBSCAN clustering, robot path planning capabilities, and integration with agricultural analysis tools for pesticide prescription mapping and field assessment.
 
 ## Installation
 
@@ -30,6 +30,12 @@ DroneBasedDevelopment is a comprehensive drone imagery processing platform desig
 - **aiofiles** - Async file operations for handling uploads
 - **httpx** - HTTP client for Node ODM communication
 - **python-multipart** - Support for file uploads
+- **rasterio** - Geospatial raster I/O operations
+- **rioxarray** - Rasterio xarray extension for geospatial data
+- **geopandas** - Spatial data operations and analysis
+- **scikit-learn** - Machine learning library (DBSCAN clustering)
+- **rasterstats** - Zonal statistics for raster data
+- **farm-ng** - Robot path planning and track generation framework
 
 **Frontend Dependencies:**
 - **React 18** - UI library with TypeScript support
@@ -136,6 +142,23 @@ docker run -p 3000:3000 opendronemap/nodeodm
 - Crop health analysis tools
 - Integration with agricultural data systems
 
+**6. NDVI Analysis & Field Health Assessment**
+- NDVI (Normalized Difference Vegetation Index) computation from multispectral imagery
+- NDRE (Normalized Difference Red Edge) calculation
+- DBSCAN clustering for spatial field segmentation
+- Soil masking using HSV/HUE-based image processing
+- Grid-based field analysis with configurable cell sizes
+- GeoJSON export for field maps with NDVI and cluster data
+- CSV export with plot-level NDVI statistics and geographic coordinates
+- Python port of FIELDimageR workflow for comprehensive field analysis
+
+**7. Robot Path Planning**
+- Path planning module for generating robot navigation tracks
+- Support for straight segments, turns, arcs, and AB line segments
+- Integration with farm-ng track builder framework
+- Custom track generation utilities
+- Robot-compatible path file generation
+
 ### Usage Walkthrough
 
 1. **Start the Application**
@@ -164,6 +187,13 @@ docker run -p 3000:3000 opendronemap/nodeodm
    - Use the Field Maps tab for agricultural analysis
    - Generate pesticide prescriptions with spray maps as needed
 
+5. **Field Analysis & Path Planning**
+   - Process orthophotos for NDVI analysis
+   - View field health maps with DBSCAN clustering
+   - Export field maps as GeoJSON or CSV
+   - Generate robot navigation paths for field operations
+   - Configure path planning parameters (heading, spacing, etc.)
+
 
 ## Known Problems
 
@@ -174,58 +204,88 @@ docker run -p 3000:3000 opendronemap/nodeodm
 - **Impact**: Uploads will fail with 503 error if Node ODM is not available
 - **Location**: `code/backend/app/api/v1/upload.py`
 - **Workaround**: Ensure Node ODM Docker container is running before starting the backend
-- **Status**: ✅ Improved error handling in Sprint 2
+- **Status**: Improved error handling in Sprint 2
 
 **2. File Cleanup**
 - **Issue**: Temporary uploaded files are not cleaned up on processing errors
 - **Impact**: Disk space may accumulate over time with failed uploads
 - **Location**: `code/backend/app/api/v1/upload.py`
 - **Workaround**: Manually clean the `uploads/` directory periodically
-- **Status**: 🔄 Background polling implemented in Sprint 2, cleanup still pending
+- **Status**: Background polling implemented in Sprint 2, cleanup still pending
 
 **3. Task Status Polling**
 - **Issue**: Frontend polling may not handle all Node ODM status responses correctly
 - **Impact**: Some tasks may show incorrect status or get stuck in processing state
 - **Location**: `code/frontend/src/components/ProcessingView.tsx`
 - **Workaround**: Use manual refresh button to force status updates
-- **Status**: ✅ Background polling implemented in Sprint 2 for automatic status updates
+- **Status**: Background polling implemented in Sprint 2 for automatic status updates
 
 **4. Field Maps Backend Integration**
 - **Issue**: Field maps view still uses mock data instead of backend API
 - **Impact**: Users cannot view actual processed field maps in Field Maps tab
 - **Location**: `code/frontend/src/components/FieldMapsView.tsx`
 - **Workaround**: Use Gallery view to see processed orthophotos
-- **Status**: 🔄 Planned for future sprint
+- **Status**: Field maps UI template created in Sprint 3, backend integration pending
 
 **5. Pesticide Prescription Backend Integration**
 - **Issue**: Pesticide prescription generation uses mock data
 - **Impact**: Cannot generate actual prescription maps from processed orthophotos
 - **Location**: `code/frontend/src/components/PesticidePrescriptionsView.tsx`
 - **Workaround**: Spray map functionality is available but needs backend integration
-- **Status**: 🔄 Planned for future sprint
+- **Status**: Planned for future sprint
+
+**7. Path Planning Frontend Integration**
+- **Issue**: Path planning module exists but is not integrated with frontend UI
+- **Impact**: Users cannot interact with path planning features through the web interface
+- **Location**: `code/backend/app/services/path_planning_module/`
+- **Workaround**: Path planning can be used programmatically via backend
+- **Status**: Backend implementation complete in Sprint 3, frontend integration pending
+
+**8. NDVI Analysis API Endpoints**
+- **Issue**: NDVI analysis functionality exists but lacks API endpoints for frontend consumption
+- **Impact**: Frontend cannot trigger or retrieve NDVI analysis results
+- **Location**: `code/backend/app/services/field_map_generator/field_image_port.py`
+- **Workaround**: NDVI analysis can be run directly via Python scripts
+- **Status**: Implementation complete in Sprint 3, API endpoints pending
 
 **6. Database Integration**
 - **Issue**: No database persistence for tasks and results
 - **Impact**: Task history and metadata are file-based only
 - **Location**: Backend architecture
 - **Workaround**: Current file-based storage works but lacks query capabilities
-- **Status**: 🔄 Planned for future sprint
+- **Status**: Planned for future sprint
 
 ### Development Notes
 
-- The application is currently in active development (Sprint 2 completed)
+- The application is currently in active development (Sprint 3 completed)
+- **Sprint 1 Achievements**: 
+  - Complete drone imagery upload system with drag-and-drop interface
+  - Real-time processing queue monitoring
+  - Interactive gallery view for processed imagery
+  - Backend API integration with NodeODM
+  - Configurable processing parameters
 - **Sprint 2 Achievements**: 
-  - ✅ Results API with orthophoto and PDF report retrieval
-  - ✅ Gallery view backend integration with real data
-  - ✅ PDF report viewing functionality
-  - ✅ Task naming and metadata storage
-  - ✅ Automatic background polling for task completion
-  - ✅ File storage service with manifest management
-  - ✅ Enhanced upload parameters (heading, grid size)
-  - ✅ Spray map functionality in pesticide prescriptions
+  - Results API with orthophoto and PDF report retrieval
+  - Gallery view backend integration with real data
+  - PDF report viewing functionality
+  - Task naming and metadata storage
+  - Automatic background polling for task completion
+  - File storage service with manifest management
+  - Enhanced upload parameters (heading, grid size)
+  - Spray map functionality in pesticide prescriptions
+- **Sprint 3 Achievements**:
+  - Path planning module with farm-ng integration
+  - NDVI analysis with DBSCAN clustering
+  - Python port of FIELDimageR workflow
+  - Field maps UI template
+  - GeoJSON and CSV export functionality
+  - Soil masking capabilities
+  - Grid-based field analysis system
+  - Client demo and semester accomplishments presentation
 - Some features like database persistence and authentication are planned but not yet implemented
 - Node ODM integration is functional with automatic polling and asset downloading
 - File-based storage with manifest files is currently used for task metadata
+- NDVI analysis and path planning modules are implemented but need frontend integration
 
 
 ## Contributing
@@ -288,8 +348,9 @@ We welcome contributions to the DroneBasedDevelopment project! Please follow the
 ### Project Structure
 - **[Contributing Guidelines](CONTRIBUTING.md)** - Development standards and contribution process
 - **[Project Requirements](docs/Reports/DBD_Assignment1_Requirements.pdf)** - Original project specifications
-- **[Sprint 1 Report](docs/Reports/01_Requirements.md)** - Sprint 1 accomplishments and documentation
-- **[Sprint 2 Report](docs/Reports/02_Requirements.md)** - Sprint 2 accomplishments and documentation
+- **[Sprint 1 Report](docs/Reports/01_Sprint_Report.md)** - Sprint 1 accomplishments and documentation
+- **[Sprint 2 Report](docs/Reports/02_Sprint_Report.md)** - Sprint 2 accomplishments and documentation
+- **[Sprint 3 Report](docs/Reports/03_Sprint_Report.md)** - Sprint 3 accomplishments and documentation
 - **[Meeting Minutes](docs/Mom/)** - Project meeting documentation and templates
 
 ### Resources
