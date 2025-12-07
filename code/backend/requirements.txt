@@ -30,3 +30,8 @@ pyproj
 matplotlib
 pandas
 rpy2
+farm-ng-amiga
+farm-ng-core
+matplotlib
+
+
