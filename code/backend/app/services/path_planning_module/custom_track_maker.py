@@ -289,16 +289,130 @@ def build_track(results):
     return track_builder
 
 
+def build_boustrophedon_track(results):
+    """
+    Build a FarmNG Track from GeoJSON results using a boustrophedon (alternating) pattern.
+    This groups polygons into rows based on their Y coordinates and alternates direction
+    for each row to create an efficient back-and-forth path.
+    
+    Args:
+        results: GeoJSON-like dict containing features with Polygon geometries
+    
+    Returns:
+        TrackBuilder: A track builder with waypoints following a boustrophedon pattern
+    """
+    # Extract plot centers from all features
+    plots = []
+    for feature in results.get('features', []):
+        geometry = feature.get('geometry', {})
+        if geometry.get('type') == 'Polygon':
+            # Get the first ring (outer boundary)
+            ring = geometry.get('coordinates', [])[0] if geometry.get('coordinates', []) else []
+            if len(ring) < 3:
+                continue
+            
+            # Calculate centroid of the polygon (simple average of coordinates)
+            e_coords = [pt[0] for pt in ring if len(pt) >= 2]
+            n_coords = [pt[1] for pt in ring if len(pt) >= 2]
+            
+            if e_coords and n_coords:
+                centroid_e = sum(e_coords) / len(e_coords)
+                centroid_n = sum(n_coords) / len(n_coords)
+                
+                # Store plot info with properties
+                plots.append({
+                    'e': centroid_e,
+                    'n': centroid_n,
+                    'plot_id': feature.get('properties', {}).get('PlotID', 0),
+                    'feature': feature
+                })
+    
+    # Group plots into rows based on similar N (northing/latitude) values
+    # Use a tolerance to group plots that are roughly at the same latitude
+    row_tolerance = 0.00005  # Adjust this based on your coordinate system scale
+    
+    # Sort all plots by N coordinate first
+    plots.sort(key=lambda p: p['n'])
+    
+    # Group into rows
+    rows = []
+    current_row = []
+    
+    for plot in plots:
+        if not current_row:
+            current_row.append(plot)
+        else:
+            # Check if this plot belongs to the current row
+            avg_n = sum(p['n'] for p in current_row) / len(current_row)
+            if abs(plot['n'] - avg_n) < row_tolerance:
+                current_row.append(plot)
+            else:
+                # Start a new row
+                rows.append(current_row)
+                current_row = [plot]
+    
+    # Don't forget the last row
+    if current_row:
+        rows.append(current_row)
+    
+    # Sort each row by E coordinate and alternate direction
+    for i, row in enumerate(rows):
+        # Sort by easting
+        row.sort(key=lambda p: p['e'])
+        # Reverse every other row for boustrophedon pattern
+        if i % 2 == 1:
+            row.reverse()
+    
+    # Create track from ordered plots
+    # Use first plot's coordinates as starting point
+    if not rows or not rows[0]:
+        raise ValueError("No valid plots found in GeoJSON data")
+    
+    first_plot = rows[0][0]
+    start = Pose3F64(
+        a_from_b=Isometry3F64(
+            translation=np.array([[first_plot['e']], [first_plot['n']], [0.0]]),
+            rotation=Rotation3F64(np.eye(3))
+        ),
+        frame_a="world",
+        frame_b="robot",
+    )
+    
+    track_builder = TrackBuilder(start=start)
+    
+    # Create waypoints following the boustrophedon pattern
+    count = 0
+    for row in rows:
+        for plot in row:
+            pose = Pose3F64(
+                a_from_b=Isometry3F64(
+                    translation=np.array([[plot['e']], [plot['n']], [0.0]]),
+                    rotation=Rotation3F64(np.eye(3))
+                ),
+                frame_a="world",
+                frame_b="robot",
+            )
+            track_builder.create_ab_segment(f"plot_{plot['plot_id']}", pose, spacing=1.0)
+            count += 1
+    
+    print(f"Created boustrophedon track with {count} waypoints across {len(rows)} rows")
+    
+    return track_builder
+
+
 async def test():
     geojson_data = load_geojson(Path(__file__).parent / 'field_ndvi_python.geojson')
-    print(build_track(geojson_data))
-    track_builder = build_track(geojson_data)
+    
+    # Test the new boustrophedon track builder
+    print("Building boustrophedon track...")
+    track_builder = build_boustrophedon_track(geojson_data)
     waypoints = track_builder.unpack_track()
-    print(len(waypoints[0]))
-    # Plot the track as before
+    print(f"Track has {len(waypoints[0])} waypoints")
+    
+    # Plot the track
     plot_track(waypoints)
-    return
-    # Extract and plot raw ENU points from geojson
+    
+    # Extract and plot raw ENU points from geojson for comparison
     x_raw, y_raw = extract_geojson_points(geojson_data)
     plt.scatter(x_raw, y_raw, color='black', s=10, label='Raw ENU Points', alpha=0.7)
     plt.legend()
