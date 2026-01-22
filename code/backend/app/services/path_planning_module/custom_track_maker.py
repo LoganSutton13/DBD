@@ -21,6 +21,50 @@ from google.protobuf.empty_pb2 import Empty
 from track_planner import TrackBuilder
 
 matplotlib.use("TkAgg")  # Set the backend to Agg for non-GUI environments
+
+import math
+# --- Boustrophedon row segmentation and traversal ---
+def boustrophedon_by_lookahead(points, distance_threshold, key_e='e', key_n='n'):
+    """
+    Segments a list of points into rows using a lookahead distance threshold, then reverses every other row
+    to create a boustrophedon (snake-like) traversal order.
+    Args:
+        points: List of dicts or objects with at least keys 'e' (easting) and 'n' (northing).
+        distance_threshold: Distance above which a new row is detected.
+        key_e: Key for easting (default 'e').
+        key_n: Key for northing (default 'n').
+    Returns:
+        List of points in boustrophedon traversal order.
+    """
+    if not points:
+        return []
+
+    rows = []
+    current_row = [points[0]]
+    for i in range(1, len(points)):
+        prev = points[i-1]
+        curr = points[i]
+        dx = curr[key_e] - prev[key_e]
+        dy = curr[key_n] - prev[key_n]
+        dist = math.hypot(dx, dy)
+        if dist > distance_threshold:
+            rows.append(current_row)
+            current_row = [curr]
+        else:
+            current_row.append(curr)
+    if current_row:
+        rows.append(current_row)
+
+    # Reverse every other row for boustrophedon pattern
+    for i in range(len(rows)):
+        if i % 2 == 1:
+            rows[i] = list(reversed(rows[i]))
+
+    # Concatenate all rows
+    ordered_points = []
+    for row in rows:
+        ordered_points.extend(row)
+    return ordered_points
 def extract_geojson_points(geojson_data):
     """
     Extract all ENU points from a GeoJSON-like dict (output of load_geojson).
@@ -250,10 +294,13 @@ def build_track(results):
     )
     track_builder = TrackBuilder(start=start)
     track = Track()
+    row_count = 0
     count = 0
     reverse = True
     for feature in results.get('features', []):
         geometry = feature.get('geometry', {})
+        if geometry.get('type') != 'Polygon':
+            continue
         if geometry.get('type') == 'Polygon':
             # GeoJSON Polygons: coordinates is a list of linear rings (first is outer, others are holes)
             for ring in geometry.get('coordinates', []):
@@ -270,6 +317,7 @@ def build_track(results):
                 track_builder.create_ab_segment(f"pose {count}", pose, spacing=1.0)
                 track.waypoints.append(pose.to_proto())
                 count += 1
+                continue
                 # maybe continue here for testing
                 for coord in ring:
                     if len(coord) < 2:
@@ -285,118 +333,9 @@ def build_track(results):
                     track_builder.create_ab_segment(f"pose {count}", pose, spacing=4.0)
                     track.waypoints.append(pose.to_proto())
                     count += 1
-            reverse = not reverse
-    return track_builder
-
-
-def build_boustrophedon_track(results):
-    """
-    Build a FarmNG Track from GeoJSON results using a boustrophedon (alternating) pattern.
-    This groups polygons into rows based on their Y coordinates and alternates direction
-    for each row to create an efficient back-and-forth path.
-    
-    Args:
-        results: GeoJSON-like dict containing features with Polygon geometries
-    
-    Returns:
-        TrackBuilder: A track builder with waypoints following a boustrophedon pattern
-    """
-    # Extract plot centers from all features
-    plots = []
-    for feature in results.get('features', []):
-        geometry = feature.get('geometry', {})
-        if geometry.get('type') == 'Polygon':
-            # Get the first ring (outer boundary)
-            ring = geometry.get('coordinates', [])[0] if geometry.get('coordinates', []) else []
-            if len(ring) < 3:
-                continue
-            
-            # Calculate centroid of the polygon (simple average of coordinates)
-            e_coords = [pt[0] for pt in ring if len(pt) >= 2]
-            n_coords = [pt[1] for pt in ring if len(pt) >= 2]
-            
-            if e_coords and n_coords:
-                centroid_e = sum(e_coords) / len(e_coords)
-                centroid_n = sum(n_coords) / len(n_coords)
-                
-                # Store plot info with properties
-                plots.append({
-                    'e': centroid_e,
-                    'n': centroid_n,
-                    'plot_id': feature.get('properties', {}).get('PlotID', 0),
-                    'feature': feature
-                })
-    
-    # Group plots into rows based on similar N (northing/latitude) values
-    # Use a tolerance to group plots that are roughly at the same latitude
-    row_tolerance = 0.00005  # Adjust this based on your coordinate system scale
-    
-    # Sort all plots by N coordinate first
-    plots.sort(key=lambda p: p['n'])
-    
-    # Group into rows
-    rows = []
-    current_row = []
-    
-    for plot in plots:
-        if not current_row:
-            current_row.append(plot)
-        else:
-            # Check if this plot belongs to the current row
-            avg_n = sum(p['n'] for p in current_row) / len(current_row)
-            if abs(plot['n'] - avg_n) < row_tolerance:
-                current_row.append(plot)
-            else:
-                # Start a new row
-                rows.append(current_row)
-                current_row = [plot]
-    
-    # Don't forget the last row
-    if current_row:
-        rows.append(current_row)
-    
-    # Sort each row by E coordinate and alternate direction
-    for i, row in enumerate(rows):
-        # Sort by easting
-        row.sort(key=lambda p: p['e'])
-        # Reverse every other row for boustrophedon pattern
-        if i % 2 == 1:
-            row.reverse()
-    
-    # Create track from ordered plots
-    # Use first plot's coordinates as starting point
-    if not rows or not rows[0]:
-        raise ValueError("No valid plots found in GeoJSON data")
-    
-    first_plot = rows[0][0]
-    start = Pose3F64(
-        a_from_b=Isometry3F64(
-            translation=np.array([[first_plot['e']], [first_plot['n']], [0.0]]),
-            rotation=Rotation3F64(np.eye(3))
-        ),
-        frame_a="world",
-        frame_b="robot",
-    )
-    
-    track_builder = TrackBuilder(start=start)
-    
-    # Create waypoints following the boustrophedon pattern
-    count = 0
-    for row in rows:
-        for plot in row:
-            pose = Pose3F64(
-                a_from_b=Isometry3F64(
-                    translation=np.array([[plot['e']], [plot['n']], [0.0]]),
-                    rotation=Rotation3F64(np.eye(3))
-                ),
-                frame_a="world",
-                frame_b="robot",
-            )
-            track_builder.create_ab_segment(f"plot_{plot['plot_id']}", pose, spacing=1.0)
-            count += 1
-    
-    print(f"Created boustrophedon track with {count} waypoints across {len(rows)} rows")
-    
+            #reverse = not reverse
+            row_count += 1
+            if row_count == 75: break  # only do first polygon for now
     return track_builder
 
 
@@ -404,13 +343,43 @@ async def test():
     geojson_data = load_geojson(Path(__file__).parent / 'field_ndvi_python.geojson')
     
     # Test the new boustrophedon track builder
-    print("Building boustrophedon track...")
-    track_builder = build_boustrophedon_track(geojson_data)
+    print("Building track...")
+    track_builder = build_track(geojson_data)
     waypoints = track_builder.unpack_track()
     print(f"Track has {len(waypoints[0])} waypoints")
     
     # Plot the track
     plot_track(waypoints)
+    
+    # --- BEGIN: Boustrophedon by lookahead integration ---
+    # Extract points from geojson_data (assuming Polygon features)
+    points = []
+    for feature in geojson_data.get('features', []):
+        geometry = feature.get('geometry', {})
+        if geometry.get('type') == 'Polygon':
+            ring = geometry.get('coordinates', [])[0] if geometry.get('coordinates', []) else []
+            if len(ring) < 3:
+                continue
+            e_coords = [pt[0] for pt in ring if len(pt) >= 2]
+            n_coords = [pt[1] for pt in ring if len(pt) >= 2]
+            for e, n in zip(e_coords, n_coords):
+                points.append({'e': e, 'n': n})
+
+    # Set a distance threshold (tune as needed for your data)
+    distance_threshold = 10.0  # meters or your coordinate units
+
+    # Use the new boustrophedon_by_lookahead function
+    boustrophedon_points = boustrophedon_by_lookahead(points, distance_threshold)
+
+    # Prepare for plotting
+    x = [p['e'] for p in boustrophedon_points]
+    y = [p['n'] for p in boustrophedon_points]
+    headings = [0.0] * len(x)  # Placeholder, update if you have heading info
+
+    print(f"[BOUSTRO LOOKAHEAD] Track has {len(x)} waypoints (using lookahead logic)")
+    plot_track([x, y, headings])
+    # --- END: Boustrophedon by lookahead integration ---
+    return
     
     # Extract and plot raw ENU points from geojson for comparison
     x_raw, y_raw = extract_geojson_points(geojson_data)
