@@ -64,9 +64,11 @@ def plot_track(waypoints: list[list[float]]) -> None:
 
 
     plt.figure(figsize=(8, 8))
-    plt.plot(x, y, color='orange', linewidth=1.0)
-    plt.scatter(x, y, color='green', s=20, label='Waypoints')  # Plot individual waypoints
+    plt.plot(x, y, color='orange', linewidth=0.5)
+    plt.scatter(x, y, color='green', s=0.5, label='Waypoints')  # Plot individual waypoints
+    plt.show()
 
+    return
     for i in range(0, len(x), arrow_interval):
         # Calculate the heading change
         if i > 0:
@@ -78,12 +80,13 @@ def plot_track(waypoints: list[list[float]]) -> None:
         if heading_change < turn_threshold:
             plt.quiver(x[i], y[i], U[i], V[i], angles='xy', scale_units='xy', scale=3.5, color='blue')
 
+    return
     plt.plot(x[0], y[0], marker="o", markersize=5, color='red')
     plt.axis("equal")
     legend_elements = [
         plt.Line2D([0], [0], color='orange', lw=2, label='Track'),
         plt.Line2D([0], [0], color='blue', lw=2, label='Heading'),
-        plt.Line2D([0], [0], color='green', marker='o', linestyle='', markersize=8, label='Waypoints'),
+        #plt.Line2D([0], [0], color='green', marker='o', linestyle='', markersize=8, label='Waypoints'),
         plt.Line2D([0], [0], color='red', marker='o', linestyle='', markersize=8, label='Start'),
     ]
     plt.legend(handles=legend_elements)
@@ -264,10 +267,10 @@ def build_track(results):
                     frame_a="world",
                     frame_b="robot",
                 )
-                track_builder.create_ab_segment(f"pose {count}", pose, spacing=4.0)
+                track_builder.create_ab_segment(f"pose {count}", pose, spacing=1.0)
                 track.waypoints.append(pose.to_proto())
                 count += 1
-                continue
+                # maybe continue here for testing
                 for coord in ring:
                     if len(coord) < 2:
                         continue
@@ -294,6 +297,7 @@ async def test():
     print(len(waypoints[0]))
     # Plot the track as before
     plot_track(waypoints)
+    return
     # Extract and plot raw ENU points from geojson
     x_raw, y_raw = extract_geojson_points(geojson_data)
     plt.scatter(x_raw, y_raw, color='black', s=10, label='Raw ENU Points', alpha=0.7)
