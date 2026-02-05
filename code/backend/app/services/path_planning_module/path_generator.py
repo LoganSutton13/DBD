@@ -14,7 +14,7 @@ from farm_ng_core_pybind import Pose3F64
 from farm_ng_core_pybind import Rotation3F64
 from google.protobuf.empty_pb2 import Empty
 import numpy as np
-from track_planner import TrackBuilder
+from .track_planner import TrackBuilder
 import matplotlib.pyplot as plt
 
 class PathPoint:
@@ -27,7 +27,7 @@ class PathPoint:
         
 class PathGenerator:
     """Class to generate a boustrophedon path from a shapefile and convert it to FarmNG track format."""
-    def __init__(self, pid: int, shapefile_path: Path, farmng_track_file: Path):
+    def __init__(self, pid: int, shapefile_path: Path, farmng_track_file: Path, heading: float = 0.0):
         """
         Docstring for __init__
         
@@ -36,10 +36,14 @@ class PathGenerator:
         :type shapefile_path: Path
         :param farmng_track_file: path to the desired output. Must end with .json
         :type farmng_track_file: Path
+        :param heading: desired heading angle in degrees for path planning
+        :type heading: float
         """
         self.shapefile_path = shapefile_path
         self.output_path_file = f"localdata/path_{pid}.csv"
         self.farmng_track_file = farmng_track_file
+        # need to convert degrees to radians for fields2cover
+        self.heading = math.radians(heading)
         self.waypoints = None
 
     def generate_path(self):
@@ -101,7 +105,7 @@ class PathGenerator:
 
         # --- 5) Swaths (boustrophedon) ---
         bf = f2c.SG_BruteForce()
-        angle = math.pi  # choose your desired heading in radians
+        angle = self.heading  # choose your desired heading in radians
         swaths = bf.generateSwaths(angle, robot.getCovWidth(), no_hl.getGeometry(0))
 
         boustro = f2c.RP_Boustrophedon()

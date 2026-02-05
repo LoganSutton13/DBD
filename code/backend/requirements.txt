@@ -52,4 +52,5 @@ typing-extensions
 
 # (Optional) If using asyncio in other scripts
 asyncio
+pyodm
 
