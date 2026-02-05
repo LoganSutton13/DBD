@@ -2,3 +2,25 @@ farm-ng-amiga
 farm-ng-core
 matplotlib
 numpy
+
+# Core scientific and geospatial libraries
+numpy
+matplotlib
+geopandas
+
+# Fields2Cover (field coverage planning)
+fields2cover
+
+# FarmNG core and protobuf dependencies
+farm-ng-core
+farm-ng
+protobuf
+
+# Google protobuf (for google.protobuf.empty_pb2)
+protobuf
+
+# For type hints and CSV
+typing-extensions
+
+# (Optional) If using asyncio in other scripts
+asyncio
