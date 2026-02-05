@@ -9,7 +9,8 @@ matplotlib
 geopandas
 
 # Fields2Cover (field coverage planning)
-fields2cover
+#fields2cover this cannot be intalled with PIP, it requires manual installation from source
+# see the docker file to manage this
 
 # FarmNG core and protobuf dependencies
 farm-ng-core
