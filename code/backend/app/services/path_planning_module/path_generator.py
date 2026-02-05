@@ -27,7 +27,7 @@ class PathPoint:
         
 class PathGenerator:
     """Class to generate a boustrophedon path from a shapefile and convert it to FarmNG track format."""
-    def __init__(self, pid: int, shapefile_path: Path, farmng_track_file: Path, heading: float = 0.0):
+    def __init__(self, pid: int, shapefile_path: Path, farmng_track_file: Path, csv_output_path: Path, heading: float = 0.0):
         """
         Docstring for __init__
         
@@ -40,7 +40,7 @@ class PathGenerator:
         :type heading: float
         """
         self.shapefile_path = shapefile_path
-        self.output_path_file = f"localdata/path_{pid}.csv"
+        self.csv_output_path = csv_output_path
         self.farmng_track_file = farmng_track_file
         # need to convert degrees to radians for fields2cover
         self.heading = math.radians(heading)
@@ -123,7 +123,7 @@ class PathGenerator:
         except Exception:
             path_out = path_local
 
-        path_out.saveToFile(str(self.output_path_file), 15)
+        path_out.saveToFile(str(self.csv_output_path), 15)
         return True
     
     def convert_path_to_farmng(self):
@@ -135,7 +135,7 @@ class PathGenerator:
             Path to the saved FarmNG track JSON file.
             Also accessible via self.farmng_track_file
         """
-        path_points = self._load_path_points(self.output_path_file)
+        path_points = self._load_path_points(self.csv_output_path)
         track_builder : TrackBuilder =self._build_track(path_points)
         waypoints = track_builder.unpack_track()
         track_builder.save_track(self.farmng_track_file)

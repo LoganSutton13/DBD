@@ -30,6 +30,7 @@ class TestPathGenerator(unittest.TestCase):
             pid=1,
             shapefile_path=self.test_shapefile,
             farmng_track_file=self.output_json,
+            csv_output_path=self.output_csv,
             heading = 90.0
         )
         result = generator.generate_path()
