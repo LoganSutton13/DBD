@@ -29,9 +29,28 @@ scikit-learn
 pyproj
 matplotlib
 pandas
-rpy2
 farm-ng-amiga
-farm-ng-core
-matplotlib
+#farm-ng-core
 
+# Core scientific and geospatial libraries
+numpy
+matplotlib
+geopandas
+
+# Fields2Cover (field coverage planning)
+# fields2cover this cannot be intalled with PIP, it requires manual installation from source
+# see the docker file to manage this
+
+# FarmNG core and protobuf dependencies
+protobuf
+
+# Google protobuf (for google.protobuf.empty_pb2)
+protobuf
+
+# For type hints and CSV
+typing-extensions
+
+# (Optional) If using asyncio in other scripts
+asyncio
+pyodm
 
