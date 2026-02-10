@@ -111,12 +111,12 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
   const [backendAvailable, setBackendAvailable] = useState<boolean>(true);
   const [connectionTestResult, setConnectionTestResult] = useState<string | null>(null);
   const [taskName, setTaskName] = useState<string>('');
-  const [heading, setHeading] = useState<number>(0);
-  const [gridSize, setGridSize] = useState<number>(1);
+  const [heading, setHeading] = useState<number | ''>(0);
+  const [gridSize, setGridSize] = useState<number | ''>(1);
   const [boundaryFiles, setBoundaryFiles] = useState<BoundaryUploadFile[]>([]);
-  const [boundaryHeading, setBoundaryHeading] = useState<number>(0);
-  const [boundaryRobotWidth, setBoundaryRobotWidth] = useState<number>(2.0);
-  const [boundaryCoverageWidth, setBoundaryCoverageWidth] = useState<number>(6.0);
+  const [boundaryHeading, setBoundaryHeading] = useState<number | ''>(0);
+  const [boundaryRobotWidth, setBoundaryRobotWidth] = useState<number | ''>(2.0);
+  const [boundaryCoverageWidth, setBoundaryCoverageWidth] = useState<number | ''>(6.0);
   const [boundaryName, setBoundaryName] = useState<string>('');
   const [isGeneratingPath, setIsGeneratingPath] = useState(false);
   const [pathPreview, setPathPreview] = useState<PathPreview | null>(null);
@@ -222,11 +222,13 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
   const uploadToBackend = async (files: File[]): Promise<UploadResponse> => {
     try {
       setUploadError(null);
+      const numericHeading = typeof heading === 'number' ? heading : 0;
+      const numericGridSize = typeof gridSize === 'number' ? gridSize : 1;
       const response = await apiService.uploadFiles(
         files,
         taskName?.trim() || undefined,
-        heading,
-        gridSize
+        numericHeading,
+        numericGridSize
       );
       return response;
     } catch (error) {
@@ -364,11 +366,14 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
 
     try {
       const files = boundaryPendingFiles.map((f) => f.file);
+      const numericBoundaryHeading = typeof boundaryHeading === 'number' ? boundaryHeading : 0;
+      const numericRobotWidth = typeof boundaryRobotWidth === 'number' ? boundaryRobotWidth : 0;
+      const numericCoverageWidth = typeof boundaryCoverageWidth === 'number' ? boundaryCoverageWidth : 0;
       const { path_job_id } = await apiService.submitPathJob(
         files,
-        boundaryHeading,
-        boundaryRobotWidth,
-        boundaryCoverageWidth,
+        numericBoundaryHeading,
+        numericRobotWidth,
+        numericCoverageWidth,
         boundaryName?.trim() || undefined
       );
       setPathJobId(path_job_id);
@@ -385,9 +390,9 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                   generated_at: result.generated_at,
                   heading: result.heading,
                 },
-                boundaryHeading,
-                boundaryRobotWidth,
-                boundaryCoverageWidth
+                numericBoundaryHeading,
+                numericRobotWidth,
+                numericCoverageWidth
               )
             );
           }
@@ -534,7 +539,14 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                       id="heading"
                       type="number"
                       value={heading}
-                      onChange={(e) => setHeading(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          setHeading('');
+                        } else {
+                          setHeading(parseFloat(val) || 0);
+                        }
+                      }}
                       placeholder="0"
                       min="0"
                       max="360"
@@ -548,7 +560,14 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                       id="gridSize"
                       type="number"
                       value={gridSize}
-                      onChange={(e) => setGridSize(parseFloat(e.target.value) || 1)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          setGridSize('');
+                        } else {
+                          setGridSize(parseFloat(val) || 1);
+                        }
+                      }}
                       placeholder="1"
                       min="0.1"
                       step="0.1"
@@ -733,7 +752,14 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                       id="boundaryHeading"
                       type="number"
                       value={boundaryHeading}
-                      onChange={(e) => setBoundaryHeading(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          setBoundaryHeading('');
+                        } else {
+                          setBoundaryHeading(parseFloat(val) || 0);
+                        }
+                      }}
                       placeholder="0"
                       min="0"
                       max="360"
@@ -747,7 +773,14 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                       id="boundaryRobotWidth"
                       type="number"
                       value={boundaryRobotWidth}
-                      onChange={(e) => setBoundaryRobotWidth(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          setBoundaryRobotWidth('');
+                        } else {
+                          setBoundaryRobotWidth(parseFloat(val) || 0);
+                        }
+                      }}
                       placeholder="2.0"
                       min="0.1"
                       step="0.1"
@@ -760,7 +793,14 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                       id="boundaryCoverageWidth"
                       type="number"
                       value={boundaryCoverageWidth}
-                      onChange={(e) => setBoundaryCoverageWidth(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          setBoundaryCoverageWidth('');
+                        } else {
+                          setBoundaryCoverageWidth(parseFloat(val) || 0);
+                        }
+                      }}
                       placeholder="6.0"
                       min="0.1"
                       step="0.1"
