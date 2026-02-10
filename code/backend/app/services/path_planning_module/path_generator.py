@@ -27,7 +27,15 @@ class PathPoint:
         
 class PathGenerator:
     """Class to generate a boustrophedon path from a shapefile and convert it to FarmNG track format."""
-    def __init__(self, pid: int, shapefile_path: Path, farmng_track_file: Path, csv_output_path: Path, heading: float = 0.0):
+    def __init__(self, 
+                 pid: int, 
+                 shapefile_path: Path, 
+                 farmng_track_file: Path,
+                 csv_output_path: Path, 
+                 heading: float = 0.0,
+                 robot_width: float = 0.0,
+                 coverage_width: float = 0.0,
+                ):
         """
         Docstring for __init__
         
@@ -45,6 +53,8 @@ class PathGenerator:
         # need to convert degrees to radians for fields2cover
         self.heading = math.radians(heading)
         self.waypoints = None
+        self.robot_width = robot_width
+        self.coverage_width = coverage_width
 
     def generate_path(self):
         """
