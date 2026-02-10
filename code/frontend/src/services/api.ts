@@ -115,6 +115,69 @@ class ApiService {
   }
 
   /**
+   * Submit shapefile components for path generation. Returns path_job_id; poll status then fetch result.
+   */
+  async submitPathJob(
+    files: File[],
+    heading: number,
+    taskId?: string,
+    boundaryName?: string
+  ): Promise<{
+    path_job_id: string;
+    status: string;
+    heading: number;
+    files: string[];
+    boundary_name?: string;
+    task_id?: string;
+  }> {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file));
+    formData.append('heading', heading.toString());
+    if (taskId !== undefined && taskId !== '') formData.append('task_id', taskId);
+    if (boundaryName !== undefined && boundaryName !== '') formData.append('boundary_name', boundaryName);
+
+    const response = await fetch(`${this.baseUrl}/api/v1/pathing/`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Path job failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Get path job status. Returns { status: 'processing' | 'completed' | 'failed', error? }.
+   */
+  async getPathJobStatus(pathJobId: string): Promise<{ status: string; error?: string }> {
+    const response = await fetch(`${this.baseUrl}/api/v1/pathing/${pathJobId}/status`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Path status failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Get path job result. When status is completed, returns waypoints and metadata.
+   */
+  async getPathJobResult(pathJobId: string): Promise<{
+    status: string;
+    waypoints?: Array<{ lat: number; lon: number }>;
+    heading?: number;
+    generated_at?: string;
+    error?: string;
+  }> {
+    const response = await fetch(`${this.baseUrl}/api/v1/pathing/${pathJobId}`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Path result failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
    * Test backend connection with detailed error info
    */
   async testConnection(): Promise<{ success: boolean; error?: string; url?: string }> {

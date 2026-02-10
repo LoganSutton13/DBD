@@ -90,7 +90,7 @@ docker run -p 3000:3000 opendronemap/nodeodm
 ```
 
 #### 5. Access the Application
-- **Frontend**: http://localhost:3000
+- **Frontend**: http://localhost:8000
 - **Backend API**: http://localhost:8001
 - **API Documentation**: http://localhost:8001/docs
 - **Node ODM**: http://localhost:3000 

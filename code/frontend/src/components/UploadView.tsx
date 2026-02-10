@@ -310,6 +310,7 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
     { id: 'stitched-003', name: 'West Lot - 2025-11-10' },
   ];
 
+  const POLL_INTERVAL_MS = 2000;
   const generatePathPreview = async () => {
     if (boundaryPendingFiles.length === 0) {
       setPathError('Please add your field boundary shapefile files first.');
@@ -321,21 +322,38 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
     setLinkResult(null);
 
     try {
-      // Mock preview while backend integration is pending.
-      const mockResponse: SimplePathResponse = {
-        waypoints: [
-          { lat: 47.0364054, lon: -117.0471593 },
-          { lat: 47.0362102, lon: -117.0467129 },
-          { lat: 47.0358921, lon: -117.0469234 },
-          { lat: 47.0356824, lon: -117.0474982 },
-          { lat: 47.0359417, lon: -117.0479021 },
-          { lat: 47.0362306, lon: -117.0477108 },
-        ],
-        generated_at: new Date().toISOString(),
-        heading: boundaryHeading,
-      };
+      const files = boundaryPendingFiles.map((f) => f.file);
+      const { path_job_id } = await apiService.submitPathJob(
+        files,
+        boundaryHeading,
+        selectedStitchedField || undefined,
+        boundaryName?.trim() || undefined
+      );
 
-      setPathPreview(normalizePathResponse(mockResponse, boundaryHeading));
+      for (;;) {
+        const statusRes = await apiService.getPathJobStatus(path_job_id);
+        if (statusRes.status === 'completed') {
+          const result = await apiService.getPathJobResult(path_job_id);
+          if (result.waypoints && result.generated_at !== undefined) {
+            setPathPreview(
+              normalizePathResponse(
+                {
+                  waypoints: result.waypoints,
+                  generated_at: result.generated_at,
+                  heading: result.heading,
+                },
+                boundaryHeading
+              )
+            );
+          }
+          break;
+        }
+        if (statusRes.status === 'failed') {
+          setPathError(statusRes.error ?? 'Path generation failed');
+          break;
+        }
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Path generation failed';
       setPathError(errorMessage);
@@ -679,7 +697,7 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                   </div>
                 </div>
                 <p className="text-xs text-dark-400">
-                  Preview uses a mock path until the backend calculation endpoint is wired.
+                  Path is generated asynchronously; the map updates when generation completes.
                 </p>
               </div>
             </div>
