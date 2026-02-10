@@ -31,7 +31,9 @@ class TestPathGenerator(unittest.TestCase):
             shapefile_path=self.test_shapefile,
             farmng_track_file=self.output_json,
             csv_output_path=self.output_csv,
-            heading = 90.0
+            heading = 90.0,
+            robot_width = 2.0,
+            coverage_width = 6.0
         )
         result = generator.generate_path()
         self.assertTrue(result, "Path generation failed.")

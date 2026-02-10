@@ -27,7 +27,15 @@ class PathPoint:
         
 class PathGenerator:
     """Class to generate a boustrophedon path from a shapefile and convert it to FarmNG track format."""
-    def __init__(self, pid: int, shapefile_path: Path, farmng_track_file: Path, csv_output_path: Path, heading: float = 0.0):
+    def __init__(self, 
+                 pid: int, 
+                 shapefile_path: Path, 
+                 farmng_track_file: Path,
+                 csv_output_path: Path, 
+                 heading: float = 0.0,
+                 robot_width: float = 0.0,
+                 coverage_width: float = 0.0,
+                ):
         """
         Docstring for __init__
         
@@ -38,6 +46,10 @@ class PathGenerator:
         :type farmng_track_file: Path
         :param heading: desired heading angle in degrees for path planning
         :type heading: float
+        :param robot_width: width of the robot for headland generation
+        :type robot_width: float
+        :param coverage_width: width of the coverage for swath generation
+        :type coverage_width: float
         """
         self.shapefile_path = shapefile_path
         self.csv_output_path = csv_output_path
@@ -45,6 +57,8 @@ class PathGenerator:
         # need to convert degrees to radians for fields2cover
         self.heading = math.radians(heading)
         self.waypoints = None
+        self.robot_width = robot_width
+        self.coverage_width = coverage_width
 
     def generate_path(self):
         """
@@ -98,7 +112,7 @@ class PathGenerator:
         cells = field.getField()
 
         # --- 4) Headlands ---
-        robot = f2c.Robot(2.0, 6.0)   # (width, cov_width) per tutorials
+        robot = f2c.Robot(self.robot_width, self.coverage_width)   # (width, cov_width) per tutorials
 
         const_hl = f2c.HG_Const_gen()
         no_hl = const_hl.generateHeadlands(cells, 3.0 * robot.getWidth())
