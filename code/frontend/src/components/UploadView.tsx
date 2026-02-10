@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { MapContainer, TileLayer, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Polyline, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useDropzone } from 'react-dropzone';
@@ -65,6 +65,32 @@ function FitBoundsToPath({ points }: { points: [number, number][] }) {
   }, [points, map]);
 
   return null;
+}
+
+function StartMarker({ position }: { position: [number, number] }) {
+  const icon = L.divIcon({
+    className: 'path-marker-start',
+    html: `<div style="
+      width:28px;height:28px;border-radius:50%;background:#22c55e;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);
+      display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:12px;
+    ">S</div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+  return <Marker position={position} icon={icon} zIndexOffset={1000} />;
+}
+
+function EndMarker({ position }: { position: [number, number] }) {
+  const icon = L.divIcon({
+    className: 'path-marker-end',
+    html: `<div style="
+      width:28px;height:28px;border-radius:50%;background:#ef4444;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);
+      display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:12px;
+    ">E</div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+  return <Marker position={position} icon={icon} zIndexOffset={1000} />;
 }
 
 const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) => {
@@ -699,6 +725,50 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                 <p className="text-xs text-dark-400">
                   Path is generated asynchronously; the map updates when generation completes.
                 </p>
+
+                {/* Path Preview — below heading, slightly smaller */}
+                <div className="mt-6">
+                  <h3 className="text-base font-medium text-primary-400 mb-3">Path Preview</h3>
+                  <div className="w-full h-[22rem] rounded-lg overflow-hidden border border-dark-600 bg-dark-900">
+                    {pathPreview ? (
+                      <MapContainer
+                        center={[47.0364, -117.0471]}
+                        zoom={16}
+                        style={{ height: '100%', width: '100%' }}
+                        className="z-0"
+                      >
+                        <TileLayer
+                          attribution="&copy; OpenStreetMap contributors"
+                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        />
+                        <Polyline positions={pathLatLngs} pathOptions={{ color: '#22c55e', weight: 4 }} />
+                        <FitBoundsToPath points={pathLatLngs} />
+                        {pathLatLngs.length > 0 && (
+                          <>
+                            <StartMarker position={pathLatLngs[0]} />
+                            <EndMarker position={pathLatLngs[pathLatLngs.length - 1]} />
+                          </>
+                        )}
+                      </MapContainer>
+                    ) : (
+                      <div className="w-full h-full bg-dark-700 flex items-center justify-center">
+                        <div className="text-center">
+                          <svg className="w-12 h-12 text-primary-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m0 0L9 7" />
+                          </svg>
+                          <p className="text-dark-300 text-sm">No path yet. Generate path above.</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {pathPreview && (
+                    <div className="mt-2 flex flex-wrap gap-4 text-xs text-dark-400">
+                      <span>Waypoints: {pathPreview.waypoints.length}</span>
+                      <span>Heading: {pathPreview.heading.toFixed(1)}°</span>
+                      <span>Start (S) → End (E)</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -780,48 +850,6 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                 </p>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Path Preview — full width below options for clear visibility */}
-        <div className="mt-8 w-full">
-          <div className="bg-dark-700 rounded-lg p-6 border border-dark-600">
-            <h3 className="text-lg font-medium text-primary-400 mb-4">
-              Path Preview
-            </h3>
-            <div className="w-full min-h-[28rem] h-[36rem] max-w-[1600px] mx-auto rounded-lg overflow-hidden border border-dark-600 bg-dark-900">
-              {pathPreview ? (
-                <MapContainer
-                  center={[47.0364, -117.0471]}
-                  zoom={16}
-                  style={{ height: '100%', width: '100%' }}
-                  className="z-0"
-                >
-                  <TileLayer
-                    attribution="&copy; OpenStreetMap contributors"
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-                  <Polyline positions={pathLatLngs} pathOptions={{ color: '#22c55e', weight: 4 }} />
-                  <FitBoundsToPath points={pathLatLngs} />
-                </MapContainer>
-              ) : (
-                <div className="w-full h-full bg-dark-700 flex items-center justify-center">
-                  <div className="text-center">
-                    <svg className="w-16 h-16 text-primary-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m0 0L9 7" />
-                    </svg>
-                    <p className="text-dark-300">No path generated yet. Upload a boundary shapefile and click Generate Path.</p>
-                  </div>
-                </div>
-              )}
-            </div>
-            {pathPreview && (
-              <div className="mt-4 flex flex-wrap gap-6 text-sm text-dark-400">
-                <span>Waypoints: {pathPreview.waypoints.length}</span>
-                <span>Heading: {pathPreview.heading.toFixed(1)}°</span>
-                <span>Generated: {new Date(pathPreview.generatedAt).toLocaleString()}</span>
-              </div>
-            )}
           </div>
         </div>
       </div>
