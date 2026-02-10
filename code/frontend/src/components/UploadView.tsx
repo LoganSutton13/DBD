@@ -107,9 +107,11 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
   const [boundaryName, setBoundaryName] = useState<string>('');
   const [isGeneratingPath, setIsGeneratingPath] = useState(false);
   const [pathPreview, setPathPreview] = useState<PathPreview | null>(null);
+  const [pathJobId, setPathJobId] = useState<string | null>(null);
   const [pathError, setPathError] = useState<string | null>(null);
   const [selectedStitchedField, setSelectedStitchedField] = useState<string>('');
   const [linkResult, setLinkResult] = useState<string | null>(null);
+  const [isSavingPath, setIsSavingPath] = useState(false);
 
   // Check backend connection on component mount
   useEffect(() => {
@@ -352,9 +354,9 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
       const { path_job_id } = await apiService.submitPathJob(
         files,
         boundaryHeading,
-        selectedStitchedField || undefined,
         boundaryName?.trim() || undefined
       );
+      setPathJobId(path_job_id);
 
       for (;;) {
         const statusRes = await apiService.getPathJobStatus(path_job_id);
@@ -388,10 +390,20 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
     }
   };
 
-  const linkPathToField = () => {
-    if (!pathPreview || !selectedStitchedField) return;
+  const linkPathToField = async () => {
+    if (!pathPreview || !selectedStitchedField || !pathJobId) return;
     const field = stitchedFields.find((item) => item.id === selectedStitchedField);
-    setLinkResult(`Linked path to ${field?.name ?? 'selected field'} (preview).`);
+    setIsSavingPath(true);
+    setLinkResult(null);
+    try {
+      await apiService.savePathToTask(pathJobId, selectedStitchedField);
+      setLinkResult(`Path saved to ${field?.name ?? 'selected field'}.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to save path';
+      setLinkResult(`Error: ${msg}`);
+    } finally {
+      setIsSavingPath(false);
+    }
   };
 
   // Get sample filenames (first 5 files)
@@ -840,13 +852,13 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                 </select>
                 <button
                   onClick={linkPathToField}
-                  disabled={!pathPreview || !selectedStitchedField}
+                  disabled={!pathPreview || !selectedStitchedField || !pathJobId || isSavingPath}
                   className="w-full px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
                 >
-                  Link Path
+                  {isSavingPath ? 'Saving…' : 'Link and Save Path'}
                 </button>
                 <p className="text-xs text-dark-400">
-                  Stitched fields list will be populated from the backend.
+                  Saves the current path to the selected stitched field. Stitched fields list will be populated from the backend.
                 </p>
               </div>
             </div>

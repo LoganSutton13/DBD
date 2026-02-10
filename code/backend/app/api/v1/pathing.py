@@ -1,9 +1,7 @@
-# The purpose of this API is to handle the uploads of shape files.
-# These routes allow the user to upload shapefile components to the backend.
-# The backend generates a robot path (boustrophedon) using Fields2Cover and the path_planning_module.
-# The operation is asynchronous: POST returns a path_job_id, the frontend polls status until
-# completed, then fetches the result (waypoints for preview). Upon completion, the generated
-# FarmNG track JSON can be stored under the NodeODM task folder when task_id is provided.
+# The purpose of this API is to handle the uploads of shape files for path preview.
+# The farmer can adjust heading and regenerate until satisfied. Only the most recent
+# path job is kept in memory for preview. Paths are persisted to disk only when the
+# farmer links the path to a NodeODM task (stitched field) and clicks Save.
 
 import asyncio
 import logging
@@ -26,7 +24,7 @@ router = APIRouter()
 PATH_JOBS_DIR = Path("path_jobs")
 PATH_JOBS_DIR.mkdir(parents=True, exist_ok=True)
 
-# In-memory store for job status and results (key: path_job_id)
+# Only the most recent path job is kept in memory (single entry for preview).
 _path_jobs: Dict[str, Dict[str, Any]] = {}
 
 # Allowed shapefile component extensions (must include .shp)
@@ -63,14 +61,8 @@ def _run_path_generation_sync(job_dir: Path, heading: float) -> Dict[str, Any]:
     }
 
 
-async def _run_path_generation_task(
-    path_job_id: str,
-    job_dir: Path,
-    heading: float,
-    nodeodm_task_id: Optional[str],
-    results_dir: Path,
-) -> None:
-    """Background task: run path generation and update job store."""
+async def _run_path_generation_task(path_job_id: str, job_dir: Path, heading: float) -> None:
+    """Background task: run path generation and update job store. No persistence to results/ here."""
     from datetime import datetime
 
     store = _path_jobs.get(path_job_id)
@@ -84,17 +76,7 @@ async def _run_path_generation_task(
         store["heading"] = result["heading"]
         store["generated_at"] = result["generated_at"]
         store["error"] = None
-
-        # Optionally copy FarmNG track into NodeODM task folder
-        if nodeodm_task_id and nodeodm_task_id.strip():
-            track_src = job_dir / "track.json"
-            if track_src.exists():
-                task_dir = results_dir / nodeodm_task_id.strip()
-                task_dir.mkdir(parents=True, exist_ok=True)
-                dest = task_dir / "robot_path.json"
-                shutil.copy2(track_src, dest)
-                store["robot_path_task_id"] = nodeodm_task_id.strip()
-                logger.info("Copied robot_path.json to task folder %s", task_dir)
+        store["job_dir"] = str(job_dir)
     except Exception as e:
         logger.exception("Path generation failed for job %s", path_job_id)
         store["status"] = "failed"
@@ -109,13 +91,13 @@ async def upload_shape_files(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     heading: float = Form(0.0),
-    task_id: Optional[str] = Form(None),
     boundary_name: Optional[str] = Form(None),
 ):
     """
-    Upload shapefile components for path generation. Returns immediately with a path_job_id.
-    Poll GET /{path_job_id}/status until status is completed or failed, then GET /{path_job_id}
-    for waypoints and metadata.
+    Upload shapefile components for path generation (preview only). Returns immediately
+    with a path_job_id. Only the most recent job is kept in memory. Poll status then
+    GET result for waypoints. To persist the path, call POST /{path_job_id}/save with
+    task_id after linking to a stitched field.
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
@@ -154,9 +136,8 @@ async def upload_shape_files(
         job_dir.rmdir()
         raise HTTPException(status_code=400, detail="At least one .shp file is required")
 
-    from app.core.config import settings
-    results_dir = Path(settings.RESULTS_DIR)
-
+    # Only keep the most recent path job in memory (preview); any previous job is evicted.
+    _path_jobs.clear()
     _path_jobs[path_job_id] = {
         "status": "processing",
         "error": None,
@@ -164,18 +145,10 @@ async def upload_shape_files(
         "heading": heading,
         "generated_at": None,
         "boundary_name": boundary_name,
-        "task_id": task_id,
         "files": saved_names,
     }
 
-    background_tasks.add_task(
-        _run_path_generation_task,
-        path_job_id,
-        job_dir,
-        heading,
-        task_id,
-        results_dir,
-    )
+    background_tasks.add_task(_run_path_generation_task, path_job_id, job_dir, heading)
 
     return JSONResponse(
         status_code=202,
@@ -186,7 +159,6 @@ async def upload_shape_files(
             "heading": heading,
             "files": saved_names,
             "boundary_name": boundary_name,
-            "task_id": task_id,
         },
     )
 
@@ -227,6 +199,41 @@ async def get_path_job_result(path_job_id: str):
         "heading": store["heading"],
         "generated_at": store["generated_at"],
         "boundary_name": store.get("boundary_name"),
-        "task_id": store.get("task_id"),
-        "robot_path_task_id": store.get("robot_path_task_id"),
     }
+
+
+@router.post("/{path_job_id}/save")
+async def save_path_to_task(path_job_id: str, task_id: str = Form(...)):
+    """
+    Persist the generated path to a NodeODM task (stitched field). Call this only when
+    the farmer has linked the path to a task and chosen to save. Copies the FarmNG
+    track JSON into results/<task_id>/robot_path.json.
+    """
+    if path_job_id not in _path_jobs:
+        raise HTTPException(status_code=404, detail="Path job not found")
+    store = _path_jobs[path_job_id]
+    if store.get("status") != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail="Path is not ready to save (status: {})".format(store.get("status") or "unknown"),
+        )
+    task_id = task_id.strip()
+    if not task_id:
+        raise HTTPException(status_code=400, detail="task_id is required")
+
+    job_dir = store.get("job_dir")
+    if not job_dir:
+        raise HTTPException(status_code=500, detail="Path job directory not found")
+    track_src = Path(job_dir) / "track.json"
+    if not track_src.exists():
+        raise HTTPException(status_code=404, detail="Generated track file not found")
+
+    from app.core.config import settings
+    results_dir = Path(settings.RESULTS_DIR)
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True, exist_ok=True)
+    dest = task_dir / "robot_path.json"
+    shutil.copy2(track_src, dest)
+    logger.info("Saved robot_path.json to task folder %s", task_dir)
+
+    return {"message": "Path saved to task", "task_id": task_id, "saved_path": str(dest)}

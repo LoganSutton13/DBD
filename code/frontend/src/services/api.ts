@@ -115,12 +115,12 @@ class ApiService {
   }
 
   /**
-   * Submit shapefile components for path generation. Returns path_job_id; poll status then fetch result.
+   * Submit shapefile components for path generation (preview). Returns path_job_id; poll status then fetch result.
+   * Only the most recent path is kept on the backend. Use savePathToTask to persist when linking to a task.
    */
   async submitPathJob(
     files: File[],
     heading: number,
-    taskId?: string,
     boundaryName?: string
   ): Promise<{
     path_job_id: string;
@@ -128,12 +128,10 @@ class ApiService {
     heading: number;
     files: string[];
     boundary_name?: string;
-    task_id?: string;
   }> {
     const formData = new FormData();
     files.forEach((file) => formData.append('files', file));
     formData.append('heading', heading.toString());
-    if (taskId !== undefined && taskId !== '') formData.append('task_id', taskId);
     if (boundaryName !== undefined && boundaryName !== '') formData.append('boundary_name', boundaryName);
 
     const response = await fetch(`${this.baseUrl}/api/v1/pathing/`, {
@@ -143,6 +141,23 @@ class ApiService {
     if (!response.ok) {
       const text = await response.text();
       throw new Error(`Path job failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Save the current path to a NodeODM task (stitched field). Call after linking; persists robot_path.json.
+   */
+  async savePathToTask(pathJobId: string, taskId: string): Promise<{ message: string; task_id: string }> {
+    const formData = new FormData();
+    formData.append('task_id', taskId);
+    const response = await fetch(`${this.baseUrl}/api/v1/pathing/${pathJobId}/save`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Save path failed: ${response.status} ${text}`);
     }
     return response.json();
   }
