@@ -121,18 +121,26 @@ class ApiService {
   async submitPathJob(
     files: File[],
     heading: number,
+    robotWidth: number,
+    coverageWidth: number,
     boundaryName?: string
   ): Promise<{
     path_job_id: string;
     status: string;
     heading: number;
+    robot_width: number;
+    coverage_width: number;
     files: string[];
     boundary_name?: string;
   }> {
     const formData = new FormData();
     files.forEach((file) => formData.append('files', file));
     formData.append('heading', heading.toString());
-    if (boundaryName !== undefined && boundaryName !== '') formData.append('boundary_name', boundaryName);
+    formData.append('robot_width', robotWidth.toString());
+    formData.append('coverage_width', coverageWidth.toString());
+    if (boundaryName !== undefined && boundaryName !== '') {
+      formData.append('boundary_name', boundaryName);
+    }
 
     const response = await fetch(`${this.baseUrl}/api/v1/pathing/`, {
       method: 'POST',
@@ -182,6 +190,9 @@ class ApiService {
     waypoints?: Array<{ lat: number; lon: number }>;
     heading?: number;
     generated_at?: string;
+    robot_width?: number;
+    coverage_width?: number;
+    boundary_name?: string;
     error?: string;
   }> {
     const response = await fetch(`${this.baseUrl}/api/v1/pathing/${pathJobId}`);

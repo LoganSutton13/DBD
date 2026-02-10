@@ -39,18 +39,29 @@ interface PathPreview {
   waypoints: PathPoint[];
   generatedAt: string;
   heading: number;
+  robotWidth: number;
+  coverageWidth: number;
 }
 
 interface SimplePathResponse {
   waypoints: PathPoint[]; // lon/lat coordinates
   generated_at?: string;
   heading?: number;
+  robot_width?: number;
+  coverage_width?: number;
 }
 
-const normalizePathResponse = (response: SimplePathResponse, fallbackHeading: number): PathPreview => ({
+const normalizePathResponse = (
+  response: SimplePathResponse,
+  fallbackHeading: number,
+  fallbackRobotWidth: number,
+  fallbackCoverageWidth: number
+): PathPreview => ({
   waypoints: response.waypoints,
   generatedAt: response.generated_at ?? new Date().toISOString(),
   heading: response.heading ?? fallbackHeading,
+  robotWidth: response.robot_width ?? fallbackRobotWidth,
+  coverageWidth: response.coverage_width ?? fallbackCoverageWidth,
 });
 
 function FitBoundsToPath({ points }: { points: [number, number][] }) {
@@ -104,6 +115,8 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
   const [gridSize, setGridSize] = useState<number>(1);
   const [boundaryFiles, setBoundaryFiles] = useState<BoundaryUploadFile[]>([]);
   const [boundaryHeading, setBoundaryHeading] = useState<number>(0);
+  const [boundaryRobotWidth, setBoundaryRobotWidth] = useState<number>(2.0);
+  const [boundaryCoverageWidth, setBoundaryCoverageWidth] = useState<number>(6.0);
   const [boundaryName, setBoundaryName] = useState<string>('');
   const [isGeneratingPath, setIsGeneratingPath] = useState(false);
   const [pathPreview, setPathPreview] = useState<PathPreview | null>(null);
@@ -354,6 +367,8 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
       const { path_job_id } = await apiService.submitPathJob(
         files,
         boundaryHeading,
+        boundaryRobotWidth,
+        boundaryCoverageWidth,
         boundaryName?.trim() || undefined
       );
       setPathJobId(path_job_id);
@@ -370,7 +385,9 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                   generated_at: result.generated_at,
                   heading: result.heading,
                 },
-                boundaryHeading
+                boundaryHeading,
+                boundaryRobotWidth,
+                boundaryCoverageWidth
               )
             );
           }
@@ -709,7 +726,7 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm text-dark-300 mb-2" htmlFor="boundaryHeading">Heading (degrees)</label>
                     <input
@@ -724,15 +741,41 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                       className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
                     />
                   </div>
-                  <div className="flex items-end">
-                    <button
-                      onClick={generatePathPreview}
-                      disabled={isGeneratingPath || boundaryPendingFiles.length === 0}
-                      className="w-full px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                    >
-                      {isGeneratingPath ? 'Generating...' : 'Generate Path (Preview)'}
-                    </button>
+                  <div>
+                    <label className="block text-sm text-dark-300 mb-2" htmlFor="boundaryRobotWidth">Robot width (meters)</label>
+                    <input
+                      id="boundaryRobotWidth"
+                      type="number"
+                      value={boundaryRobotWidth}
+                      onChange={(e) => setBoundaryRobotWidth(parseFloat(e.target.value) || 0)}
+                      placeholder="2.0"
+                      min="0.1"
+                      step="0.1"
+                      className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
                   </div>
+                  <div>
+                    <label className="block text-sm text-dark-300 mb-2" htmlFor="boundaryCoverageWidth">Coverage width (meters)</label>
+                    <input
+                      id="boundaryCoverageWidth"
+                      type="number"
+                      value={boundaryCoverageWidth}
+                      onChange={(e) => setBoundaryCoverageWidth(parseFloat(e.target.value) || 0)}
+                      placeholder="6.0"
+                      min="0.1"
+                      step="0.1"
+                      className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                </div>
+                <div className="mt-4 flex items-end">
+                  <button
+                    onClick={generatePathPreview}
+                    disabled={isGeneratingPath || boundaryPendingFiles.length === 0}
+                    className="w-full px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                  >
+                    {isGeneratingPath ? 'Generating...' : 'Generate Path (Preview)'}
+                  </button>
                 </div>
                 <p className="text-xs text-dark-400">
                   Path is generated asynchronously; the map updates when generation completes.
@@ -777,6 +820,8 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                     <div className="mt-2 flex flex-wrap gap-4 text-xs text-dark-400">
                       <span>Waypoints: {pathPreview.waypoints.length}</span>
                       <span>Heading: {pathPreview.heading.toFixed(1)}°</span>
+                      <span>Robot width: {pathPreview.robotWidth.toFixed(2)} m</span>
+                      <span>Coverage width: {pathPreview.coverageWidth.toFixed(2)} m</span>
                       <span>Start (S) → End (E)</span>
                     </div>
                   )}
