@@ -31,7 +31,7 @@ _path_jobs: Dict[str, Dict[str, Any]] = {}
 SHAPEFILE_EXTENSIONS = {".shp", ".shx", ".dbf", ".prj", ".cpg", ".qix", ".sbn", ".sbx"}
 
 
-def _run_path_generation_sync(job_dir: Path, heading: float) -> Dict[str, Any]:
+def _run_path_generation_sync(job_dir: Path, heading: float, robot_width: float, coverage_width: float) -> Dict[str, Any]:
     """Synchronous path generation (runs in thread). Returns result dict or raises."""
     shp_files = list(job_dir.glob("*.shp"))
     if not shp_files:
@@ -46,6 +46,8 @@ def _run_path_generation_sync(job_dir: Path, heading: float) -> Dict[str, Any]:
         farmng_track_file=farmng_path,
         csv_output_path=csv_path,
         heading=heading,
+        robot_width=robot_width,
+        coverage_width=coverage_width,
     )
     generator.generate_path()
     generator.convert_path_to_farmng()
@@ -61,7 +63,7 @@ def _run_path_generation_sync(job_dir: Path, heading: float) -> Dict[str, Any]:
     }
 
 
-async def _run_path_generation_task(path_job_id: str, job_dir: Path, heading: float) -> None:
+async def _run_path_generation_task(path_job_id: str, job_dir: Path, heading: float, robot_width : float, coverage_width : float) -> None:
     """Background task: run path generation and update job store. No persistence to results/ here."""
     from datetime import datetime
 
@@ -69,7 +71,7 @@ async def _run_path_generation_task(path_job_id: str, job_dir: Path, heading: fl
     if not store or store.get("status") != "processing":
         return
     try:
-        result = await asyncio.to_thread(_run_path_generation_sync, job_dir, heading)
+        result = await asyncio.to_thread(_run_path_generation_sync, job_dir, heading, robot_width, coverage_width)
         result["generated_at"] = datetime.utcnow().isoformat()
         store["status"] = "completed"
         store["waypoints"] = result["waypoints"]
@@ -91,6 +93,8 @@ async def upload_shape_files(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     heading: float = Form(0.0),
+    robot_width: float = Form(0.0),
+    coverage_width: float = Form(0.0),
     boundary_name: Optional[str] = Form(None),
 ):
     """
@@ -143,12 +147,14 @@ async def upload_shape_files(
         "error": None,
         "waypoints": None,
         "heading": heading,
+        "robot_width": robot_width,
+        "coverage_width": coverage_width,
         "generated_at": None,
         "boundary_name": boundary_name,
         "files": saved_names,
     }
 
-    background_tasks.add_task(_run_path_generation_task, path_job_id, job_dir, heading)
+    background_tasks.add_task(_run_path_generation_task, path_job_id, job_dir, heading, robot_width, coverage_width)
 
     return JSONResponse(
         status_code=202,
@@ -157,6 +163,8 @@ async def upload_shape_files(
             "path_job_id": path_job_id,
             "status": "processing",
             "heading": heading,
+            "robot_width": robot_width,
+            "coverage_width": coverage_width,
             "files": saved_names,
             "boundary_name": boundary_name,
         },
@@ -199,6 +207,8 @@ async def get_path_job_result(path_job_id: str):
         "heading": store["heading"],
         "generated_at": store["generated_at"],
         "boundary_name": store.get("boundary_name"),
+        "robot_width": store.get("robot_width"),
+        "coverage_width": store.get("coverage_width"),
     }
 
 
