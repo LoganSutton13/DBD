@@ -46,6 +46,10 @@ class PathGenerator:
         :type farmng_track_file: Path
         :param heading: desired heading angle in degrees for path planning
         :type heading: float
+        :param robot_width: width of the robot for headland generation
+        :type robot_width: float
+        :param coverage_width: width of the coverage for swath generation
+        :type coverage_width: float
         """
         self.shapefile_path = shapefile_path
         self.csv_output_path = csv_output_path
@@ -108,7 +112,7 @@ class PathGenerator:
         cells = field.getField()
 
         # --- 4) Headlands ---
-        robot = f2c.Robot(2.0, 6.0)   # (width, cov_width) per tutorials
+        robot = f2c.Robot(self.robot_width, self.coverage_width)   # (width, cov_width) per tutorials
 
         const_hl = f2c.HG_Const_gen()
         no_hl = const_hl.generateHeadlands(cells, 3.0 * robot.getWidth())
