@@ -62,7 +62,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, stats }) => {
   ];
 
   return (
-    <aside className="w-64 bg-dark-800 border-r border-dark-700 min-h-screen">
+    <aside className="sticky top-0 h-screen w-64 shrink-0 overflow-y-auto bg-dark-800 border-r border-dark-700">
       <nav className="p-4">
         <div className="space-y-2">
           {menuItems.map((item) => (
