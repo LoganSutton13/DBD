@@ -16,3 +16,41 @@ pydantic-settings==2.0.3
 # Development dependencies
 pytest==7.4.3
 pytest-asyncio==0.21.1
+
+# Field image analysis dependencies
+numpy
+rasterio
+rioxarray
+xarray
+geopandas
+shapely
+rasterstats
+scikit-learn
+pyproj
+matplotlib
+pandas
+farm-ng-amiga
+#farm-ng-core
+
+# Core scientific and geospatial libraries
+numpy
+matplotlib
+geopandas
+
+# Fields2Cover (field coverage planning)
+# fields2cover this cannot be intalled with PIP, it requires manual installation from source
+# see the docker file to manage this
+
+# FarmNG core and protobuf dependencies
+protobuf
+
+# Google protobuf (for google.protobuf.empty_pb2)
+protobuf
+
+# For type hints and CSV
+typing-extensions
+
+# (Optional) If using asyncio in other scripts
+asyncio
+pyodm
+

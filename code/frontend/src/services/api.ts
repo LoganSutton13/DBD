@@ -115,6 +115,95 @@ class ApiService {
   }
 
   /**
+   * Submit shapefile components for path generation (preview). Returns path_job_id; poll status then fetch result.
+   * Only the most recent path is kept on the backend. Use savePathToTask to persist when linking to a task.
+   */
+  async submitPathJob(
+    files: File[],
+    heading: number,
+    robotWidth: number,
+    coverageWidth: number,
+    boundaryName?: string
+  ): Promise<{
+    path_job_id: string;
+    status: string;
+    heading: number;
+    robot_width: number;
+    coverage_width: number;
+    files: string[];
+    boundary_name?: string;
+  }> {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file));
+    formData.append('heading', heading.toString());
+    formData.append('robot_width', robotWidth.toString());
+    formData.append('coverage_width', coverageWidth.toString());
+    if (boundaryName !== undefined && boundaryName !== '') {
+      formData.append('boundary_name', boundaryName);
+    }
+
+    const response = await fetch(`${this.baseUrl}/api/v1/pathing/`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Path job failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Save the current path to a NodeODM task (stitched field). Call after linking; persists robot_path.json.
+   */
+  async savePathToTask(pathJobId: string, taskId: string): Promise<{ message: string; task_id: string }> {
+    const formData = new FormData();
+    formData.append('task_id', taskId);
+    const response = await fetch(`${this.baseUrl}/api/v1/pathing/${pathJobId}/save`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Save path failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Get path job status. Returns { status: 'processing' | 'completed' | 'failed', error? }.
+   */
+  async getPathJobStatus(pathJobId: string): Promise<{ status: string; error?: string }> {
+    const response = await fetch(`${this.baseUrl}/api/v1/pathing/${pathJobId}/status`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Path status failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Get path job result. When status is completed, returns waypoints and metadata.
+   */
+  async getPathJobResult(pathJobId: string): Promise<{
+    status: string;
+    waypoints?: Array<{ lat: number; lon: number }>;
+    heading?: number;
+    generated_at?: string;
+    robot_width?: number;
+    coverage_width?: number;
+    boundary_name?: string;
+    error?: string;
+  }> {
+    const response = await fetch(`${this.baseUrl}/api/v1/pathing/${pathJobId}`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Path result failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
    * Test backend connection with detailed error info
    */
   async testConnection(): Promise<{ success: boolean; error?: string; url?: string }> {

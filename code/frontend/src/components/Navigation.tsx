@@ -18,7 +18,7 @@ const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }) => {
                 : 'border-transparent text-dark-300 hover:text-dark-100 hover:border-dark-600'
             }`}
           >
-            Upload Images
+            Upload
           </button>
           <button
             onClick={() => onTabChange('gallery')}
