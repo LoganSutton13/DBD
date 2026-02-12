@@ -29,7 +29,7 @@ require(dplyr)
 require(oce)
 
 # Automatically finds the bounds of the field and outputs a grid from there. Modified code from FIELDimageR.Extra::fieldShape_render
-fieldShapeAuto <- function (mosaic, fieldData = NULL, fieldMap = NULL, heading = 0,
+fieldShapeAuto <- function (mosaic, fieldData = NULL, fieldMap = NULL, heading = 0, cell_size = 4.571,
           PlotID = NULL, buffer = NULL, plot_size = NULL, r = 1, g = 2, 
           b = 3, color_options = viridisLite::viridis, max_pixels = 1e+08, 
           downsample = 5) 
@@ -72,7 +72,7 @@ fieldShapeAuto <- function (mosaic, fieldData = NULL, fieldMap = NULL, heading =
   corner_sw <- utm2lonlat(easting = centerpoint_x - length_from_centerpoint, northing = centerpoint_y - length_from_centerpoint, zone = 11, hemisphere = "N")
   corner_se <- utm2lonlat(easting = centerpoint_x + length_from_centerpoint, northing = centerpoint_y - length_from_centerpoint, zone = 11, hemisphere = "N")
   
-  nrows = ceiling((length_from_centerpoint * 2) / 4.572)
+  nrows = ceiling((length_from_centerpoint * 2) / cell_size)
   ncols <- nrows
   print(paste("Number of rows: ", nrows))
   print(paste("Number of columns: ", ncols))
