@@ -86,7 +86,7 @@ smoothen_field <- function(field, rows, sigma = 1) {
 # outputFilePath: the file path for the output prescription map. Defaults to data folder
 # outputFileName: the file name for the output prescription map.
 generate_prescription <- function (orthophoto, heading = 0, cell_size = 4.571, cluster_count = 3, smoothing_rounds = 3, 
-                                   smoothing_sigma = 10, ndvi_threshold = 1, outputFilePath = "../data/", 
+                                   smoothing_sigma = 10, ndvi_threshold = 1, outputFilePath = "../../../../../data/", 
                                    outputFileName = paste("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".geojson", sep=""))
 {
   # obtain the NDVI values from the orthophoto
@@ -97,7 +97,7 @@ generate_prescription <- function (orthophoto, heading = 0, cell_size = 4.571, c
   # obtain our field grid
   print("Setting up the field grid...")
   field_grid<-fieldShapeAuto(mosaic = multispectral_indices$NDVI, heading = heading, cell_size = cell_size)
-  #fieldView(mosaic = multispectral_indices$NDVI, fieldShape = field_grid$plots, type = 2, alpha = 0.2)
+  fieldView(mosaic = multispectral_indices$NDVI, fieldShape = field_grid$plots, type = 2, alpha = 0.2)
   
   # convert our grid into a table
   NDVI_cell_info <- fieldInfo_extra(mosaic = multispectral_indices$NDVI, fieldShape = field_grid$plots, fun="max")
@@ -110,7 +110,6 @@ generate_prescription <- function (orthophoto, heading = 0, cell_size = 4.571, c
   {
     NDVI_cell_info$NDVI_max <- smoothen_field(NDVI_cell_info, field_grid$rows, sigma=smoothing_sigma)$NDVI_max
   }
-  NDVI_cell_info <- na.omit(NDVI_cell_info)
   
   NDVI_cluster_data <- NDVI_cell_info %>%
     mutate(
@@ -122,6 +121,7 @@ generate_prescription <- function (orthophoto, heading = 0, cell_size = 4.571, c
     select(NDVI_max, easting, northing, PlotID, boundary) %>%
     st_drop_geometry()
   
+  NDVI_cluster_data <- na.omit(NDVI_cluster_data)
   
   #############################################################################################################
   # clustering with evenly spaced points (no ML)
@@ -242,17 +242,19 @@ generate_prescription <- function (orthophoto, heading = 0, cell_size = 4.571, c
   return(TRUE)
 }
 
-success <- generate_prescription("../data/odm_orthophoto_updated.tif", heading = 20, cell_size = 6, cluster_count = 6)
+success <- generate_prescription("../../../../../data/odm_orthophoto_updated.tif", heading = 20, cell_size = 6, cluster_count = 3)
 
 ## FOR TESTING PURPOSES ONLY
-orthophoto <- "../data/odm_orthophoto_updated.tif"
+orthophoto <- "../../../../../data/odm_orthophoto_updated.tif"
 heading <- 5
 boomSizeFt <- 30
-outputFilePath = "../data/"
+outputFilePath = "../../../../../data/"
 outputFileName = paste("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".geojson", sep="")
 ndvi_threshold = 1
 smoothing_rounds = 3
 smoothing_sigma = 10
+cell_size = 4.5
+cluster_count = 3
 ##
 
 # NDVI_Cells <- generate_prescription("../data/odm_orthophoto.tif", heading = 45)
