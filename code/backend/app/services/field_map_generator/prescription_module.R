@@ -65,7 +65,7 @@ smoothenField <- function(field, rows, sigma = 1) {
 # output_file_name: the file name for the output prescription map.
 generatePrescription <- function (orthophoto, heading = 0, cell_size = NA, cluster_count = 3, smoothing_rounds = 3, maximum_vertices = 80000,
                                    smoothing_sigma = 10, ndvi_threshold = 1, output_file_path = "../../../../../data/", 
-                                   output_file_name = paste("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".geojson", sep=""))
+                                   output_file_name = paste("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".shp", sep=""))
 {
   # obtain the NDVI values from the orthophoto
   multispectral <- rast(orthophoto)
@@ -135,22 +135,21 @@ generatePrescription <- function (orthophoto, heading = 0, cell_size = NA, clust
     select(PlotID, NDVI_max, boundary_latlong, cluster, centerpoint_longitude, centerpoint_latitude)
   
   # convert coordinate list to a SpatVector
-  # TODO: output data frame to a shapefile instead of a GeoJSON
   print("Finishing up...")
   prescription_map_vector <- vect(prescription_map, geom = c("centerpoint_longitude", "centerpoint_latitude"), crs="EPSG:4326")
-  writeVector(prescription_map_vector, paste(output_file_path, output_file_name), filetype = "GeoJSON", overwrite = TRUE)
-  print(paste("prescription written to ", output_file_path, output_file_name, sep=""))
+  writeVector(prescription_map_vector, paste0(output_file_path, output_file_name), filetype = "ESRI Shapefile", overwrite = TRUE)
+  print(paste0("prescription written to ", output_file_path, output_file_name))
   
   return(TRUE)
 }
 
-success <- generatePrescription("../../../../../data/odm_orthophoto_updated.tif", heading = 20, cluster_count = 4)
+success <- generatePrescription("../../../../../data/odm_orthophoto_updated.tif", heading = 0, cluster_count = 4)
 
 ## FOR TESTING PURPOSES ONLY
 orthophoto <- "../../../../../data/odm_orthophoto_updated.tif"
 heading <- 5
 output_file_path = "../../../../../data/"
-output_file_name = paste("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".geojson", sep="")
+output_file_name = paste("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".shp", sep="")
 ndvi_threshold = 1
 smoothing_rounds = 3
 smoothing_sigma = 10
