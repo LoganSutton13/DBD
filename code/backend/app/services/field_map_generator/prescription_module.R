@@ -15,11 +15,11 @@ library(imager)
 source("fieldShapeModified.R")
 
 
-# function: determine_field_resolution
-# approximates the correct cell size so as to not surpass a farmer's vertex limit on their equipment.
+# function: determineFieldResolution
+# approximates the correct cell size so as to not surpass a farmer's vertex limit on their hardware.
 # field: SpatRaster object with boundaries in UTM format.
 # max_vertices: integer specifying the highest number of vertices permitted.
-determine_field_resolution <- function(field, max_vertices) {
+determineFieldResolution <- function(field, max_vertices) {
   field_cell_size <- res(field)
   field_width <- field_cell_size[1] * ncol(field)
   field_height <- field_cell_size[1] * nrow(field)
@@ -29,13 +29,13 @@ determine_field_resolution <- function(field, max_vertices) {
   return(cell_width)
 }
 
-# function: smoothen_field
+# function: smoothenField
 # smoothens the data gradient of NDVI information contained within a field consisting of cells
 # field: a data frame containing the column 'NDVI_max'
 # rows: the number of rows contained in the field.
 # sigma: the kernel size of the smoothing operation (n by n)
 # Precondition: the number of rows must be the same as the number of columns.
-smoothen_field <- function(field, rows, sigma = 1) {
+smoothenField <- function(field, rows, sigma = 1) {
   # Convert to matrix
   ndvi_matrix <- matrix(field$NDVI_max, nrow = rows, ncol = rows, byrow = FALSE)
   na_mask <- is.na(ndvi_matrix)
@@ -52,7 +52,7 @@ smoothen_field <- function(field, rows, sigma = 1) {
   return(field)
 }
 
-# function: generate_prescription
+# function: generatePrescription
 # Generates a prescription map from stitched orthophoto drone imagery.
 # orthophoto: stitched drone image filepath, file generated with WebODM
 # heading: in degrees, the heading that the robot will use on the field
@@ -60,12 +60,12 @@ smoothen_field <- function(field, rows, sigma = 1) {
 # cluster_count: the number of categories of health to divide the map into.
 # smoothing_rounds: the number of time the data gets smoothed. The more smoothing, the larger the data clumps.
 # smoothing_sigma: the intensity of each round of smoothing. The more smoothing, the larger the data clumps.
-# ndvi_threshold: the threshold to classify a "healthy" cell - lower value results in more of the field classified as "healthy"
-# outputFilePath: the file path for the output prescription map. Defaults to data folder
-# outputFileName: the file name for the output prescription map.
-generate_prescription <- function (orthophoto, heading = 0, cell_size = NA, cluster_count = 3, smoothing_rounds = 3, maximum_vertices = 80000,
-                                   smoothing_sigma = 10, ndvi_threshold = 1, outputFilePath = "../../../../../data/", 
-                                   outputFileName = paste("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".geojson", sep=""))
+# ndvi_threshold: the threshold to automatically classify a "healthy" cell - lower value results in more of the field classified as "healthy". Note that cells below this value can still be classified similarly via the bucketing process.
+# output_file_path: the file path for the output prescription map. Defaults to data folder
+# output_file_name: the file name for the output prescription map.
+generatePrescription <- function (orthophoto, heading = 0, cell_size = NA, cluster_count = 3, smoothing_rounds = 3, maximum_vertices = 80000,
+                                   smoothing_sigma = 10, ndvi_threshold = 1, output_file_path = "../../../../../data/", 
+                                   output_file_name = paste("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".geojson", sep=""))
 {
   # obtain the NDVI values from the orthophoto
   multispectral <- rast(orthophoto)
@@ -75,7 +75,7 @@ generate_prescription <- function (orthophoto, heading = 0, cell_size = NA, clus
   # obtain our field grid
   print("Setting up the field grid...")
   if(is.na(cell_size)) {
-    cell_size <- determine_field_resolution(multispectral_indices$NDVI, maximum_vertices)
+    cell_size <- determineFieldResolution(multispectral_indices$NDVI, maximum_vertices)
   }
   field_grid<-fieldShapeAuto(mosaic = multispectral_indices$NDVI, heading = heading, cell_size = cell_size)
   fieldView(mosaic = multispectral_indices$NDVI, fieldShape = field_grid$plots, type = 2, alpha = 0.2)
@@ -89,7 +89,7 @@ generate_prescription <- function (orthophoto, heading = 0, cell_size = NA, clus
   
   for (i in 1:smoothing_rounds)
   {
-    NDVI_cell_info$NDVI_max <- smoothen_field(NDVI_cell_info, field_grid$rows, sigma=smoothing_sigma)$NDVI_max
+    NDVI_cell_info$NDVI_max <- smoothenField(NDVI_cell_info, field_grid$rows, sigma=smoothing_sigma)$NDVI_max
   }
   
   # structure the dataset for clustering
@@ -116,7 +116,6 @@ generate_prescription <- function (orthophoto, heading = 0, cell_size = NA, clus
   NDVI_cluster_data <- NDVI_cluster_data %>%
     rowwise() %>%
     
-    # TODO: fix this, clusters should be based on max, not min to prevent clustering items below & above the NDVI threshold within the last cluster
     mutate(cluster = min(min(which(intervals >= NDVI_max)), cluster_count)) %>%
     ungroup()
   
@@ -139,20 +138,19 @@ generate_prescription <- function (orthophoto, heading = 0, cell_size = NA, clus
   # TODO: output data frame to a shapefile instead of a GeoJSON
   print("Finishing up...")
   prescription_map_vector <- vect(prescription_map, geom = c("centerpoint_longitude", "centerpoint_latitude"), crs="EPSG:4326")
-  writeVector(prescription_map_vector, paste(outputFilePath, outputFileName), filetype = "GeoJSON", overwrite = TRUE)
-  print(paste("prescription written to ", outputFilePath, outputFileName, sep=""))
+  writeVector(prescription_map_vector, paste(output_file_path, output_file_name), filetype = "GeoJSON", overwrite = TRUE)
+  print(paste("prescription written to ", output_file_path, output_file_name, sep=""))
   
   return(TRUE)
 }
 
-success <- generate_prescription("../../../../../data/odm_orthophoto_updated.tif", heading = 20, cluster_count = 4)
+success <- generatePrescription("../../../../../data/odm_orthophoto_updated.tif", heading = 20, cluster_count = 4)
 
 ## FOR TESTING PURPOSES ONLY
 orthophoto <- "../../../../../data/odm_orthophoto_updated.tif"
 heading <- 5
-boomSizeFt <- 30
-outputFilePath = "../../../../../data/"
-outputFileName = paste("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".geojson", sep="")
+output_file_path = "../../../../../data/"
+output_file_name = paste("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".geojson", sep="")
 ndvi_threshold = 1
 smoothing_rounds = 3
 smoothing_sigma = 10
