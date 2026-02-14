@@ -14,8 +14,20 @@ library(imager)
 # Precondition: current working directory must be :/code/backend/app/services/field_map_generator
 source("fieldShapeModified.R")
 
-# TODO: write function to set ideal field resolution with parameter for minimum cell resolution (boom sprayer size)
 
+# function: determine_field_resolution
+# approximates the correct cell size so as to not surpass a farmer's vertex limit on their equipment.
+# field: SpatRaster object with boundaries in UTM format.
+# max_vertices: integer specifying the highest number of vertices permitted.
+determine_field_resolution <- function(field, max_vertices) {
+  field_cell_size <- res(field)
+  field_width <- field_cell_size[1] * ncol(field)
+  field_height <- field_cell_size[1] * nrow(field)
+  
+  # cell resolution cannot go below the width of the boom sprayer (4.572m)
+  cell_width <- max(4.572, (field_width * field_height) / max_vertices)
+  return(cell_width)
+}
 
 # function: smoothen_field
 # smoothens the data gradient of NDVI information contained within a field consisting of cells
@@ -44,14 +56,14 @@ smoothen_field <- function(field, rows, sigma = 1) {
 # Generates a prescription map from stitched orthophoto drone imagery.
 # orthophoto: stitched drone image filepath, file generated with WebODM
 # heading: in degrees, the heading that the robot will use on the field
-# cell_size: in meters, the size of each cell in the field (for length & width). Larger cell size means lower field resolution.
+# cell_size: in meters, the size of each cell in the field (for length & width). Larger cell size means lower field resolution. NA for automatic field resolution.
 # cluster_count: the number of categories of health to divide the map into.
 # smoothing_rounds: the number of time the data gets smoothed. The more smoothing, the larger the data clumps.
 # smoothing_sigma: the intensity of each round of smoothing. The more smoothing, the larger the data clumps.
 # ndvi_threshold: the threshold to classify a "healthy" cell - lower value results in more of the field classified as "healthy"
 # outputFilePath: the file path for the output prescription map. Defaults to data folder
 # outputFileName: the file name for the output prescription map.
-generate_prescription <- function (orthophoto, heading = 0, cell_size = 4.571, cluster_count = 3, smoothing_rounds = 3, 
+generate_prescription <- function (orthophoto, heading = 0, cell_size = NA, cluster_count = 3, smoothing_rounds = 3, maximum_vertices = 80000,
                                    smoothing_sigma = 10, ndvi_threshold = 1, outputFilePath = "../../../../../data/", 
                                    outputFileName = paste("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".geojson", sep=""))
 {
@@ -62,6 +74,9 @@ generate_prescription <- function (orthophoto, heading = 0, cell_size = 4.571, c
   
   # obtain our field grid
   print("Setting up the field grid...")
+  if(is.na(cell_size)) {
+    cell_size <- determine_field_resolution(multispectral_indices$NDVI, maximum_vertices)
+  }
   field_grid<-fieldShapeAuto(mosaic = multispectral_indices$NDVI, heading = heading, cell_size = cell_size)
   fieldView(mosaic = multispectral_indices$NDVI, fieldShape = field_grid$plots, type = 2, alpha = 0.2)
   
@@ -130,7 +145,7 @@ generate_prescription <- function (orthophoto, heading = 0, cell_size = 4.571, c
   return(TRUE)
 }
 
-success <- generate_prescription("../../../../../data/odm_orthophoto_updated.tif", heading = 20, cell_size = 6, cluster_count = 3)
+success <- generate_prescription("../../../../../data/odm_orthophoto_updated.tif", heading = 20, cluster_count = 4)
 
 ## FOR TESTING PURPOSES ONLY
 orthophoto <- "../../../../../data/odm_orthophoto_updated.tif"
