@@ -137,6 +137,7 @@ docker run -p 3000:3000 opendronemap/nodeodm
 **5. Agricultural Analysis Tools**
 - Field map generation for agricultural planning
 - Pesticide prescription mapping interface with spray map functionality
+- Prescription module outputs ESRI Shapefile for pathfinding and GIS (Sprint 4)
 - Interactive spray level selection with color-coded visualization
 - Grid-based spray map editing
 - Crop health analysis tools
@@ -155,9 +156,10 @@ docker run -p 3000:3000 opendronemap/nodeodm
 **7. Robot Path Planning**
 - Path planning module for generating robot navigation tracks
 - Support for straight segments, turns, arcs, and AB line segments
-- Integration with farm-ng track builder framework
-- Custom track generation utilities
-- Robot-compatible path file generation
+- Integration with farm-ng track builder framework and Fields2Cover for boustrophedon paths
+- Path preview in Upload view: upload boundary shapefile, adjust heading/robot/coverage width, regenerate until satisfied
+- Pathing API for shapefile upload and preview-only path generation with Start/End markers
+- Custom track generation utilities and robot-compatible path file generation
 
 ### Usage Walkthrough
 
@@ -239,7 +241,7 @@ docker run -p 3000:3000 opendronemap/nodeodm
 - **Impact**: Users cannot interact with path planning features through the web interface
 - **Location**: `code/backend/app/services/path_planning_module/`
 - **Workaround**: Path planning can be used programmatically via backend
-- **Status**: Backend implementation complete in Sprint 3, frontend integration pending
+- **Status**: Resolved in Sprint 4 – path preview and boundary file handling integrated in Upload view; pathing API and PathGenerator (Fields2Cover) in place
 
 **8. NDVI Analysis API Endpoints**
 - **Issue**: NDVI analysis functionality exists but lacks API endpoints for frontend consumption
@@ -257,7 +259,7 @@ docker run -p 3000:3000 opendronemap/nodeodm
 
 ### Development Notes
 
-- The application is currently in active development (Sprint 3 completed)
+- The application is currently in active development (Sprint 4 completed)
 - **Sprint 1 Achievements**: 
   - Complete drone imagery upload system with drag-and-drop interface
   - Real-time processing queue monitoring
@@ -282,6 +284,14 @@ docker run -p 3000:3000 opendronemap/nodeodm
   - Soil masking capabilities
   - Grid-based field analysis system
   - Client demo and semester accomplishments presentation
+- **Sprint 4 Achievements**:
+  - Path planning integrated with frontend: boundary file upload and path preview in Upload view
+  - Pathing API for shapefile upload and path generation with heading, robot width, and coverage width
+  - PathGenerator class (Fields2Cover) for boustrophedon paths from shapefiles; FarmNG track output
+  - Path preview with Start/End markers; improved Sidebar sticky behavior and Upload button consistency
+  - Prescription module: shapefile output (replacing GeoJSON), bucketed-point clustering, automatic field resolution
+  - Prescription and fieldShapeModified cleanup, documentation, and R style guide alignment
+  - Meeting minutes (MoM) for Jan–Feb 2026
 - Some features like database persistence and authentication are planned but not yet implemented
 - Node ODM integration is functional with automatic polling and asset downloading
 - File-based storage with manifest files is currently used for task metadata
@@ -351,6 +361,7 @@ We welcome contributions to the DroneBasedDevelopment project! Please follow the
 - **[Sprint 1 Report](docs/Reports/01_Sprint_Report.md)** - Sprint 1 accomplishments and documentation
 - **[Sprint 2 Report](docs/Reports/02_Sprint_Report.md)** - Sprint 2 accomplishments and documentation
 - **[Sprint 3 Report](docs/Reports/03_Sprint_Report.md)** - Sprint 3 accomplishments and documentation
+- **[Sprint 4 Report](docs/Reports/04_Sprint_Report.md)** - Sprint 4 accomplishments and documentation
 - **[Meeting Minutes](docs/Mom/)** - Project meeting documentation and templates
 
 ### Resources
