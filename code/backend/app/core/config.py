@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./uploads"
     RESULTS_DIR: str = "./results"
     MAX_FILE_SIZE: int = 104857600  # 100MB in bytes
+    UPLOAD_CHUNK_SIZE_BYTES: int = 5 * 1024 * 1024  # 5MB default for chunked uploads
     
     # Supported file formats
     SUPPORTED_FORMATS: List[str] = ["image/jpeg", "image/png", "image/tiff"]

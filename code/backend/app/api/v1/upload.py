@@ -14,6 +14,7 @@ import requests
 from dotenv import load_dotenv
 from pyodm import Node
 
+from app.core.config import settings
 from app.services.file_storage import FileStorageService
 
 load_dotenv()
@@ -21,7 +22,148 @@ load_dotenv()
 # Create router
 router = APIRouter()
 
-# file upload endpoint
+def _upload_dir() -> Path:
+    return Path(settings.UPLOAD_DIR)
+
+def _sanitize_filename(filename: str) -> str:
+    """Prevent path traversal; allow only basename."""
+    return Path(filename).name if filename else ""
+
+
+# --- Chunked upload (init / chunk / finalize) ---
+
+@router.post("/init")
+async def upload_init(
+    task_name: Optional[str] = Form(None),
+    heading: Optional[str] = Form(None),
+    grid_size: Optional[str] = Form(None),
+):
+    """
+    Initialize a chunked upload. Creates task_id and directory; client then
+    uploads chunks via /chunk and calls /finalize when done.
+    """
+    task_id = str(uuid.uuid4())
+    dir_path = _upload_dir() / task_id
+    dir_path.mkdir(parents=True, exist_ok=True)
+    try:
+        FileStorageService().write_manifest(task_id, {
+            "task_id": task_id,
+            "task_name": task_name or "",
+            "created_at": datetime.utcnow().isoformat(),
+        })
+    except Exception:
+        pass
+    return JSONResponse(status_code=200, content={"task_id": task_id})
+
+
+@router.post("/chunk")
+async def upload_chunk(
+    task_id: str = Form(...),
+    filename: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...),
+    chunk_file: UploadFile = File(..., alias="chunk"),
+):
+    """
+    Upload a single chunk for a file. Chunks must be sent in order (0, 1, ..., total_chunks-1).
+    """
+    safe_name = _sanitize_filename(filename)
+    if not safe_name:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    dir_path = _upload_dir() / task_id
+    if not dir_path.exists():
+        raise HTTPException(status_code=404, detail="Upload session not found; call /init first")
+    if chunk_index < 0 or total_chunks < 1 or chunk_index >= total_chunks:
+        raise HTTPException(status_code=400, detail="Invalid chunk_index or total_chunks")
+    max_chunk = settings.UPLOAD_CHUNK_SIZE_BYTES * 2  # allow some flexibility
+    content = await chunk_file.read()
+    if len(content) > max_chunk:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Chunk size exceeds maximum ({max_chunk} bytes)",
+        )
+    file_path = dir_path / safe_name
+    mode = "wb" if chunk_index == 0 else "ab"
+    async with aiofiles.open(file_path, mode) as f:
+        await f.write(content)
+    return JSONResponse(status_code=200, content={"received": chunk_index})
+
+
+@router.post("/finalize")
+async def upload_finalize(
+    background_tasks: BackgroundTasks,
+    task_id: str = Form(...),
+    task_name: Optional[str] = Form(None),
+    files: str = Form(...),  # JSON array of { filename, total_chunks, size }
+):
+    """
+    Finalize chunked upload: verify files and start NodeODM processing.
+    """
+    import json as _json
+    dir_path = _upload_dir() / task_id
+    if not dir_path.exists():
+        raise HTTPException(status_code=404, detail="Upload session not found")
+    try:
+        file_list = _json.loads(files)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid files JSON")
+    saved_files = []
+    for entry in file_list:
+        fn = entry.get("filename")
+        size = entry.get("size")
+        if not fn:
+            continue
+        safe_name = _sanitize_filename(fn)
+        file_path = dir_path / safe_name
+        if not file_path.is_file():
+            raise HTTPException(status_code=400, detail=f"File not found: {safe_name}")
+        if size is not None and file_path.stat().st_size != int(size):
+            raise HTTPException(
+                status_code=400,
+                detail=f"File size mismatch for {safe_name}",
+            )
+        saved_files.append(str(file_path))
+    if not saved_files:
+        raise HTTPException(status_code=400, detail="No valid files to process")
+    try:
+        n = Node("localhost", 3000)
+        orthophoto_options = {
+            "skip-3dmodel": True,
+            "orthophoto-resolution": 3.0,
+            "orthophoto-quality": 75,
+            "pc-quality": "lowest",
+            "orthophoto-png": True,
+        }
+        name = (task_name or "").strip()
+        if name:
+            task = n.create_task(saved_files, options=orthophoto_options, name=name)
+        else:
+            task = n.create_task(saved_files, options=orthophoto_options)
+        nodeodm_task_id = task.uuid
+        background_tasks.add_task(FileStorageService().poll_for_download, task, task_id)
+        return JSONResponse(
+            status_code=201,
+            content={
+                "message": "Files uploaded successfully, processing started",
+                "task_id": task_id,
+                "nodeodm_task_id": nodeodm_task_id,
+                "file_count": len(saved_files),
+                "status": "processing",
+                "files": [Path(p).name for p in saved_files],
+                "created_at": datetime.utcnow().isoformat(),
+                "task_name": task_name or None,
+            },
+        )
+    except Exception as e:
+        if "ConnectionRefusedError" in str(e) or "No connection could be made" in str(e):
+            raise HTTPException(
+                status_code=503,
+                detail="NodeODM server is not running. Please start NodeODM on localhost:3000",
+            )
+        raise HTTPException(status_code=500, detail=f"NodeODM processing failed: {str(e)}")
+
+
+# file upload endpoint (single request; use for small batches)
 @router.post("/")
 async def upload_files(
     background_tasks: BackgroundTasks,
@@ -48,7 +190,7 @@ async def upload_files(
 
     # Generate temporary task ID for file organization
     task_id = str(uuid.uuid4())
-    dir_path = Path(f"uploads/{task_id}")
+    dir_path = _upload_dir() / task_id
     dir_path.mkdir(parents=True, exist_ok=True)
     # Pre-create manifest with task_name and created_at so it's available with results
     try:

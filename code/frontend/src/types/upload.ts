@@ -19,6 +19,17 @@ export interface UploadSettings {
   maxFiles: number;
 }
 
+// Chunked upload types
+export interface UploadInitResponse {
+  task_id: string;
+}
+
+export interface ChunkedFileInfo {
+  filename: string;
+  total_chunks: number;
+  size: number;
+}
+
 // Backend API response types
 export interface UploadResponse {
   message: string;
