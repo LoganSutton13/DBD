@@ -3,8 +3,8 @@ import { MapContainer, TileLayer, Polyline, Marker, useMap } from 'react-leaflet
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useDropzone } from 'react-dropzone';
-import { UploadFile, UploadResponse } from '../types/upload';
-import apiService from '../services/api';
+import { UploadFile, UploadResponse, ChunkedFileInfo } from '../types/upload';
+import apiService, { ApiService } from '../services/api';
 
 interface AppStats {
   imagesUploaded: number;
@@ -176,8 +176,10 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
       'image/jpeg': ['.jpg', '.jpeg'],
       'image/png': ['.png'],
       'image/tiff': ['.tiff', '.tif'],
+      'image/tif': ['.tif'],
+      'application/octet-stream': ['.nav', '.obs', '.bin', '.mrk', '.MRK'],
     },
-    maxSize: 50 * 1024 * 1024, // 50MB
+    maxSize: 2 * 1024 * 1024 * 1024, // 2GB per file (chunked upload handles large files)
     multiple: true,
   });
 
@@ -239,6 +241,24 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
   };
 
 
+  const markSuccess = (uploadResponse: UploadResponse, count: number) => {
+    setUploadFiles((prev) =>
+      prev.map(f =>
+        f.status === 'uploading' ? { ...f, status: 'completed', progress: 100 } : f
+      )
+    );
+    onStatsUpdate((prev) => ({
+      imagesUploaded: prev.imagesUploaded + count,
+      processing: prev.processing + count,
+      completed: prev.completed + count,
+    }));
+    setBackendAvailable(true);
+    const existingUploads = JSON.parse(localStorage.getItem('pendingUploads') || '[]');
+    existingUploads.push(uploadResponse);
+    localStorage.setItem('pendingUploads', JSON.stringify(existingUploads));
+    window.dispatchEvent(new CustomEvent('newUpload', { detail: uploadResponse }));
+  };
+
   const startUpload = async () => {
     setIsUploading(true);
     setUploadError(null);
@@ -250,9 +270,9 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
       return;
     }
 
-    // Backend availability will be determined by the actual upload attempt
+    const totalSize = pendingFiles.reduce((sum, f) => sum + (f.metadata?.size ?? f.file.size), 0);
+    const useChunked = totalSize > ApiService.CHUNKED_UPLOAD_THRESHOLD;
 
-    // Update all pending files to uploading status
     setUploadFiles((prev) =>
       prev.map(f =>
         f.status === 'pending' ? { ...f, status: 'uploading', progress: 0 } : f
@@ -260,54 +280,87 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
     );
 
     try {
-      // Upload all files at once to the backend
-      const files = pendingFiles.map(f => f.file);
-      const uploadResponse = await uploadToBackend(files);
+      let uploadResponse: UploadResponse;
 
-      // Update all uploading files to completed status
-      setUploadFiles((prev) =>
-        prev.map(f =>
-          f.status === 'uploading' ? { ...f, status: 'completed', progress: 100 } : f
-        )
-      );
+      if (useChunked) {
+        const numericHeading = typeof heading === 'number' ? heading : 0;
+        const numericGridSize = typeof gridSize === 'number' ? gridSize : 1;
+        const { task_id } = await apiService.uploadInit(
+          taskName?.trim() || undefined,
+          numericHeading,
+          numericGridSize
+        );
 
-      // Update stats
-      onStatsUpdate((prev) => ({
-        imagesUploaded: prev.imagesUploaded + pendingFiles.length,
-        processing: prev.processing + pendingFiles.length,
-        completed: prev.completed + pendingFiles.length,
-      }));
+        const chunkSize = ApiService.CHUNK_SIZE;
+        const fileList: ChunkedFileInfo[] = [];
 
+        for (let fileIdx = 0; fileIdx < pendingFiles.length; fileIdx++) {
+          const uf = pendingFiles[fileIdx];
+          const file = uf.file;
+          const totalChunks = Math.ceil(file.size / chunkSize);
+          fileList.push({
+            filename: file.name,
+            total_chunks: totalChunks,
+            size: file.size,
+          });
+
+          for (let ci = 0; ci < totalChunks; ci++) {
+            const start = ci * chunkSize;
+            const end = Math.min(start + chunkSize, file.size);
+            const blob = file.slice(start, end);
+            await apiService.uploadChunk(
+              task_id,
+              file.name,
+              ci,
+              totalChunks,
+              blob,
+              (loaded, total) => {
+                const chunkProgress = total ? loaded / total : 0;
+                const progress = Math.round(
+                  ((ci + chunkProgress) / totalChunks) * 100
+                );
+                setUploadFiles((prev) =>
+                  prev.map((f) =>
+                    f.id === uf.id ? { ...f, progress } : f
+                  )
+                );
+              }
+            );
+            const progress = Math.round(((ci + 1) / totalChunks) * 100);
+            setUploadFiles((prev) =>
+              prev.map((f) =>
+                f.id === uf.id ? { ...f, progress } : f
+              )
+            );
+          }
+        }
+
+        uploadResponse = await apiService.uploadFinalize(
+          task_id,
+          fileList,
+          taskName?.trim() || undefined
+        );
+      } else {
+        const files = pendingFiles.map((f) => f.file);
+        uploadResponse = await uploadToBackend(files);
+      }
+
+      markSuccess(uploadResponse, pendingFiles.length);
       console.log('Upload successful:', uploadResponse);
-      setBackendAvailable(true); // Backend is available since upload succeeded
-
-      // Dispatch event for ProcessingView to listen to
-      console.log('Dispatching newUpload event with data:', uploadResponse);
-
-      // Also store in localStorage as a backup
-      const existingUploads = JSON.parse(localStorage.getItem('pendingUploads') || '[]');
-      existingUploads.push(uploadResponse);
-      localStorage.setItem('pendingUploads', JSON.stringify(existingUploads));
-      console.log('Stored upload in localStorage as backup');
-
-      const event = new CustomEvent('newUpload', { detail: uploadResponse });
-      window.dispatchEvent(event);
-      console.log('newUpload event dispatched successfully');
-
     } catch (error) {
-      // Update all uploading files to error status
       setUploadFiles((prev) =>
-        prev.map(f =>
-          f.status === 'uploading' ? {
-            ...f,
-            status: 'error',
-            error: error instanceof Error ? error.message : 'Upload failed'
-          } : f
+        prev.map((f) =>
+          f.status === 'uploading'
+            ? {
+                ...f,
+                status: 'error',
+                error: error instanceof Error ? error.message : 'Upload failed',
+              }
+            : f
         )
       );
-
-      // Set backend as unavailable if upload fails
       setBackendAvailable(false);
+      setUploadError(error instanceof Error ? error.message : 'Upload failed');
       console.error('Upload failed:', error);
     }
 
@@ -493,7 +546,7 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
             <div>
               <p className="text-dark-300 mb-4">
                 Drag and drop your drone images here or click to browse.
-                Supported formats: JPEG, PNG, TIFF (Max 50MB per file)
+                Supported formats: JPEG, PNG, TIFF (.tif, .tiff); auxiliary: .nav, .obs, .bin, .MRK. Large uploads (10GB+) use chunked upload.
               </p>
 
               {/* Upload area */}

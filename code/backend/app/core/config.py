@@ -31,10 +31,15 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./uploads"
     RESULTS_DIR: str = "./results"
     MAX_FILE_SIZE: int = 104857600  # 100MB in bytes
+    UPLOAD_CHUNK_SIZE_BYTES: int = 5 * 1024 * 1024  # 5MB default for chunked uploads
     
-    # Supported file formats
-    SUPPORTED_FORMATS: List[str] = ["image/jpeg", "image/png", "image/tiff"]
-    
+    # Supported file formats (MIME types for images)
+    SUPPORTED_FORMATS: List[str] = ["image/jpeg", "image/png", "image/tiff", "image/tif"]
+    # Allowed auxiliary file extensions (GNSS/IMU/sensor; validate case-insensitively)
+    ALLOWED_AUXILIARY_EXTENSIONS: List[str] = [".nav", ".obs", ".bin", ".mrk"]
+    # Allowed image extensions (for chunked upload finalize where content_type is not available)
+    ALLOWED_IMAGE_EXTENSIONS: List[str] = [".jpg", ".jpeg", ".png", ".tif", ".tiff"]
+
     # Node ODM Configuration
     NODEODM_URL: str = "http://localhost:3000"
     NODEODM_TIMEOUT: int = 3600  # 1 hour

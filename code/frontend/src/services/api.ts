@@ -2,7 +2,13 @@
  * API service for backend communication
  */
 
-import { UploadResponse, TaskStatusResponse, ProcessingTask } from '../types/upload';
+import {
+  UploadResponse,
+  UploadInitResponse,
+  ChunkedFileInfo,
+  TaskStatusResponse,
+  ProcessingTask,
+} from '../types/upload';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001';
 
@@ -50,6 +56,118 @@ class ApiService {
       throw new Error(`Upload failed: ${response.status} ${errorText}`);
     }
 
+    return response.json();
+  }
+
+  /** Default chunk size for chunked uploads (5MB). */
+  static readonly CHUNK_SIZE = 5 * 1024 * 1024;
+
+  /** Threshold: use chunked upload when total size exceeds this (100MB). */
+  static readonly CHUNKED_UPLOAD_THRESHOLD = 100 * 1024 * 1024;
+
+  /**
+   * Initialize a chunked upload. Returns task_id for subsequent chunk and finalize calls.
+   */
+  async uploadInit(
+    taskName?: string,
+    heading?: number,
+    gridSize?: number
+  ): Promise<UploadInitResponse> {
+    const formData = new FormData();
+    if (taskName) formData.append('task_name', taskName);
+    if (heading !== undefined) formData.append('heading', heading.toString());
+    if (gridSize !== undefined) formData.append('grid_size', gridSize.toString());
+
+    const response = await fetch(`${this.baseUrl}/api/v1/upload/init`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Upload init failed: ${response.status} ${errorText}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Upload a single chunk. Use onProgress for progress reporting (XHR-based).
+   */
+  async uploadChunk(
+    taskId: string,
+    filename: string,
+    chunkIndex: number,
+    totalChunks: number,
+    chunkBlob: Blob,
+    onProgress?: (loaded: number, total: number) => void
+  ): Promise<{ received: number }> {
+    const formData = new FormData();
+    formData.append('task_id', taskId);
+    formData.append('filename', filename);
+    formData.append('chunk_index', chunkIndex.toString());
+    formData.append('total_chunks', totalChunks.toString());
+    formData.append('chunk', chunkBlob);
+
+    if (onProgress === undefined) {
+      const response = await fetch(`${this.baseUrl}/api/v1/upload/chunk`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Chunk upload failed: ${response.status} ${errorText}`);
+      }
+      return response.json();
+    }
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${this.baseUrl}/api/v1/upload/chunk`);
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          onProgress(e.loaded, e.total);
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText));
+          } catch {
+            reject(new Error('Invalid chunk response'));
+          }
+        } else {
+          reject(new Error(`Chunk upload failed: ${xhr.status} ${xhr.responseText}`));
+        }
+      });
+      xhr.addEventListener('error', () => reject(new Error('Chunk upload network error')));
+      xhr.addEventListener('abort', () => reject(new Error('Chunk upload aborted')));
+
+      xhr.send(formData);
+    });
+  }
+
+  /**
+   * Finalize chunked upload and start NodeODM processing. Returns same shape as uploadFiles.
+   */
+  async uploadFinalize(
+    taskId: string,
+    files: ChunkedFileInfo[],
+    taskName?: string
+  ): Promise<UploadResponse> {
+    const formData = new FormData();
+    formData.append('task_id', taskId);
+    formData.append('files', JSON.stringify(files));
+    if (taskName) formData.append('task_name', taskName);
+
+    const response = await fetch(`${this.baseUrl}/api/v1/upload/finalize`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Upload finalize failed: ${response.status} ${errorText}`);
+    }
     return response.json();
   }
 
@@ -247,6 +365,7 @@ class ApiService {
   }
 }
 
-// Export singleton instance
+// Export class (for static constants) and singleton instance
+export { ApiService };
 export const apiService = new ApiService();
 export default apiService;
