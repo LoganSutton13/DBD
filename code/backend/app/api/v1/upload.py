@@ -114,6 +114,12 @@ async def upload_finalize(
         if not fn:
             continue
         safe_name = _sanitize_filename(fn)
+        ext = Path(safe_name).suffix.lower()
+        if ext not in settings.ALLOWED_IMAGE_EXTENSIONS and ext not in settings.ALLOWED_AUXILIARY_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File {safe_name} has unsupported extension (allowed: images {', '.join(settings.ALLOWED_IMAGE_EXTENSIONS)}; auxiliary {', '.join(settings.ALLOWED_AUXILIARY_EXTENSIONS)})",
+            )
         file_path = dir_path / safe_name
         if not file_path.is_file():
             raise HTTPException(status_code=400, detail=f"File not found: {safe_name}")
@@ -221,11 +227,14 @@ async def upload_files(
                     detail=f"File {file.filename} exceeds maximum size of 100MB"
                 )
             
-            # Check file type
-            if not file.content_type or not file.content_type.startswith('image/'):
+            # Check file type: accept if content_type in SUPPORTED_FORMATS or extension in ALLOWED_AUXILIARY_EXTENSIONS
+            ext = Path(file.filename).suffix.lower() if file.filename else ""
+            content_ok = file.content_type and file.content_type in settings.SUPPORTED_FORMATS
+            aux_ok = ext in settings.ALLOWED_AUXILIARY_EXTENSIONS
+            if not content_ok and not aux_ok:
                 raise HTTPException(
-                    status_code=400, 
-                    detail=f"File {file.filename} is not a valid image"
+                    status_code=400,
+                    detail=f"File {file.filename} is not a supported format (images: {', '.join(settings.SUPPORTED_FORMATS)}; auxiliary: {', '.join(settings.ALLOWED_AUXILIARY_EXTENSIONS)})",
                 )
             
             # Save file to temporary directory
@@ -234,6 +243,8 @@ async def upload_files(
                 await f.write(content)
             
             saved_files.append(str(file_path))
+
+        print(saved_files)
         
         # Create NodeODM task with saved file paths - simple orthophoto settings
         n = Node('localhost', 3000)

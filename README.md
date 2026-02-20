@@ -86,7 +86,7 @@ npm start
 #### 4. Node ODM Setup
 ```bash
 # Using Docker (recommended)
-docker run -p 3000:3000 opendronemap/nodeodm
+docker run -p 3000:3000 opendronemap/nodeodm:stable
 ```
 
 #### 5. Access the Application
@@ -166,7 +166,7 @@ docker run -p 3000:3000 opendronemap/nodeodm
 1. **Start the Application**
    - Launch the backend server (`python run.py`)
    - Start the frontend development server (`npm start`)
-   - Ensure Node ODM is running (`docker run -p 3000:3000 opendronemap/nodeodm`)
+   - Ensure Node ODM is running (`docker run -p 3000:3000 opendronemap/nodeodm:stable`)
 
 2. **Upload Images**
    - Navigate to the Upload tab

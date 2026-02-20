@@ -176,6 +176,8 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
       'image/jpeg': ['.jpg', '.jpeg'],
       'image/png': ['.png'],
       'image/tiff': ['.tiff', '.tif'],
+      'image/tif': ['.tif'],
+      'application/octet-stream': ['.nav', '.obs', '.bin', '.mrk', '.MRK'],
     },
     maxSize: 2 * 1024 * 1024 * 1024, // 2GB per file (chunked upload handles large files)
     multiple: true,
@@ -544,7 +546,7 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
             <div>
               <p className="text-dark-300 mb-4">
                 Drag and drop your drone images here or click to browse.
-                Supported formats: JPEG, PNG, TIFF. Large uploads (10GB+) use chunked upload.
+                Supported formats: JPEG, PNG, TIFF (.tif, .tiff); auxiliary: .nav, .obs, .bin, .MRK. Large uploads (10GB+) use chunked upload.
               </p>
 
               {/* Upload area */}
