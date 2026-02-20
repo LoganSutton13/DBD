@@ -249,12 +249,27 @@ async def upload_files(
         # Create NodeODM task with saved file paths - simple orthophoto settings
         n = Node('localhost', 3000)
         orthophoto_options = {
-            'skip-3dmodel': True,  # Skip 3D model to focus on orthophoto
-            'orthophoto-resolution': 3.0,  # Medium quality (3cm/pixel)
-            'orthophoto-quality': 75,  # Medium JPEG quality
-            'pc-quality':'lowest', #lowest quality for the point cloud
-            'orthophoto-png': True, #output orthophoto as png
+            # --- REQUIRED FOR MULTISPECTRAL ---
+            'radiometric-calibration': 'camera',   # Convert to reflectance
+            'feature-quality': 'high',           # Improves feature detection
+            'matcher-type': 'flann',               # Stable matching across bands
+            'min-num-features': 8000,
+            'ignore-gsd': True,                    # Prevent band GSD mismatch failures
+
+            # --- ORTHOPHOTO SETTINGS ---
+            'skip-3dmodel': True,                  # We only need orthophoto
+            'orthophoto-resolution': 5.0,          # Adjust to your desired GSD (cm/pixel)
+            'orthophoto-compression': 'deflate',   # Efficient compression
+            'orthophoto-no-tiled': False,          # Keep tiled GeoTIFF
+
+            # --- STABILITY ---
+            'texturing-skip-global-seam-leveling': True,
+
+            # --- PERFORMANCE (minimal point cloud) ---
+            'pc-quality': 'lowest',
+            'orthophoto-png': True,
         }
+
         # Pass an optional human-friendly task name to NodeODM if provided
         if task_name and task_name.strip():
             task = n.create_task(saved_files, options=orthophoto_options, name=task_name.strip())
