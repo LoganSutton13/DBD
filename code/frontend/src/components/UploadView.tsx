@@ -220,27 +220,6 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
     setBoundaryFiles((prev) => prev.filter(f => f.id !== id));
   };
 
-  // Real backend upload function
-  const uploadToBackend = async (files: File[]): Promise<UploadResponse> => {
-    try {
-      setUploadError(null);
-      const numericHeading = typeof heading === 'number' ? heading : 0;
-      const numericGridSize = typeof gridSize === 'number' ? gridSize : 1;
-      const response = await apiService.uploadFiles(
-        files,
-        taskName?.trim() || undefined,
-        numericHeading,
-        numericGridSize
-      );
-      return response;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Upload failed';
-      setUploadError(errorMessage);
-      throw error;
-    }
-  };
-
-
   const markSuccess = (uploadResponse: UploadResponse, count: number) => {
     setUploadFiles((prev) =>
       prev.map(f =>
@@ -270,9 +249,6 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
       return;
     }
 
-    const totalSize = pendingFiles.reduce((sum, f) => sum + (f.metadata?.size ?? f.file.size), 0);
-    const useChunked = totalSize > ApiService.CHUNKED_UPLOAD_THRESHOLD;
-
     setUploadFiles((prev) =>
       prev.map(f =>
         f.status === 'pending' ? { ...f, status: 'uploading', progress: 0 } : f
@@ -280,70 +256,63 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
     );
 
     try {
-      let uploadResponse: UploadResponse;
+      const numericHeading = typeof heading === 'number' ? heading : 0;
+      const numericGridSize = typeof gridSize === 'number' ? gridSize : 1;
+      const { task_id } = await apiService.uploadInit(
+        taskName?.trim() || undefined,
+        numericHeading,
+        numericGridSize
+      );
 
-      if (useChunked) {
-        const numericHeading = typeof heading === 'number' ? heading : 0;
-        const numericGridSize = typeof gridSize === 'number' ? gridSize : 1;
-        const { task_id } = await apiService.uploadInit(
-          taskName?.trim() || undefined,
-          numericHeading,
-          numericGridSize
-        );
+      const chunkSize = ApiService.CHUNK_SIZE;
+      const fileList: ChunkedFileInfo[] = [];
 
-        const chunkSize = ApiService.CHUNK_SIZE;
-        const fileList: ChunkedFileInfo[] = [];
+      for (let fileIdx = 0; fileIdx < pendingFiles.length; fileIdx++) {
+        const uf = pendingFiles[fileIdx];
+        const file = uf.file;
+        const totalChunks = Math.ceil(file.size / chunkSize);
+        fileList.push({
+          filename: file.name,
+          total_chunks: totalChunks,
+          size: file.size,
+        });
 
-        for (let fileIdx = 0; fileIdx < pendingFiles.length; fileIdx++) {
-          const uf = pendingFiles[fileIdx];
-          const file = uf.file;
-          const totalChunks = Math.ceil(file.size / chunkSize);
-          fileList.push({
-            filename: file.name,
-            total_chunks: totalChunks,
-            size: file.size,
-          });
-
-          for (let ci = 0; ci < totalChunks; ci++) {
-            const start = ci * chunkSize;
-            const end = Math.min(start + chunkSize, file.size);
-            const blob = file.slice(start, end);
-            await apiService.uploadChunk(
-              task_id,
-              file.name,
-              ci,
-              totalChunks,
-              blob,
-              (loaded, total) => {
-                const chunkProgress = total ? loaded / total : 0;
-                const progress = Math.round(
-                  ((ci + chunkProgress) / totalChunks) * 100
-                );
-                setUploadFiles((prev) =>
-                  prev.map((f) =>
-                    f.id === uf.id ? { ...f, progress } : f
-                  )
-                );
-              }
-            );
-            const progress = Math.round(((ci + 1) / totalChunks) * 100);
-            setUploadFiles((prev) =>
-              prev.map((f) =>
-                f.id === uf.id ? { ...f, progress } : f
-              )
-            );
-          }
+        for (let ci = 0; ci < totalChunks; ci++) {
+          const start = ci * chunkSize;
+          const end = Math.min(start + chunkSize, file.size);
+          const blob = file.slice(start, end);
+          await apiService.uploadChunk(
+            task_id,
+            file.name,
+            ci,
+            totalChunks,
+            blob,
+            (loaded, total) => {
+              const chunkProgress = total ? loaded / total : 0;
+              const progress = Math.round(
+                ((ci + chunkProgress) / totalChunks) * 100
+              );
+              setUploadFiles((prev) =>
+                prev.map((f) =>
+                  f.id === uf.id ? { ...f, progress } : f
+                )
+              );
+            }
+          );
+          const progress = Math.round(((ci + 1) / totalChunks) * 100);
+          setUploadFiles((prev) =>
+            prev.map((f) =>
+              f.id === uf.id ? { ...f, progress } : f
+            )
+          );
         }
-
-        uploadResponse = await apiService.uploadFinalize(
-          task_id,
-          fileList,
-          taskName?.trim() || undefined
-        );
-      } else {
-        const files = pendingFiles.map((f) => f.file);
-        uploadResponse = await uploadToBackend(files);
       }
+
+      const uploadResponse = await apiService.uploadFinalize(
+        task_id,
+        fileList,
+        taskName?.trim() || undefined
+      );
 
       markSuccess(uploadResponse, pendingFiles.length);
       console.log('Upload successful:', uploadResponse);
@@ -546,7 +515,7 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
             <div>
               <p className="text-dark-300 mb-4">
                 Drag and drop your drone images here or click to browse.
-                Supported formats: JPEG, PNG, TIFF (.tif, .tiff); auxiliary: .nav, .obs, .bin, .MRK. Large uploads (10GB+) use chunked upload.
+                Supported formats: JPEG, PNG, TIFF (.tif, .tiff); auxiliary: .nav, .obs, .bin, .MRK. All uploads use chunked upload for reliability.
               </p>
 
               {/* Upload area */}

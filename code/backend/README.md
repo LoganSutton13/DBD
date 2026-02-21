@@ -174,14 +174,28 @@ Once the server is running, visit:
 ## 🧪 Testing the API
 
 ### Using curl:
-```bash
-# Upload a file
-curl -X POST "http://localhost:8001/api/v1/upload" \
-  -H "accept: application/json" \
-  -H "Content-Type: multipart/form-data" \
-  -F "files=@your_image.jpg"
+Uploads use a chunked flow: init → upload each chunk → finalize.
 
-# Check upload status
+```bash
+# 1. Initialize a chunked upload (returns task_id)
+curl -X POST "http://localhost:8001/api/v1/upload/init" \
+  -F "task_name=My Task"
+
+# 2. Upload each chunk (repeat for every chunk of every file)
+# Use task_id from init; chunk_index 0..total_chunks-1; total_chunks = ceil(file_size / 5MB)
+curl -X POST "http://localhost:8001/api/v1/upload/chunk" \
+  -F "task_id=<task_id_from_init>" \
+  -F "filename=image.jpg" \
+  -F "chunk_index=0" \
+  -F "total_chunks=3" \
+  -F "chunk=@chunk0.bin"
+
+# 3. Finalize (starts NodeODM processing)
+curl -X POST "http://localhost:8001/api/v1/upload/finalize" \
+  -F "task_id=<task_id_from_init>" \
+  -F 'files=[{"filename":"image.jpg","total_chunks":3,"size":12345678}]'
+
+# Check upload status (use nodeodm_task_id from finalize response)
 curl -X GET "http://localhost:8001/api/v1/upload/{task_id}/status"
 
 # List all processed results

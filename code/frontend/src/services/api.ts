@@ -26,44 +26,8 @@ class ApiService {
     return `${this.baseUrl}${pathOrUrl}`;
   }
 
-  /**
-   * Upload files to the backend
-   */
-  async uploadFiles(files: File[], taskName?: string, heading?: number, gridSize?: number): Promise<UploadResponse> {
-    const formData = new FormData();
-    
-    // Add all files to FormData
-    files.forEach((file) => {
-      formData.append('files', file);
-    });
-    if (taskName) {
-      formData.append('task_name', taskName);
-    }
-    if (heading !== undefined) {
-      formData.append('heading', heading.toString());
-    }
-    if (gridSize !== undefined) {
-      formData.append('grid_size', gridSize.toString());
-    }
-
-    const response = await fetch(`${this.baseUrl}/api/v1/upload/`, {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Upload failed: ${response.status} ${errorText}`);
-    }
-
-    return response.json();
-  }
-
   /** Default chunk size for chunked uploads (5MB). */
   static readonly CHUNK_SIZE = 5 * 1024 * 1024;
-
-  /** Threshold: use chunked upload when total size exceeds this (100MB). */
-  static readonly CHUNKED_UPLOAD_THRESHOLD = 100 * 1024 * 1024;
 
   /**
    * Initialize a chunked upload. Returns task_id for subsequent chunk and finalize calls.
@@ -148,7 +112,7 @@ class ApiService {
   }
 
   /**
-   * Finalize chunked upload and start NodeODM processing. Returns same shape as uploadFiles.
+   * Finalize chunked upload and start NodeODM processing. Returns upload response with task_id, nodeodm_task_id, etc.
    */
   async uploadFinalize(
     taskId: string,

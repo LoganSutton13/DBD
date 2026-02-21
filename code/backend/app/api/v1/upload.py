@@ -4,7 +4,7 @@ Upload API endpoints for drone imagery files
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks, Form
 from fastapi.responses import JSONResponse
-from typing import List, Optional
+from typing import Optional
 import uuid
 import os
 from pathlib import Path
@@ -134,11 +134,25 @@ async def upload_finalize(
     try:
         n = Node("localhost", 3000)
         orthophoto_options = {
-            "skip-3dmodel": True,
-            "orthophoto-resolution": 3.0,
-            "orthophoto-quality": 75,
-            "pc-quality": "lowest",
-            "orthophoto-png": True,
+            # --- REQUIRED FOR MULTISPECTRAL ---
+            'radiometric-calibration': 'camera',   # Convert to reflectance
+            'feature-quality': 'high',           # Improves feature detection
+            'matcher-type': 'flann',               # Stable matching across bands
+            'min-num-features': 8000,
+            'ignore-gsd': True,                    # Prevent band GSD mismatch failures
+
+            # --- ORTHOPHOTO SETTINGS ---
+            'skip-3dmodel': True,                  # We only need orthophoto
+            'orthophoto-resolution': 5.0,          # Adjust to your desired GSD (cm/pixel)
+            'orthophoto-compression': 'deflate',   # Efficient compression
+            'orthophoto-no-tiled': False,          # Keep tiled GeoTIFF
+
+            # --- STABILITY ---
+            'texturing-skip-global-seam-leveling': True,
+
+            # --- PERFORMANCE (minimal point cloud) ---
+            'pc-quality': 'lowest',
+            'orthophoto-png': True,
         }
         name = (task_name or "").strip()
         if name:
@@ -167,143 +181,6 @@ async def upload_finalize(
                 detail="NodeODM server is not running. Please start NodeODM on localhost:3000",
             )
         raise HTTPException(status_code=500, detail=f"NodeODM processing failed: {str(e)}")
-
-
-# file upload endpoint (single request; use for small batches)
-@router.post("/")
-async def upload_files(
-    background_tasks: BackgroundTasks,
-    files: List[UploadFile] = File(...),
-    task_name: Optional[str] = Form(None)
-):
-    """
-    Upload drone imagery files to NodeODM for processing
-    
-    Args:
-        files: List of uploaded image files
-        background_tasks: Background task handler
-        
-    Returns:
-        Task information with unique ID
-    """
-    
-    # Basic validation
-    if not files:
-        raise HTTPException(status_code=400, detail="No files provided")
-    
-    if len(files) > 200:  # Reasonable limit, adjust as needed
-        raise HTTPException(status_code=400, detail="Too many files (maximum 200)")
-
-    # Generate temporary task ID for file organization
-    task_id = str(uuid.uuid4())
-    dir_path = _upload_dir() / task_id
-    dir_path.mkdir(parents=True, exist_ok=True)
-    # Pre-create manifest with task_name and created_at so it's available with results
-    try:
-        FileStorageService().write_manifest(task_id, {
-            'task_id': task_id,
-            'task_name': task_name or '',
-            'created_at': datetime.utcnow().isoformat(),
-        })
-    except Exception:
-        pass
-    
-    saved_files = []
-    
-    try:
-        # Save uploaded files to temporary directory
-        for file in files:
-            # Validate file
-            if not file.filename:
-                raise HTTPException(status_code=400, detail="File with no filename detected")
-            
-            # Check file size (100MB limit)
-            content = await file.read()
-            file_size = len(content)
-            
-            if file_size > 100 * 1024 * 1024:  # 100MB
-                raise HTTPException(
-                    status_code=413, 
-                    detail=f"File {file.filename} exceeds maximum size of 100MB"
-                )
-            
-            # Check file type: accept if content_type in SUPPORTED_FORMATS or extension in ALLOWED_AUXILIARY_EXTENSIONS
-            ext = Path(file.filename).suffix.lower() if file.filename else ""
-            content_ok = file.content_type and file.content_type in settings.SUPPORTED_FORMATS
-            aux_ok = ext in settings.ALLOWED_AUXILIARY_EXTENSIONS
-            if not content_ok and not aux_ok:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"File {file.filename} is not a supported format (images: {', '.join(settings.SUPPORTED_FORMATS)}; auxiliary: {', '.join(settings.ALLOWED_AUXILIARY_EXTENSIONS)})",
-                )
-            
-            # Save file to temporary directory
-            file_path = dir_path / file.filename
-            async with aiofiles.open(file_path, 'wb') as f:
-                await f.write(content)
-            
-            saved_files.append(str(file_path))
-
-        print(saved_files)
-        
-        # Create NodeODM task with saved file paths - simple orthophoto settings
-        n = Node('localhost', 3000)
-        orthophoto_options = {
-            # --- REQUIRED FOR MULTISPECTRAL ---
-            'radiometric-calibration': 'camera',   # Convert to reflectance
-            'feature-quality': 'high',           # Improves feature detection
-            'matcher-type': 'flann',               # Stable matching across bands
-            'min-num-features': 8000,
-            'ignore-gsd': True,                    # Prevent band GSD mismatch failures
-
-            # --- ORTHOPHOTO SETTINGS ---
-            'skip-3dmodel': True,                  # We only need orthophoto
-            'orthophoto-resolution': 5.0,          # Adjust to your desired GSD (cm/pixel)
-            'orthophoto-compression': 'deflate',   # Efficient compression
-            'orthophoto-no-tiled': False,          # Keep tiled GeoTIFF
-
-            # --- STABILITY ---
-            'texturing-skip-global-seam-leveling': True,
-
-            # --- PERFORMANCE (minimal point cloud) ---
-            'pc-quality': 'lowest',
-            'orthophoto-png': True,
-        }
-
-        # Pass an optional human-friendly task name to NodeODM if provided
-        if task_name and task_name.strip():
-            task = n.create_task(saved_files, options=orthophoto_options, name=task_name.strip())
-        else:
-            task = n.create_task(saved_files, options=orthophoto_options)
-        nodeodm_task_id = task.uuid  # Get NodeODM's auto-generated ID
-        
-        # Run polling in background
-        background_tasks.add_task(FileStorageService().poll_for_download, task, task_id)
-        
-        return JSONResponse(
-            status_code=201,
-            content={
-                "message": "Files uploaded successfully, processing started",
-                "task_id": task_id,
-                "nodeodm_task_id": nodeodm_task_id,  # Using NodeODM's ID as the main task ID
-                "file_count": len(files),
-                "status": "processing",
-                "files": [f.filename for f in files],
-                "created_at": datetime.utcnow().isoformat(),
-                "task_name": task_name or None
-            }
-        )
-    except Exception as e:
-        # TODO:Clean up temporary files on error
-        
-        # Handle NodeODM connection errors gracefully
-        if "ConnectionRefusedError" in str(e) or "No connection could be made" in str(e):
-            raise HTTPException(
-                status_code=503, 
-                detail="NodeODM server is not running. Please start NodeODM on localhost:3000"
-            )
-        else:
-            raise HTTPException(status_code=500, detail=f"NodeODM processing failed: {str(e)}")
 
 
 @router.get("/{task_id}/status")

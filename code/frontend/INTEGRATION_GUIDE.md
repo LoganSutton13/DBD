@@ -33,7 +33,7 @@ This guide explains how the frontend has been integrated with the backend API.
 
 ### Upload Flow
 1. User selects files in `UploadView`
-2. Files are uploaded to backend via `apiService.uploadFiles()`
+2. Files are uploaded via chunked upload: `uploadInit()` → `uploadChunk()` per chunk → `uploadFinalize()`
 3. Backend returns task information including `nodeodm_task_id`
 4. Upload success triggers a custom event
 5. `ProcessingView` listens for the event and adds the task to its queue

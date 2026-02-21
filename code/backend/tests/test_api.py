@@ -63,8 +63,71 @@ def test_health_endpoints_pytest():
 
 
 
+CHUNK_SIZE = 5 * 1024 * 1024  # 5MB, match backend default
+
+
+def chunked_upload(test_files):
+    """
+    Upload files via chunked flow: init -> chunk (per file chunk) -> finalize.
+    Returns (task_id, nodeodm_task_id) on success, or (None, None) on failure.
+    """
+    # 1. Init
+    init_resp = requests.post(
+        f"{BASE_URL}/api/v1/upload/init",
+        data={},
+    )
+    if init_resp.status_code != 200:
+        print(f"Init failed: {init_resp.status_code} {init_resp.text}")
+        return None, None
+    task_id = init_resp.json()["task_id"]
+
+    file_list = []
+    try:
+        for test_file in test_files:
+            size = test_file.stat().st_size
+            total_chunks = (size + CHUNK_SIZE - 1) // CHUNK_SIZE
+            file_list.append({
+                "filename": test_file.name,
+                "total_chunks": total_chunks,
+                "size": size,
+            })
+            with open(test_file, "rb") as f:
+                for ci in range(total_chunks):
+                    chunk_data = f.read(CHUNK_SIZE)
+                    chunk_resp = requests.post(
+                        f"{BASE_URL}/api/v1/upload/chunk",
+                        data={
+                            "task_id": task_id,
+                            "filename": test_file.name,
+                            "chunk_index": ci,
+                            "total_chunks": total_chunks,
+                        },
+                        files={"chunk": (test_file.name, chunk_data)},
+                    )
+                    if chunk_resp.status_code != 200:
+                        print(f"Chunk failed: {chunk_resp.status_code} {chunk_resp.text}")
+                        return None, None
+
+        # 3. Finalize
+        finalize_resp = requests.post(
+            f"{BASE_URL}/api/v1/upload/finalize",
+            data={
+                "task_id": task_id,
+                "files": json.dumps(file_list),
+            },
+        )
+        if finalize_resp.status_code != 201:
+            print(f"Finalize failed: {finalize_resp.status_code} {finalize_resp.text}")
+            return None, None
+        data = finalize_resp.json()
+        return task_id, data.get("nodeodm_task_id")
+    except Exception as e:
+        print(f"Chunked upload error: {e}")
+        return None, None
+
+
 def test_upload_endpoint(max_files=None):
-    """Test file upload endpoint with test images"""
+    """Test file upload endpoint with test images (chunked upload flow)"""
     print_separator("TESTING UPLOAD ENDPOINT")
     
     # Get test images from test_images folder
@@ -77,40 +140,18 @@ def test_upload_endpoint(max_files=None):
     
     # Limit number of files if specified
     test_files = all_test_files[:max_files] if max_files else all_test_files
-    print(f"Found {len(all_test_files)} total test images, uploading {len(test_files)} files")
+    print(f"Found {len(all_test_files)} total test images, uploading {len(test_files)} files (chunked)")
     
     try:
-        # Prepare files for upload
-        files_to_upload = []
-        for test_file in test_files:
-            files_to_upload.append(("files", (test_file.name, open(test_file, "rb"), "image/jpeg")))
-        
-        print(f"Uploading {len(test_files)} test files...")
-        
-        # Upload all files at once
-        response = requests.post(f"{BASE_URL}/api/v1/upload", files=files_to_upload)
-        
-        print(f"Status: {response.status_code}")
-        print(f"Response: {json.dumps(response.json(), indent=2)}")
-        
-        if response.status_code == 201:
-            response_data = response.json()
-            nodeodm_task_id = response_data["nodeodm_task_id"]
-            print(f"✅ Upload successful! NodeODM Task ID: {nodeodm_task_id}")
+        task_id, nodeodm_task_id = chunked_upload(test_files)
+        if nodeodm_task_id:
+            print(f"✅ Upload successful! Task ID: {task_id}, NodeODM Task ID: {nodeodm_task_id}")
             return nodeodm_task_id
-        else:
-            print(f"❌ Upload failed with status {response.status_code}")
-            return None
-    
+        print("❌ Upload failed")
+        return None
     except Exception as e:
         print(f"❌ ERROR: {e}")
         return None
-    
-    finally:
-        # Close any open file handles
-        for _, (_, file_handle, _) in files_to_upload:
-            if hasattr(file_handle, 'close'):
-                file_handle.close()
 
 def test_upload_small_batch():
     """Test upload with just a few images (faster for testing)"""
