@@ -80,43 +80,6 @@ class FileStorageService:
                 
             await asyncio.sleep(5)
     
-    def store_nodeodm_files(self, task_id: str, nodeodm_task: pyodm.Task) -> Path:
-        """
-        Store NodeODM output files locally
-        
-        Args:
-            task_id: Our internal task ID
-            nodeodm_task: NodeODM task object
-            
-        Returns:
-            Dictionary mapping file types to local storage paths
-        """
-        task_dir = self.results_dir / task_id
-        task_dir.mkdir(parents=True, exist_ok=True)
-        
-        stored_files = {}
-        
-        # List of files to retrieve from NodeODM
-        files_to_store = [
-            'orthophoto.tif',
-            'orthophoto.png', 
-            'odm_orthophoto',
-            'odm_dem',
-            'odm_report',
-            'odm_logs'
-        ]
-        
-        for file_type in files_to_store:
-            try:
-                # Download assets from NodeODM
-                pathToData : Path = Path(nodeodm_task.download_assets(destination = task_dir))
-            except Exception as e:
-                # Log error but continue with other files
-                print(f"Failed to store {file_type}: {e}")
-                continue
-        
-        return pathToData
-    
     def get_image_path(self, task_id: str) -> Optional[Path]:
         """Get local path for a stored orthophoto PNG"""
         file_path = self.results_dir / task_id / Path("odm_orthophoto") / "odm_orthophoto.png"

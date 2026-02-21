@@ -7,6 +7,7 @@ import asyncio
 import logging
 import shutil
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -65,8 +66,6 @@ def _run_path_generation_sync(job_dir: Path, heading: float, robot_width: float,
 
 async def _run_path_generation_task(path_job_id: str, job_dir: Path, heading: float, robot_width : float, coverage_width : float) -> None:
     """Background task: run path generation and update job store. No persistence to results/ here."""
-    from datetime import datetime
-
     store = _path_jobs.get(path_job_id)
     if not store or store.get("status") != "processing":
         return
