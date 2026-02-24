@@ -72,8 +72,8 @@ RUN cd /usr/src/gtest && \
     (cp *.a /usr/lib/ 2>/dev/null || :) && \
     (cp lib/*.a /usr/lib/ 2>/dev/null || :)
 
-# Clone and build Fields2Cover with Python bindings
-RUN git clone https://github.com/Fields2Cover/Fields2Cover.git /workspace/fields2cover && \
+# Clone and build Fields2Cover with Python bindings (pinned to v2.0.0)
+RUN git clone --branch v2.0.0 --depth 1 https://github.com/Fields2Cover/Fields2Cover.git /workspace/fields2cover && \
     mkdir -p /workspace/fields2cover/build && \
     cd /workspace/fields2cover/build && \
     cmake -DBUILD_PYTHON=ON \
