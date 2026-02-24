@@ -177,6 +177,8 @@ async def upload_finalize(
                 "task_name": task_name or None,
             },
         )
+    except HTTPException:
+        raise
     except Exception as e:
         if "ConnectionRefusedError" in str(e) or "No connection could be made" in str(e):
             raise HTTPException(
