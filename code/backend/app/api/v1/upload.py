@@ -207,5 +207,8 @@ async def get_upload_status(task_id: str):
                 "progress": str(task.info().progress)
             }
         )
+    except HTTPException:
+        # Preserve existing HTTPException status code and detail.
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get task status: {str(e)}")
