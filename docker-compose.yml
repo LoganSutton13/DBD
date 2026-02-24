@@ -1,0 +1,37 @@
+services:
+  frontend:
+    build:
+      context: ./code/frontend
+      args:
+        REACT_APP_API_BASE_URL: http://localhost:8001
+    ports:
+      - "8000:8000"
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./code/backend
+    ports:
+      - "8001:8001"
+    environment:
+      - NODEODM_URL=http://nodeodm:3000
+      - HOST=0.0.0.0
+      - PORT=8001
+      - DEBUG=false
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_results:/app/results
+      - backend_path_jobs:/app/path_jobs
+    depends_on:
+      - nodeodm
+
+  nodeodm:
+    image: opendronemap/nodeodm:stable
+    ports:
+      - "3000:3000"
+
+volumes:
+  backend_uploads:
+  backend_results:
+  backend_path_jobs:
