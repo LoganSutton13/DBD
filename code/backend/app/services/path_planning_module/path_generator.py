@@ -14,6 +14,7 @@ from farm_ng_core_pybind import Pose3F64
 from farm_ng_core_pybind import Rotation3F64
 from google.protobuf.empty_pb2 import Empty
 import numpy as np
+from pyproj import Transformer
 from .track_planner import TrackBuilder
 import matplotlib.pyplot as plt
 
@@ -159,6 +160,49 @@ class PathGenerator:
         track_builder.save_track(self.farmng_track_file)
         self.waypoints = waypoints
         return self.farmng_track_file
+    
+    def _convert_path_points_to_relative_points(self, path_points: list[PathPoint]) -> list[PathPoint]:
+        """
+        Helper method to convert longitude/latitude path points to relative easting/northing
+        coordinates based on the base station coordinates. If the base station is not set,
+        returns the original path points.
+        
+        Converts from WGS84 (lat/lon) to UTM (easting/northing) and calculates relative
+        positions from the base station.
+        """
+
+        if self.base_station_coords == (0,0):
+            return path_points  # No conversion if base station is not set
+        
+        relative_points = []
+        base_lon, base_lat = self.base_station_coords
+
+        # Determine UTM zone from base station coordinates
+        # UTM zone calculation: zone = floor((lon + 180) / 6) + 1
+        utm_zone = int((base_lon + 180) / 6) + 1
+        # Determine hemisphere (north or south)
+        hemisphere = 'north' if base_lat >= 0 else 'south'
+        
+        # Create transformer from WGS84 (EPSG:4326) to UTM
+        # Format: EPSG:326XX for north, EPSG:327XX for south (XX = zone)
+        utm_epsg = 32600 + utm_zone if hemisphere == 'north' else 32700 + utm_zone
+        transformer = Transformer.from_crs("EPSG:4326", f"EPSG:{utm_epsg}", always_xy=True)
+        
+        # Convert base station to UTM (easting, northing)
+        base_easting, base_northing = transformer.transform(base_lon, base_lat)
+        
+        # Convert each path point to relative UTM coordinates
+        for pt in path_points:
+            # Transform lon/lat to UTM easting/northing
+            easting, northing = transformer.transform(pt.lon, pt.lat)
+            
+            # Calculate relative position from base station
+            rel_easting = easting - base_easting
+            rel_northing = northing - base_northing
+            
+            relative_points.append(PathPoint(rel_easting, rel_northing, *pt.extra))
+        
+        return relative_points
     
     def _load_path_points(self, csv_path):
         points = []
