@@ -35,6 +35,7 @@ class PathGenerator:
                  heading: float = 0.0,
                  robot_width: float = 0.0,
                  coverage_width: float = 0.0,
+                 base_station_coords: tuple[float, float] = (0,0)
                 ):
         """
         Docstring for __init__
@@ -50,6 +51,8 @@ class PathGenerator:
         :type robot_width: float
         :param coverage_width: width of the coverage for swath generation
         :type coverage_width: float
+        :param base_station_coords: (lon, lat) of the base station for relative positioning
+        :type base_station_coords: tuple[float, float]
         """
         self.shapefile_path = shapefile_path
         self.csv_output_path = csv_output_path
@@ -59,6 +62,7 @@ class PathGenerator:
         self.waypoints = None
         self.robot_width = robot_width
         self.coverage_width = coverage_width
+        self.base_station_coords = base_station_coords
 
     def generate_path(self):
         """
