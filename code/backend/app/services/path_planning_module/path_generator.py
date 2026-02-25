@@ -119,7 +119,7 @@ class PathGenerator:
         robot = f2c.Robot(self.robot_width, self.coverage_width)   # (width, cov_width) per tutorials
 
         const_hl = f2c.HG_Const_gen()
-        no_hl = const_hl.generateHeadlands(cells, 3.0 * robot.getWidth())
+        no_hl = const_hl.generateHeadlands(cells, 3.0 * self.coverage_width)  # 3x coverage width headland
 
         # --- 5) Swaths (boustrophedon) ---
         bf = f2c.SG_BruteForce()
