@@ -3,13 +3,10 @@
 
 library(FIELDimageR)
 library(FIELDimageR.Extra)
-library(raster)
-library(terra)
-library(mapview)
-library(sf)
-library(stars)
-library(dbscan)
 library(imager)
+library(optparse)
+library(stars)
+library(terra)
 
 # Precondition: current working directory must be :/code/backend/app/services/field_map_generator
 source("fieldShapeModified.R")
@@ -60,13 +57,19 @@ smoothenField <- function(field, rows, sigma = 1) {
 # cluster_count: the number of categories of health to divide the map into.
 # smoothing_rounds: the number of time the data gets smoothed. The more smoothing, the larger the data clumps.
 # smoothing_sigma: the intensity of each round of smoothing. The more smoothing, the larger the data clumps.
+# maximum_vertices: the maximum number of vertices that the field should contain. Used to calculate the field resolution.
 # ndvi_threshold: the threshold to automatically classify a "healthy" cell - lower value results in more of the field classified as "healthy". Note that cells below this value can still be classified similarly via the bucketing process.
 # output_file_path: the file path for the output prescription map. Defaults to data folder
 # output_file_name: the file name for the output prescription map.
-generatePrescription <- function (orthophoto, heading = 0, cell_size = NA, cluster_count = 3, smoothing_rounds = 3, maximum_vertices = 80000,
-                                   smoothing_sigma = 10, ndvi_threshold = 1, output_file_path = "../../../../../data/", 
-                                   output_file_name = paste("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".shp", sep=""))
+
+# TODO: mask field with a boundary shapefile parameter
+generatePrescription <- function (orthophoto, heading, cell_size, cluster_count, smoothing_rounds, smoothing_sigma,
+                                  maximum_vertices, ndvi_threshold, output_file_path, output_file_name)
 {
+  if (is.null(orthophoto)) {
+    stop("Please provide a valid file path to a .tif orthophoto.")
+  }
+  
   # obtain the NDVI values from the orthophoto
   multispectral <- rast(orthophoto)
   multispectral_indices <- fieldIndex(multispectral,Red=1,Green=2,NIR=3,RedEdge=4,
@@ -78,12 +81,12 @@ generatePrescription <- function (orthophoto, heading = 0, cell_size = NA, clust
     cell_size <- determineFieldResolution(multispectral_indices$NDVI, maximum_vertices)
   }
   field_grid<-fieldShapeAuto(mosaic = multispectral_indices$NDVI, heading = heading, cell_size = cell_size)
-  fieldView(mosaic = multispectral_indices$NDVI, fieldShape = field_grid$plots, type = 2, alpha = 0.2)
+  #fieldView(mosaic = multispectral_indices$NDVI, fieldShape = field_grid$plots, type = 2, alpha = 0.2)
   
   # convert our grid into a table
   NDVI_cell_info <- fieldInfo_extra(mosaic = multispectral_indices$NDVI, fieldShape = field_grid$plots, fun="max")
   
-  # cleanse invalid out-of-range data
+  # clean invalid out-of-range data
   NDVI_cell_info$NDVI_max <- pmax(NDVI_cell_info$NDVI_max, -1)
   NDVI_cell_info$NDVI_max <- pmin(NDVI_cell_info$NDVI_max, 1)
   
@@ -119,9 +122,9 @@ generatePrescription <- function (orthophoto, heading = 0, cell_size = NA, clust
     mutate(cluster = min(min(which(intervals >= NDVI_max)), cluster_count)) %>%
     ungroup()
   
-  plot(NDVI_cluster_data$easting, NDVI_cluster_data$northing,
-       col = NDVI_cluster_data$cluster,
-       pch = 20)
+  # plot(NDVI_cluster_data$easting, NDVI_cluster_data$northing,
+  #      col = NDVI_cluster_data$cluster,
+  #      pch = 20)
     
   prescription_map <- NDVI_cluster_data %>%
     mutate(
@@ -143,16 +146,35 @@ generatePrescription <- function (orthophoto, heading = 0, cell_size = NA, clust
   return(TRUE)
 }
 
-success <- generatePrescription("../../../../../data/odm_orthophoto_updated.tif", heading = 0, cluster_count = 4)
+# example call of this function:
+# Rscript prescription_module.R --orthophoto="../../../../../data/odm_orthophoto_updated.tif" --heading=6.5 --maximum_vertices=50000
+option_list <- list(
+  make_option(c("--orthophoto"), help="stitched drone image filepath, file generated with WebODM", type="character"),
+  make_option(c("--heading"), help="in degrees, the heading that the robot will use on the field", type="double", default=0.0),
+  make_option(c("--cell_size"), help="in degrees, the heading that the robot will use on the field", type="integer", default=NA),
+  make_option(c("--cluster_count"), help="the number of categories of health to divide the map into", type="integer", default=3),
+  make_option(c("--smoothing_rounds"), help="the number of time the data gets smoothed. The more smoothing, the larger the data clumps.", type="integer", default=3),
+  make_option(c("--smoothing_sigma"), help="the intensity of each round of smoothing. The more smoothing, the larger the data clumps.", type="integer", default=10),
+  make_option(c("--maximum_vertices"), help="the maximum number of vertices that the field should contain. Used to calculate the field resolution. Only called when cell_size is NA.", type="integer", default=80000),
+  make_option(c("--ndvi_threshold"), help="the threshold to automatically classify a \"healthy\" cell - lower value results in more of the field classified as \"healthy\". Note that cells below this value can still be classified similarly via the bucketing process.", type="double", default=1.0),
+  make_option(c("--output_file_path"), help="the file path for the output prescription map (defaults to data folder)", default="../../../../../data/"),
+  make_option(c("--output_file_name"), help="the file name for the output prescription map (defaults to timestamp)", default=paste0("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".shp"))
+)
 
-## FOR TESTING PURPOSES ONLY
-orthophoto <- "../../../../../data/odm_orthophoto_updated.tif"
-heading <- 5
-output_file_path = "../../../../../data/"
-output_file_name = paste("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".shp", sep="")
-ndvi_threshold = 1
-smoothing_rounds = 3
-smoothing_sigma = 10
-cell_size = 4.5
-cluster_count = 3
-##
+opt_parser <- OptionParser(option_list=option_list)
+opt <- parse_args(opt_parser)
+
+success <- generatePrescription(orthophoto = opt$orthophoto, 
+                                heading = opt$heading, 
+                                cell_size = opt$cell_size, 
+                                cluster_count = opt$cluster_count, 
+                                smoothing_rounds = opt$smoothing_rounds, 
+                                smoothing_sigma = opt$smoothing_sigma,
+                                maximum_vertices = opt$maximum_vertices, 
+                                ndvi_threshold = opt$ndvi_threshold, 
+                                output_file_path = opt$output_file_path, 
+                                output_file_name = opt$output_file_name)
+
+# ## FOR TESTING PURPOSES ONLY
+#opt$orthophoto <- "../../../../../data/odm_orthophoto_updated.tif"
+#success <- generatePrescription("../../../../../data/odm_orthophoto_updated.tif", heading = 0, cluster_count = 4)
