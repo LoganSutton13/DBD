@@ -52,6 +52,7 @@ smoothenField <- function(field, rows, sigma = 1) {
 # function: generatePrescription
 # Generates a prescription map from stitched orthophoto drone imagery.
 # orthophoto: stitched drone image filepath, file generated with WebODM
+# boundary: shapefile of the field's boundary. The orthophoto will crop to this.
 # heading: in degrees, the heading that the robot will use on the field
 # cell_size: in meters, the size of each cell in the field (for length & width). Larger cell size means lower field resolution. NA for automatic field resolution.
 # cluster_count: the number of categories of health to divide the map into.
@@ -63,7 +64,7 @@ smoothenField <- function(field, rows, sigma = 1) {
 # output_file_name: the file name for the output prescription map.
 
 # TODO: mask field with a boundary shapefile parameter
-generatePrescription <- function (orthophoto, heading, cell_size, cluster_count, smoothing_rounds, smoothing_sigma,
+generatePrescription <- function (orthophoto, boundary, heading, cell_size, cluster_count, smoothing_rounds, smoothing_sigma,
                                   maximum_vertices, ndvi_threshold, output_file_path, output_file_name)
 {
   if (is.null(orthophoto)) {
@@ -72,7 +73,15 @@ generatePrescription <- function (orthophoto, heading, cell_size, cluster_count,
   
   # obtain the NDVI values from the orthophoto
   multispectral <- rast(orthophoto)
-  multispectral_indices <- fieldIndex(multispectral,Red=1,Green=2,NIR=3,RedEdge=4,
+  boundary <- vect(boundary)
+  if (!same.crs(multispectral, boundary)) {
+    boundary <- project(boundary, crs(multispectral))
+  }
+  
+  # crop to bounding box of the polygon
+  multispectral_crop <- mask(crop(multispectral, boundary), boundary)
+  
+  multispectral_indices <- fieldIndex(multispectral_crop,Red=1,Green=2,NIR=3,RedEdge=4,
                                index = c("NDVI","NDRE"))
   
   # obtain our field grid
@@ -103,8 +112,8 @@ generatePrescription <- function (orthophoto, heading, cell_size, cluster_count,
       easting = st_coordinates(centerpoint)[, 1],
       northing = st_coordinates(centerpoint)[, 2],
     ) %>%
-    select(NDVI_max, easting, northing, PlotID, boundary) %>%
-    st_drop_geometry()
+    select(NDVI_max, easting, northing, PlotID, boundary)
+    #st_drop_geometry()
   
   NDVI_cluster_data <- na.omit(NDVI_cluster_data)
   
@@ -129,19 +138,34 @@ generatePrescription <- function (orthophoto, heading, cell_size, cluster_count,
   prescription_map <- NDVI_cluster_data %>%
     mutate(
       # convert UTM easting / northing into latitude / longitude
-      centerpoint_longitude = utm2lonlat(easting = easting, northing = northing, zone = 11, hemisphere = "N")$longitude,
-      centerpoint_latitude = utm2lonlat(easting = easting, northing = northing, zone = 11, hemisphere = "N")$latitude,
+      longitude = utm2lonlat(easting = easting, northing = northing, zone = 11, hemisphere = "N")$longitude,
+      latitude = utm2lonlat(easting = easting, northing = northing, zone = 11, hemisphere = "N")$latitude,
       boundary_sfc = st_sfc(boundary, crs=32611),
       boundary_latlong = st_transform(boundary_sfc, crs=4326)
       
     ) %>%
-    select(PlotID, NDVI_max, boundary_latlong, cluster, centerpoint_longitude, centerpoint_latitude)
+    select(PlotID, NDVI_max, boundary_latlong, cluster, longitude, latitude)
   
-  # convert coordinate list to a SpatVector
-  print("Finishing up...")
-  prescription_map_vector <- vect(prescription_map, geom = c("centerpoint_longitude", "centerpoint_latitude"), crs="EPSG:4326")
-  writeVector(prescription_map_vector, paste0(output_file_path, output_file_name), filetype = "ESRI Shapefile", overwrite = TRUE)
-  print(paste0("prescription written to ", output_file_path, output_file_name))
+  # Make sf object using boundary_latlong as geometry
+  prescription_sf <- st_as_sf(prescription_map, sf_column_name = "boundary_latlong", crs = 4326)
+  prescription_sf <- st_make_valid(prescription_sf)
+  
+  # Dissolve polygons by cluster -> one (multi)polygon per cluster
+  cluster_polys_sf <- prescription_sf %>%
+    group_by(cluster) %>%
+    summarise(
+      NDVI_max_mean = mean(NDVI_max, na.rm = TRUE),
+      NDVI_max_max  = max(NDVI_max,  na.rm = TRUE),
+      geometry      = st_union(geometry),
+      .groups = "drop"
+    )
+
+  cluster_polys_sf <- st_cast(cluster_polys_sf, "MULTIPOLYGON")
+  
+  # Write shapefile (writes .shp/.shx/.dbf/.prj)
+  out_path <- file.path(output_file_path, output_file_name)
+  st_write(cluster_polys_sf, out_path, delete_dsn = FALSE)
+  print(paste0("prescription written to ", paste0(output_file_path, "/"), output_file_name))
   
   return(TRUE)
 }
@@ -149,7 +173,8 @@ generatePrescription <- function (orthophoto, heading, cell_size, cluster_count,
 # example call of this function:
 # Rscript prescription_module.R --orthophoto="../../../../../data/odm_orthophoto_updated.tif" --heading=6.5 --maximum_vertices=50000
 option_list <- list(
-  make_option(c("--orthophoto"), help="stitched drone image filepath, file generated with WebODM", type="character"),
+  make_option(c("--orthophoto"), help="stitched drone image filepath, file generated with WebODM", type="character", default="../../../../../data/odm_orthophoto_updated.tif"),
+  make_option(c("--boundary"), help="shapefile of the field's boundary. The orthophoto will crop to this.", type="character", default="../../../../../data/boundaries.shp"),
   make_option(c("--heading"), help="in degrees, the heading that the robot will use on the field", type="double", default=0.0),
   make_option(c("--cell_size"), help="in degrees, the heading that the robot will use on the field", type="integer", default=NA),
   make_option(c("--cluster_count"), help="the number of categories of health to divide the map into", type="integer", default=3),
@@ -157,23 +182,28 @@ option_list <- list(
   make_option(c("--smoothing_sigma"), help="the intensity of each round of smoothing. The more smoothing, the larger the data clumps.", type="integer", default=10),
   make_option(c("--maximum_vertices"), help="the maximum number of vertices that the field should contain. Used to calculate the field resolution. Only called when cell_size is NA.", type="integer", default=80000),
   make_option(c("--ndvi_threshold"), help="the threshold to automatically classify a \"healthy\" cell - lower value results in more of the field classified as \"healthy\". Note that cells below this value can still be classified similarly via the bucketing process.", type="double", default=1.0),
-  make_option(c("--output_file_path"), help="the file path for the output prescription map (defaults to data folder)", default="../../../../../data/"),
+  make_option(c("--output_file_path"), help="the file path for the output prescription map (defaults to data folder)", default="../../../../../data"),
   make_option(c("--output_file_name"), help="the file name for the output prescription map (defaults to timestamp)", default=paste0("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".shp"))
 )
 
-opt_parser <- OptionParser(option_list=option_list)
-opt <- parse_args(opt_parser)
-
-success <- generatePrescription(orthophoto = opt$orthophoto, 
-                                heading = opt$heading, 
-                                cell_size = opt$cell_size, 
-                                cluster_count = opt$cluster_count, 
-                                smoothing_rounds = opt$smoothing_rounds, 
-                                smoothing_sigma = opt$smoothing_sigma,
-                                maximum_vertices = opt$maximum_vertices, 
-                                ndvi_threshold = opt$ndvi_threshold, 
-                                output_file_path = opt$output_file_path, 
-                                output_file_name = opt$output_file_name)
+if (sys.nframe() == 0L) {
+  opt_parser <- OptionParser(option_list = option_list)
+  opt <- parse_args(opt_parser)
+  
+  success <- generatePrescription(
+    orthophoto = opt$orthophoto,
+    boundary = opt$boundary,
+    heading = opt$heading,
+    cell_size = opt$cell_size,
+    cluster_count = opt$cluster_count,
+    smoothing_rounds = opt$smoothing_rounds,
+    smoothing_sigma = opt$smoothing_sigma,
+    maximum_vertices = opt$maximum_vertices,
+    ndvi_threshold = opt$ndvi_threshold,
+    output_file_path = opt$output_file_path,
+    output_file_name = opt$output_file_name
+  )
+}
 
 # ## FOR TESTING PURPOSES ONLY
 #opt$orthophoto <- "../../../../../data/odm_orthophoto_updated.tif"
