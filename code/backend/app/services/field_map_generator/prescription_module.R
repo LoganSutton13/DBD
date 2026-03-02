@@ -63,7 +63,7 @@ smoothenField <- function(field, rows, sigma = 1) {
 # output_file_path: the file path for the output prescription map. Defaults to data folder
 # output_file_name: the file name for the output prescription map.
 
-# TODO: mask field with a boundary shapefile parameter
+# TODO: deprecate heading?
 generatePrescription <- function (orthophoto, boundary, heading, cell_size, cluster_count, smoothing_rounds, smoothing_sigma,
                                   maximum_vertices, ndvi_threshold, output_file_path, output_file_name)
 {
@@ -118,7 +118,7 @@ generatePrescription <- function (orthophoto, boundary, heading, cell_size, clus
   NDVI_cluster_data <- na.omit(NDVI_cluster_data)
   
   #############################################################################################################
-  # clustering with evenly spaced points (no ML)
+  # clustering with quantile bucketing
   NDVI_cluster_data_ecdf <- ecdf(NDVI_cluster_data$NDVI_max)
   maximum_percentile <- NDVI_cluster_data_ecdf(ndvi_threshold)
   
@@ -138,24 +138,24 @@ generatePrescription <- function (orthophoto, boundary, heading, cell_size, clus
   prescription_map <- NDVI_cluster_data %>%
     mutate(
       # convert UTM easting / northing into latitude / longitude
-      longitude = utm2lonlat(easting = easting, northing = northing, zone = 11, hemisphere = "N")$longitude,
-      latitude = utm2lonlat(easting = easting, northing = northing, zone = 11, hemisphere = "N")$latitude,
+      #longitude = utm2lonlat(easting = easting, northing = northing, zone = 11, hemisphere = "N")$longitude,
+      #latitude = utm2lonlat(easting = easting, northing = northing, zone = 11, hemisphere = "N")$latitude,
       boundary_sfc = st_sfc(boundary, crs=32611),
       boundary_latlong = st_transform(boundary_sfc, crs=4326)
       
     ) %>%
-    select(PlotID, NDVI_max, boundary_latlong, cluster, longitude, latitude)
+    select(NDVI_max, boundary_latlong, cluster)
   
   # Make sf object using boundary_latlong as geometry
   prescription_sf <- st_as_sf(prescription_map, sf_column_name = "boundary_latlong", crs = 4326)
   prescription_sf <- st_make_valid(prescription_sf)
   
-  # Dissolve polygons by cluster -> one (multi)polygon per cluster
+  # Dissolve polygons by cluster -> one MULTIPOLYGON per cluster
   cluster_polys_sf <- prescription_sf %>%
     group_by(cluster) %>%
     summarise(
-      NDVI_max_mean = mean(NDVI_max, na.rm = TRUE),
-      NDVI_max_max  = max(NDVI_max,  na.rm = TRUE),
+      NDVI_max_mean = mean(NDVI_max, na.rm = TRUE), # average NDVI_max value out of the clusters
+      NDVI_max_max  = max(NDVI_max,  na.rm = TRUE), # maximum NDVI_max value out of the clusters
       geometry      = st_union(geometry),
       .groups = "drop"
     )
@@ -165,7 +165,7 @@ generatePrescription <- function (orthophoto, boundary, heading, cell_size, clus
   # Write shapefile (writes .shp/.shx/.dbf/.prj)
   out_path <- file.path(output_file_path, output_file_name)
   st_write(cluster_polys_sf, out_path, delete_dsn = FALSE)
-  print(paste0("prescription written to ", paste0(output_file_path, "/"), output_file_name))
+  print(paste0("prescription written to ", output_file_path, "/", output_file_name))
   
   return(TRUE)
 }
@@ -173,8 +173,8 @@ generatePrescription <- function (orthophoto, boundary, heading, cell_size, clus
 # example call of this function:
 # Rscript prescription_module.R --orthophoto="../../../../../data/odm_orthophoto_updated.tif" --heading=6.5 --maximum_vertices=50000
 option_list <- list(
-  make_option(c("--orthophoto"), help="stitched drone image filepath, file generated with WebODM", type="character", default="../../../../../data/odm_orthophoto_updated.tif"),
-  make_option(c("--boundary"), help="shapefile of the field's boundary. The orthophoto will crop to this.", type="character", default="../../../../../data/boundaries.shp"),
+  make_option(c("--orthophoto"), help="stitched drone image filepath, file generated with WebODM", type="character"),
+  make_option(c("--boundary"), help="shapefile of the field's boundary. The orthophoto will crop to this.", type="character"),
   make_option(c("--heading"), help="in degrees, the heading that the robot will use on the field", type="double", default=0.0),
   make_option(c("--cell_size"), help="in degrees, the heading that the robot will use on the field", type="integer", default=NA),
   make_option(c("--cluster_count"), help="the number of categories of health to divide the map into", type="integer", default=3),
@@ -207,4 +207,4 @@ if (sys.nframe() == 0L) {
 
 # ## FOR TESTING PURPOSES ONLY
 #opt$orthophoto <- "../../../../../data/odm_orthophoto_updated.tif"
-#success <- generatePrescription("../../../../../data/odm_orthophoto_updated.tif", heading = 0, cluster_count = 4)
+#opt$boundary <- "../../../../../data/boundaries.shp"
