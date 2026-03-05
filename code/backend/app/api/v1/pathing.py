@@ -61,6 +61,7 @@ def _run_path_generation_sync(
     robot_width: float,
     coverage_width: float,
     base_station_coords: Tuple[float, float],
+    linear_speed_mps: float = 0.0,
 ) -> Dict[str, Any]:
     """Synchronous path generation (runs in thread). Returns result dict or raises."""
     shp_files = list(job_dir.glob("*.shp"))
@@ -79,6 +80,7 @@ def _run_path_generation_sync(
         robot_width=robot_width,
         coverage_width=coverage_width,
         base_station_coords=base_station_coords,
+        linear_speed_mps=linear_speed_mps,
     )
     generator.generate_path()
     generator.convert_path_to_farmng()
@@ -101,6 +103,7 @@ async def _run_path_generation_task(
     robot_width: float,
     coverage_width: float,
     base_station_coords: Tuple[float, float],
+    linear_speed_mps: float = 0.0,
 ) -> None:
     """Background task: run path generation and update job store. No persistence to results/ here."""
     from datetime import datetime
@@ -116,6 +119,7 @@ async def _run_path_generation_task(
             robot_width,
             coverage_width,
             base_station_coords,
+            linear_speed_mps,
         )
         result["generated_at"] = datetime.utcnow().isoformat()
         store["status"] = "completed"
@@ -172,13 +176,15 @@ async def upload_shape_files(
     boundary_name: Optional[str] = Form(None),
     base_lon: Optional[float] = Form(None),
     base_lat: Optional[float] = Form(None),
+    linear_speed_mps: float = Form(0.0),
 ):
     """
     Upload shapefile components for path generation (preview only). Returns immediately
     with a path_job_id. Only the most recent job is kept in memory. Poll status then
     GET result for waypoints. To persist the path, call POST /{path_job_id}/save with
-    task_id after linking to a stitched field. Optional base_lon/base_lat update stored
+    task_id after linking to a stitched field.     Optional base_lon/base_lat update stored
     RTK base and are used for relative easting/northing in the saved track.
+    Optional linear_speed_mps (m/s, e.g. 0.5) fills tangentOfBInA velocities so the robot can drive the track.
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
@@ -246,6 +252,7 @@ async def upload_shape_files(
         robot_width,
         coverage_width,
         base_station_coords,
+        linear_speed_mps,
     )
 
     return JSONResponse(

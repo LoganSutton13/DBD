@@ -144,7 +144,6 @@ async def upload_finalize(
             # --- ORTHOPHOTO SETTINGS ---
             'skip-3dmodel': True,                  # We only need orthophoto
             'orthophoto-resolution': 5.0,          # Adjust to your desired GSD (cm/pixel)
-            'orthophoto-compression': 'deflate',   # Efficient compression
             'orthophoto-no-tiled': False,          # Keep tiled GeoTIFF
 
             # --- STABILITY ---

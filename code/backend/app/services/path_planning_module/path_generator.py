@@ -39,7 +39,8 @@ class PathGenerator:
                  heading: float = 0.0,
                  robot_width: float = 0.0,
                  coverage_width: float = 0.0,
-                 base_station_coords: tuple[float, float] = (0,0)
+                 base_station_coords: tuple[float, float] = (0,0),
+                 linear_speed_mps: float = 0.0,
                 ):
         """
         Docstring for __init__
@@ -57,6 +58,8 @@ class PathGenerator:
         :type coverage_width: float
         :param base_station_coords: (lon, lat) of the base station for relative positioning
         :type base_station_coords: tuple[float, float]
+        :param linear_speed_mps: If > 0, fill tangentOfBInA velocities so the robot can drive (m/s).
+        :type linear_speed_mps: float
         """
         self.shapefile_path = shapefile_path
         self.csv_output_path = csv_output_path
@@ -67,6 +70,7 @@ class PathGenerator:
         self.robot_width = robot_width
         self.coverage_width = coverage_width
         self.base_station_coords = base_station_coords
+        self.linear_speed_mps = linear_speed_mps
 
     def generate_path(self):
         """
@@ -174,6 +178,9 @@ class PathGenerator:
             points_for_track = path_points
         track_builder = self._build_track(points_for_track)
         track_builder.save_track(self.farmng_track_file)
+        if self.linear_speed_mps > 0:
+            from .track_velocity import fill_track_velocities
+            fill_track_velocities(self.farmng_track_file, self.linear_speed_mps)
         # Keep waypoints in lon/lat for frontend map preview
         if self.base_station_coords != (0, 0):
             preview_builder = self._build_track(path_points)
