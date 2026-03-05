@@ -1007,7 +1007,10 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                       if (val === '') {
                         setRtkBaseLongitude('');
                       } else {
-                        setRtkBaseLongitude(parseFloat(val) ?? 0);
+                        const parsed = parseFloat(val);
+                        if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+                          setRtkBaseLongitude(parsed);
+                        }
                       }
                     }}
                     placeholder="-117.0"
@@ -1028,7 +1031,10 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                       if (val === '') {
                         setRtkBaseLatitude('');
                       } else {
-                        setRtkBaseLatitude(parseFloat(val) ?? 0);
+                        const parsed = parseFloat(val);
+                        if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+                          setRtkBaseLatitude(parsed);
+                        }
                       }
                     }}
                     placeholder="47.0"
@@ -1041,8 +1047,8 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                 <button
                   type="button"
                   onClick={async () => {
-                    const lon = typeof rtkBaseLongitude === 'number' ? rtkBaseLongitude : 0;
-                    const lat = typeof rtkBaseLatitude === 'number' ? rtkBaseLatitude : 0;
+                    const lon = typeof rtkBaseLongitude === 'number' && Number.isFinite(rtkBaseLongitude) ? rtkBaseLongitude : 0;
+                    const lat = typeof rtkBaseLatitude === 'number' && Number.isFinite(rtkBaseLatitude) ? rtkBaseLatitude : 0;
                     try {
                       await apiService.setRtkBase(lon, lat);
                     } catch (err) {
