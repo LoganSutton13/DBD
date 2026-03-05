@@ -4,14 +4,15 @@
 # farmer links the path to a NodeODM task (stitched field) and clicks Save.
 
 import asyncio
+import json
 import logging
 import shutil
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import aiofiles
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Body, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 from app.services.path_planning_module.path_generator import PathGenerator
@@ -24,6 +25,9 @@ router = APIRouter()
 PATH_JOBS_DIR = Path("path_jobs")
 PATH_JOBS_DIR.mkdir(parents=True, exist_ok=True)
 
+# RTK base station config path (persisted for future use)
+RTK_BASE_CONFIG_PATH = PATH_JOBS_DIR / "rtk_base_config.json"
+
 # Only the most recent path job is kept in memory (single entry for preview).
 _path_jobs: Dict[str, Dict[str, Any]] = {}
 
@@ -31,7 +35,33 @@ _path_jobs: Dict[str, Dict[str, Any]] = {}
 SHAPEFILE_EXTENSIONS = {".shp", ".shx", ".dbf", ".prj", ".cpg", ".qix", ".sbn", ".sbx"}
 
 
-def _run_path_generation_sync(job_dir: Path, heading: float, robot_width: float, coverage_width: float) -> Dict[str, Any]:
+def _read_rtk_base_config() -> Tuple[float, float]:
+    """Read stored RTK base (lon, lat). Returns (0, 0) if missing or invalid."""
+    if not RTK_BASE_CONFIG_PATH.exists():
+        return (0.0, 0.0)
+    try:
+        with open(RTK_BASE_CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        lon = float(data.get("longitude", 0))
+        lat = float(data.get("latitude", 0))
+        return (lon, lat)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return (0.0, 0.0)
+
+
+def _write_rtk_base_config(longitude: float, latitude: float) -> None:
+    """Persist RTK base coordinates."""
+    with open(RTK_BASE_CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump({"longitude": longitude, "latitude": latitude}, f, indent=2)
+
+
+def _run_path_generation_sync(
+    job_dir: Path,
+    heading: float,
+    robot_width: float,
+    coverage_width: float,
+    base_station_coords: Tuple[float, float],
+) -> Dict[str, Any]:
     """Synchronous path generation (runs in thread). Returns result dict or raises."""
     shp_files = list(job_dir.glob("*.shp"))
     if not shp_files:
@@ -48,6 +78,7 @@ def _run_path_generation_sync(job_dir: Path, heading: float, robot_width: float,
         heading=heading,
         robot_width=robot_width,
         coverage_width=coverage_width,
+        base_station_coords=base_station_coords,
     )
     generator.generate_path()
     generator.convert_path_to_farmng()
@@ -63,7 +94,14 @@ def _run_path_generation_sync(job_dir: Path, heading: float, robot_width: float,
     }
 
 
-async def _run_path_generation_task(path_job_id: str, job_dir: Path, heading: float, robot_width : float, coverage_width : float) -> None:
+async def _run_path_generation_task(
+    path_job_id: str,
+    job_dir: Path,
+    heading: float,
+    robot_width: float,
+    coverage_width: float,
+    base_station_coords: Tuple[float, float],
+) -> None:
     """Background task: run path generation and update job store. No persistence to results/ here."""
     from datetime import datetime
 
@@ -71,7 +109,14 @@ async def _run_path_generation_task(path_job_id: str, job_dir: Path, heading: fl
     if not store or store.get("status") != "processing":
         return
     try:
-        result = await asyncio.to_thread(_run_path_generation_sync, job_dir, heading, robot_width, coverage_width)
+        result = await asyncio.to_thread(
+            _run_path_generation_sync,
+            job_dir,
+            heading,
+            robot_width,
+            coverage_width,
+            base_station_coords,
+        )
         result["generated_at"] = datetime.utcnow().isoformat()
         store["status"] = "completed"
         store["waypoints"] = result["waypoints"]
@@ -88,6 +133,35 @@ async def _run_path_generation_task(path_job_id: str, job_dir: Path, heading: fl
         store["generated_at"] = None
 
 
+@router.get("/rtk-base")
+async def get_rtk_base():
+    """Return stored RTK base station coordinates (longitude, latitude). Defaults to (0, 0) if not set."""
+    lon, lat = _read_rtk_base_config()
+    return {"longitude": lon, "latitude": lat}
+
+
+@router.put("/rtk-base")
+async def set_rtk_base(
+    body: Dict[str, float] = Body(..., embed=False),
+):
+    """Save RTK base station coordinates. Valid ranges: longitude [-180, 180], latitude [-90, 90]."""
+    longitude = body.get("longitude")
+    latitude = body.get("latitude")
+    if longitude is None or latitude is None:
+        raise HTTPException(status_code=400, detail="longitude and latitude are required")
+    try:
+        lon = float(longitude)
+        lat = float(latitude)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="longitude and latitude must be numbers")
+    if not -180 <= lon <= 180:
+        raise HTTPException(status_code=400, detail="longitude must be in [-180, 180]")
+    if not -90 <= lat <= 90:
+        raise HTTPException(status_code=400, detail="latitude must be in [-90, 90]")
+    _write_rtk_base_config(lon, lat)
+    return {"longitude": lon, "latitude": lat}
+
+
 @router.post("/")
 async def upload_shape_files(
     background_tasks: BackgroundTasks,
@@ -96,12 +170,15 @@ async def upload_shape_files(
     robot_width: float = Form(0.0),
     coverage_width: float = Form(0.0),
     boundary_name: Optional[str] = Form(None),
+    base_lon: Optional[float] = Form(None),
+    base_lat: Optional[float] = Form(None),
 ):
     """
     Upload shapefile components for path generation (preview only). Returns immediately
     with a path_job_id. Only the most recent job is kept in memory. Poll status then
     GET result for waypoints. To persist the path, call POST /{path_job_id}/save with
-    task_id after linking to a stitched field.
+    task_id after linking to a stitched field. Optional base_lon/base_lat update stored
+    RTK base and are used for relative easting/northing in the saved track.
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
@@ -140,6 +217,13 @@ async def upload_shape_files(
         job_dir.rmdir()
         raise HTTPException(status_code=400, detail="At least one .shp file is required")
 
+    # Resolve RTK base: use form values if both provided and not (0,0); else use stored config.
+    if base_lon is not None and base_lat is not None and (base_lon != 0 or base_lat != 0):
+        base_station_coords = (float(base_lon), float(base_lat))
+        _write_rtk_base_config(base_station_coords[0], base_station_coords[1])
+    else:
+        base_station_coords = _read_rtk_base_config()
+
     # Only keep the most recent path job in memory (preview); any previous job is evicted.
     _path_jobs.clear()
     _path_jobs[path_job_id] = {
@@ -154,7 +238,15 @@ async def upload_shape_files(
         "files": saved_names,
     }
 
-    background_tasks.add_task(_run_path_generation_task, path_job_id, job_dir, heading, robot_width, coverage_width)
+    background_tasks.add_task(
+        _run_path_generation_task,
+        path_job_id,
+        job_dir,
+        heading,
+        robot_width,
+        coverage_width,
+        base_station_coords,
+    )
 
     return JSONResponse(
         status_code=202,

@@ -197,15 +197,48 @@ class ApiService {
   }
 
   /**
+   * Get stored RTK base station coordinates (longitude, latitude). Defaults to (0, 0) if not set.
+   */
+  async getRtkBase(): Promise<{ longitude: number; latitude: number }> {
+    const response = await fetch(`${this.baseUrl}/api/v1/pathing/rtk-base`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Get RTK base failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Save RTK base station coordinates for path generation (relative easting/northing).
+   */
+  async setRtkBase(
+    longitude: number,
+    latitude: number
+  ): Promise<{ longitude: number; latitude: number }> {
+    const response = await fetch(`${this.baseUrl}/api/v1/pathing/rtk-base`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ longitude, latitude }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Set RTK base failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
    * Submit shapefile components for path generation (preview). Returns path_job_id; poll status then fetch result.
    * Only the most recent path is kept on the backend. Use savePathToTask to persist when linking to a task.
+   * Optional rtkBase updates stored RTK base and is used for relative easting/northing in the saved track.
    */
   async submitPathJob(
     files: File[],
     heading: number,
     robotWidth: number,
     coverageWidth: number,
-    boundaryName?: string
+    boundaryName?: string,
+    rtkBase?: { longitude: number; latitude: number }
   ): Promise<{
     path_job_id: string;
     status: string;
@@ -222,6 +255,10 @@ class ApiService {
     formData.append('coverage_width', coverageWidth.toString());
     if (boundaryName !== undefined && boundaryName !== '') {
       formData.append('boundary_name', boundaryName);
+    }
+    if (rtkBase !== undefined) {
+      formData.append('base_lon', rtkBase.longitude.toString());
+      formData.append('base_lat', rtkBase.latitude.toString());
     }
 
     const response = await fetch(`${this.baseUrl}/api/v1/pathing/`, {

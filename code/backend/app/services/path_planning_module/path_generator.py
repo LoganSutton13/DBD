@@ -1,5 +1,6 @@
 import asyncio
 import csv
+import logging
 import math
 from pathlib import Path
 import geopandas as gpd
@@ -17,6 +18,8 @@ import numpy as np
 from pyproj import Transformer
 from .track_planner import TrackBuilder
 import matplotlib.pyplot as plt
+
+logger = logging.getLogger(__name__)
 
 class PathPoint:
         def __init__(self, lon, lat, *args):
@@ -72,9 +75,12 @@ class PathGenerator:
         :param self: Instance of the class
         """
         gdf = gpd.read_file(self.shapefile_path)
+        logger.info(f"Shapefile loaded from {self.shapefile_path}")
+        logger.info(f"Shapefile CRS: {gdf.crs}")
         
         # --- 1) Extract a polygon boundary (largest if MultiPolygon) ---
         geom = gdf.geometry.iloc[0]
+        logger.info(f"Geometry type: {geom.geom_type}")
         if geom.geom_type == "Polygon":
             poly = geom
         elif geom.geom_type == "MultiPolygon":
@@ -83,6 +89,8 @@ class PathGenerator:
             raise ValueError(f"Unsupported geometry type: {geom.geom_type}")
 
         boundary_coords = list(poly.exterior.coords)
+        logger.info(f"Polygon bounds: {poly.bounds}")
+        logger.info(f"Boundary points: {len(boundary_coords)}")
 
         # Ensure ring is closed (last point == first point)
         if boundary_coords[0] != boundary_coords[-1]:
@@ -121,11 +129,18 @@ class PathGenerator:
 
         const_hl = f2c.HG_Const_gen()
         no_hl = const_hl.generateHeadlands(cells, 3.0 * self.coverage_width)  # 3x coverage width headland
+        logger.info(f"Headlands generated. Number of geometries: {no_hl.size()}")
+        
+        if no_hl.size() == 0:
+            logger.error(f"Headland generation produced empty geometry. Field may be invalid or too small for coverage_width={self.coverage_width}")
+            raise ValueError(f"Headland generation produced empty geometry. Field may be invalid or too small for coverage_width={self.coverage_width}")
 
         # --- 5) Swaths (boustrophedon) ---
+        logger.info(f"Generating swaths with heading={math.degrees(self.heading):.2f}° and coverage_width={self.coverage_width}")
         bf = f2c.SG_BruteForce()
         angle = self.heading  # choose your desired heading in radians
         swaths = bf.generateSwaths(angle, robot.getCovWidth(), no_hl.getGeometry(0))
+        logger.info(f"Swaths generated. Number of swaths: {swaths.size()}")
 
         boustro = f2c.RP_Boustrophedon()
         swaths = boustro.genSortedSwaths(swaths)
@@ -143,22 +158,28 @@ class PathGenerator:
             path_out = path_local
 
         path_out.saveToFile(str(self.csv_output_path), 15)
+        logger.info(f"Path saved to {self.csv_output_path}")
         return True
     
     def convert_path_to_farmng(self):
         """
         Convert the generated path CSV to FarmNG track format and save to JSON.
-        
-        :param self: Instance of the class
-        Returns:
-            Path to the saved FarmNG track JSON file.
-            Also accessible via self.farmng_track_file
+        When base_station_coords is set, the saved track is in relative easting/northing;
+        self.waypoints remains in lon/lat for API preview.
         """
         path_points = self._load_path_points(self.csv_output_path)
-        track_builder : TrackBuilder =self._build_track(path_points)
-        waypoints = track_builder.unpack_track()
+        if self.base_station_coords != (0, 0):
+            points_for_track = self._convert_path_points_to_relative_points(path_points)
+        else:
+            points_for_track = path_points
+        track_builder = self._build_track(points_for_track)
         track_builder.save_track(self.farmng_track_file)
-        self.waypoints = waypoints
+        # Keep waypoints in lon/lat for frontend map preview
+        if self.base_station_coords != (0, 0):
+            preview_builder = self._build_track(path_points)
+            self.waypoints = preview_builder.unpack_track()
+        else:
+            self.waypoints = track_builder.unpack_track()
         return self.farmng_track_file
     
     def _convert_path_points_to_relative_points(self, path_points: list[PathPoint]) -> list[PathPoint]:
