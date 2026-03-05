@@ -1007,7 +1007,8 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                       if (val === '') {
                         setRtkBaseLongitude('');
                       } else {
-                        setRtkBaseLongitude(parseFloat(val) ?? 0);
+                        const n = Number(val);
+                        setRtkBaseLongitude(Number.isFinite(n) ? n : 0);
                       }
                     }}
                     placeholder="-117.0"
@@ -1028,7 +1029,8 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                       if (val === '') {
                         setRtkBaseLatitude('');
                       } else {
-                        setRtkBaseLatitude(parseFloat(val) ?? 0);
+                        const n = Number(val);
+                        setRtkBaseLatitude(Number.isFinite(n) ? n : 0);
                       }
                     }}
                     placeholder="47.0"
