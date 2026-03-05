@@ -790,68 +790,6 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
 
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm text-dark-300 mb-2" htmlFor="rtkBaseLongitude">RTK base longitude</label>
-                    <input
-                      id="rtkBaseLongitude"
-                      type="number"
-                      value={rtkBaseLongitude}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === '') {
-                          setRtkBaseLongitude('');
-                        } else {
-                          setRtkBaseLongitude(parseFloat(val) ?? 0);
-                        }
-                      }}
-                      placeholder="-117.0"
-                      min="-180"
-                      max="180"
-                      step="any"
-                      className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-dark-300 mb-2" htmlFor="rtkBaseLatitude">RTK base latitude</label>
-                    <input
-                      id="rtkBaseLatitude"
-                      type="number"
-                      value={rtkBaseLatitude}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === '') {
-                          setRtkBaseLatitude('');
-                        } else {
-                          setRtkBaseLatitude(parseFloat(val) ?? 0);
-                        }
-                      }}
-                      placeholder="47.0"
-                      min="-90"
-                      max="90"
-                      step="any"
-                      className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const lon = typeof rtkBaseLongitude === 'number' ? rtkBaseLongitude : 0;
-                        const lat = typeof rtkBaseLatitude === 'number' ? rtkBaseLatitude : 0;
-                        try {
-                          await apiService.setRtkBase(lon, lat);
-                        } catch (err) {
-                          setPathError(err instanceof Error ? err.message : 'Failed to save RTK base');
-                        }
-                      }}
-                      className="w-full px-4 py-2 bg-dark-600 text-dark-100 rounded-lg hover:bg-dark-500 transition-colors duration-200"
-                    >
-                      Save RTK base
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
                     <label className="block text-sm text-dark-300 mb-2" htmlFor="boundaryHeading">Heading (degrees)</label>
                     <input
                       id="boundaryHeading"
@@ -1050,6 +988,71 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                 <p className="text-xs text-dark-400">
                   Saves the current path to the selected stitched field. Stitched fields list will be populated from the backend.
                 </p>
+              </div>
+            </div>
+
+            <div className="bg-dark-700 rounded-lg p-6 border border-dark-600">
+              <h3 className="text-lg font-medium text-primary-400 mb-4">
+                RTK Base Station
+              </h3>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm text-dark-300 mb-2" htmlFor="rtkBaseLongitude">Longitude</label>
+                  <input
+                    id="rtkBaseLongitude"
+                    type="number"
+                    value={rtkBaseLongitude}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') {
+                        setRtkBaseLongitude('');
+                      } else {
+                        setRtkBaseLongitude(parseFloat(val) ?? 0);
+                      }
+                    }}
+                    placeholder="-117.0"
+                    min="-180"
+                    max="180"
+                    step="any"
+                    className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-dark-300 mb-2" htmlFor="rtkBaseLatitude">Latitude</label>
+                  <input
+                    id="rtkBaseLatitude"
+                    type="number"
+                    value={rtkBaseLatitude}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') {
+                        setRtkBaseLatitude('');
+                      } else {
+                        setRtkBaseLatitude(parseFloat(val) ?? 0);
+                      }
+                    }}
+                    placeholder="47.0"
+                    min="-90"
+                    max="90"
+                    step="any"
+                    className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const lon = typeof rtkBaseLongitude === 'number' ? rtkBaseLongitude : 0;
+                    const lat = typeof rtkBaseLatitude === 'number' ? rtkBaseLatitude : 0;
+                    try {
+                      await apiService.setRtkBase(lon, lat);
+                    } catch (err) {
+                      setPathError(err instanceof Error ? err.message : 'Failed to save RTK base');
+                    }
+                  }}
+                  className="w-full px-4 py-2 bg-dark-600 text-dark-100 rounded-lg hover:bg-dark-500 transition-colors duration-200"
+                >
+                  Save RTK base
+                </button>
               </div>
             </div>
           </div>
