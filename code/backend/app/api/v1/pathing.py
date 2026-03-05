@@ -6,6 +6,7 @@
 import asyncio
 import json
 import logging
+import math
 import shutil
 import uuid
 from pathlib import Path
@@ -219,7 +220,15 @@ async def upload_shape_files(
 
     # Resolve RTK base: use form values if both provided and not (0,0); else use stored config.
     if base_lon is not None and base_lat is not None and (base_lon != 0 or base_lat != 0):
-        base_station_coords = (float(base_lon), float(base_lat))
+        if not math.isfinite(base_lon):
+            raise HTTPException(status_code=400, detail="base_lon must be a finite number")
+        if not math.isfinite(base_lat):
+            raise HTTPException(status_code=400, detail="base_lat must be a finite number")
+        if not -180 <= base_lon <= 180:
+            raise HTTPException(status_code=400, detail="base_lon (longitude) must be in [-180, 180]")
+        if not -90 <= base_lat <= 90:
+            raise HTTPException(status_code=400, detail="base_lat (latitude) must be in [-90, 90]")
+        base_station_coords = (base_lon, base_lat)
         _write_rtk_base_config(base_station_coords[0], base_station_coords[1])
     else:
         base_station_coords = _read_rtk_base_config()
