@@ -2,22 +2,18 @@
 Upload API endpoints for drone imagery files
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks, Form
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Form
 from fastapi.responses import JSONResponse
 from typing import Optional
 import uuid
-import os
 from pathlib import Path
 import aiofiles
 from datetime import datetime
-import requests
-from dotenv import load_dotenv
 from pyodm import Node
+from urllib.parse import urlparse
 
 from app.core.config import settings
-from app.services.file_storage import FileStorageService
-
-load_dotenv()
+from app.services import file_storage_service
 
 # Create router
 router = APIRouter()
@@ -28,6 +24,13 @@ def _upload_dir() -> Path:
 def _sanitize_filename(filename: str) -> str:
     """Prevent path traversal; allow only basename."""
     return Path(filename).name if filename else ""
+
+def _get_nodeodm_client() -> Node:
+    """Create a NodeODM client from settings. Raises HTTPException on misconfiguration."""
+    parsed = urlparse(settings.NODEODM_URL)
+    if not parsed.hostname:
+        raise HTTPException(status_code=500, detail="NodeODM URL is misconfigured")
+    return Node(parsed.hostname, parsed.port or 3000)
 
 
 # --- Chunked upload (init / chunk / finalize) ---
@@ -46,7 +49,7 @@ async def upload_init(
     dir_path = _upload_dir() / task_id
     dir_path.mkdir(parents=True, exist_ok=True)
     try:
-        FileStorageService().write_manifest(task_id, {
+        file_storage_service.write_manifest(task_id, {
             "task_id": task_id,
             "task_name": task_name or "",
             "created_at": datetime.utcnow().isoformat(),
@@ -132,7 +135,7 @@ async def upload_finalize(
     if not saved_files:
         raise HTTPException(status_code=400, detail="No valid files to process")
     try:
-        n = Node("localhost", 3000)
+        n = _get_nodeodm_client()
         orthophoto_options = {
             # --- REQUIRED FOR MULTISPECTRAL ---
             'radiometric-calibration': 'camera',   # Convert to reflectance
@@ -160,7 +163,7 @@ async def upload_finalize(
         else:
             task = n.create_task(saved_files, options=orthophoto_options)
         nodeodm_task_id = task.uuid
-        background_tasks.add_task(FileStorageService().poll_for_download, task, task_id)
+        background_tasks.add_task(file_storage_service.poll_for_download, task, task_id)
         return JSONResponse(
             status_code=201,
             content={
@@ -174,11 +177,13 @@ async def upload_finalize(
                 "task_name": task_name or None,
             },
         )
+    except HTTPException:
+        raise
     except Exception as e:
         if "ConnectionRefusedError" in str(e) or "No connection could be made" in str(e):
             raise HTTPException(
                 status_code=503,
-                detail="NodeODM server is not running. Please start NodeODM on localhost:3000",
+                detail=f"NodeODM server is not running. Please start NodeODM at {settings.NODEODM_URL}",
             )
         raise HTTPException(status_code=500, detail=f"NodeODM processing failed: {str(e)}")
 
@@ -186,16 +191,16 @@ async def upload_finalize(
 @router.get("/{task_id}/status")
 async def get_upload_status(task_id: str):
     """
-    Get upload status for a specific NodeODM task
-    
+    Get upload status for a specific NodeODM task.
+
     Args:
         task_id: NodeODM task identifier
-        
+
     Returns:
-        Current task status from NodeODM
+        Current task status and progress from NodeODM
     """
     try:
-        n = Node('localhost', 3000)
+        n = _get_nodeodm_client()
         task = n.get_task(task_id)
         return JSONResponse(
             status_code=200,
@@ -204,30 +209,8 @@ async def get_upload_status(task_id: str):
                 "progress": str(task.info().progress)
             }
         )
+    except HTTPException:
+        # Preserve existing HTTPException status code and detail.
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get task status: {str(e)}")
-
-
-@router.delete("/{task_id}")
-async def delete_upload(task_id: str):
-    """
-    Delete a NodeODM task
-    
-    Args:
-        task_id: NodeODM task identifier
-        
-    Returns:
-        Deletion confirmation
-    """
-    pass
-
-# Step 4: List all NodeODM tasks
-@router.get("/")
-async def list_uploads():
-    """
-    List all NodeODM tasks
-    
-    Returns:
-        List of all NodeODM tasks
-    """
-    pass
