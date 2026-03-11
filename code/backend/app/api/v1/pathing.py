@@ -3,7 +3,7 @@
 
 from typing import List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request, UploadFile
 
 from app.api.deps import (
     get_path_jobs_dir,
@@ -46,12 +46,12 @@ def set_rtk_base(
 
 @router.post("/", response_model=PathJobAcceptedResponse, status_code=202)
 async def upload_shape_files(
+    request: Request,
     background_tasks: BackgroundTasks,
     path_jobs_dir=Depends(get_path_jobs_dir),
     rtk_base_config_path=Depends(get_rtk_base_config_path),
     path_jobs_store=Depends(get_path_jobs_store_dep),
     shapefile_extensions=Depends(get_shapefile_extensions),
-    files: List[UploadFile] = File(...),
     heading: float = Form(0.0),
     robot_width: float = Form(0.0),
     coverage_width: float = Form(0.0),
@@ -65,6 +65,9 @@ async def upload_shape_files(
     GET result for waypoints. To persist the path, call POST /{path_job_id}/save with
     task_id after linking to a stitched field.
     """
+    form = await request.form()
+    files: List[UploadFile] = list(form.getlist("files"))
+
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
     if len(files) > settings.PATH_JOB_MAX_FILES:
