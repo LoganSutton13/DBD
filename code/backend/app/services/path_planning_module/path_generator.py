@@ -218,8 +218,8 @@ class PathGenerator:
             easting, northing = transformer.transform(pt.lon, pt.lat)
             
             # Calculate relative position from base station
-            rel_easting = easting - base_easting
-            rel_northing = northing - base_northing
+            rel_easting = -(easting - base_easting + 58080)
+            rel_northing = northing - base_northing - 72578
             
             relative_points.append(PathPoint(rel_easting, rel_northing, *pt.extra))
         
@@ -238,6 +238,7 @@ class PathGenerator:
     def _build_track(self, path_points : list[PathPoint]) -> Track:
         start = Pose3F64(
             a_from_b=Isometry3F64(
+                # NOTE: These are manual offset coordinates
                 translation=np.array([path_points[0].lon, path_points[0].lat, 0.0])
             ),
             frame_a="world",

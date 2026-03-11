@@ -1,80 +1,75 @@
 """
-Results API endpoints for drone imagery files
+Results API endpoints for drone imagery files.
+Routes delegate to handlers; response shapes match schemas for OpenAPI.
 """
 
-from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import JSONResponse, FileResponse
-from typing import List, Optional
-import uuid
-import os
-from pathlib import Path
-import aiofiles
-from datetime import datetime
-import requests
-from dotenv import load_dotenv
-from pyodm import Node
-from app.services import file_storage_service
+from typing import List
 
-load_dotenv()
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse
 
-# Create router
+from app.api.deps import get_file_storage_service
+from app.handlers import results as results_handlers
+from app.schemas.results import TaskResultItem, TaskSummaryResponse
+
 router = APIRouter()
 
-@router.get("/{task_id}")
-async def get_task_summary(task_id: str, request: Request):
-    """
-    Summary info for a processed task including URLs to assets.
-    """
+
+@router.get("/{task_id}", response_model=TaskSummaryResponse)
+def get_task_summary(
+    task_id: str,
+    request: Request,
+    storage=Depends(get_file_storage_service),
+):
+    """Summary info for a processed task including URLs to assets."""
     try:
-        image_path = file_storage_service.get_image_path(task_id)
-        report_path = file_storage_service.get_report_path(task_id)
-
-        if not image_path and not report_path:
-            raise HTTPException(status_code=404, detail="No results found for task")
-
-        base_url = str(request.base_url).rstrip('/')
-        result = {"taskId": task_id}
-        if image_path:
-            result["orthophotoPngUrl"] = f"{base_url}/api/v1/results/{task_id}/orthophoto.png"
-        if report_path:
-            result["reportPdfUrl"] = f"{base_url}/api/v1/results/{task_id}/report.pdf"
-
-        return JSONResponse(status_code=200, content=result)
-
+        base_url = str(request.base_url).rstrip("/")
+        return results_handlers.get_task_summary(task_id, storage, base_url)
     except HTTPException:
         raise
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get task results: {str(e)}")
 
-@router.get("/")
-async def list_processed_files(request: Request):
-    """
-    List all processed tasks that have an orthophoto PNG.
-    """
+
+@router.get("/", response_model=List[TaskResultItem])
+def list_processed_files(
+    storage=Depends(get_file_storage_service),
+):
+    """List all processed tasks that have an orthophoto PNG."""
     try:
-        tasks = file_storage_service.list_tasks_with_orthophoto()
-        # Items already include relative URLs; return as-is
-        return JSONResponse(status_code=200, content=tasks)
+        return results_handlers.list_processed_files(storage)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get all processed tasks: {str(e)}")
 
+
 @router.get("/{task_id}/orthophoto.png")
-async def get_orthophoto_png(task_id: str):
+def get_orthophoto_png(
+    task_id: str,
+    storage=Depends(get_file_storage_service),
+):
     """Serve the orthophoto PNG for a task."""
-    image_path = file_storage_service.get_image_path(task_id)
+    image_path = results_handlers.get_orthophoto_path(task_id, storage)
     if not image_path:
         raise HTTPException(status_code=404, detail="Orthophoto PNG not found")
-    return FileResponse(path=image_path, media_type="image/png", filename="orthophoto.png")
+    return FileResponse(
+        path=image_path, media_type="image/png", filename="orthophoto.png"
+    )
+
 
 @router.get("/{task_id}/report.pdf")
-async def get_report_pdf(task_id: str):
+def get_report_pdf(
+    task_id: str,
+    storage=Depends(get_file_storage_service),
+):
     """Serve the PDF report for a task if available."""
-    report_path = file_storage_service.get_report_path(task_id)
+    report_path = results_handlers.get_report_path(task_id, storage)
     if not report_path:
         raise HTTPException(status_code=404, detail="Report not found")
     return FileResponse(
         path=report_path,
         media_type="application/pdf",
         filename="report.pdf",
-        headers={"Content-Disposition": "inline; filename=report.pdf"}
+        headers={"Content-Disposition": "inline; filename=report.pdf"},
     )
