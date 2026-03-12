@@ -113,7 +113,6 @@ generatePrescription <- function (orthophoto, boundary, heading, cell_size, clus
       northing = st_coordinates(centerpoint)[, 2],
     ) %>%
     select(NDVI_max, easting, northing, PlotID, boundary)
-    #st_drop_geometry()
   
   NDVI_cluster_data <- na.omit(NDVI_cluster_data)
   
