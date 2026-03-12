@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.upload import router as upload_router
 from app.api.v1.results import router as results_router
 from app.api.v1.pathing import router as pathing_router
+from app.api.v1.prescription import router as prescription_router
 from app.core.config import settings
 from app.schemas.common import HealthResponse, RootResponse
 
@@ -52,6 +53,7 @@ async def health_check():
 app.include_router(upload_router, prefix="/api/v1/upload", tags=["upload"])
 app.include_router(results_router, prefix="/api/v1/results", tags=["results"])
 app.include_router(pathing_router, prefix="/api/v1/pathing", tags=["pathing"])
+app.include_router(prescription_router, prefix="/api/v1/prescription", tags=["prescription"])
 
 if __name__ == "__main__":
     import uvicorn
