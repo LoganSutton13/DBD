@@ -26,7 +26,7 @@ jobs:
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
           echo "$HOME/.local/bin" >> $GITHUB_PATH
-          echo "$HOME/.local/bin" >> $GITHUB_ENV
+          # NOTE: $GITHUB_ENV expects KEY=VALUE lines; use $GITHUB_PATH for PATH updates.
 
       - name: Configure Poetry (no virtualenv in CI)
         run: poetry config virtualenvs.create false
