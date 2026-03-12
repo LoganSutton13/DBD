@@ -94,3 +94,55 @@ def test_list_tasks_with_orthophoto_includes_task_name_from_manifest(results_dir
     tasks = storage.list_tasks_with_orthophoto()
     assert len(tasks) == 1
     assert tasks[0].get("taskName") == "My Field"
+
+
+def test_get_prescription_path_no_dir_returns_none(results_dir: Path):
+    """get_prescription_path when task dir does not exist returns None."""
+    storage = FileStorageService(results_dir=results_dir)
+    assert storage.get_prescription_path("no-task") is None
+
+
+def test_get_prescription_path_with_file_returns_path(results_dir: Path):
+    """get_prescription_path when prescription.geojson exists returns that path."""
+    storage = FileStorageService(results_dir=results_dir)
+    task_id = "task-with-rx"
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True)
+    (task_dir / "prescription.geojson").write_text('{"type":"FeatureCollection","features":[]}')
+    result = storage.get_prescription_path(task_id)
+    assert result is not None
+    assert result.name == "prescription.geojson"
+    assert result.parent.name == task_id
+
+
+def test_list_tasks_with_prescription_empty_returns_empty_list(results_dir: Path):
+    """list_tasks_with_prescription on empty results_dir returns []."""
+    storage = FileStorageService(results_dir=results_dir)
+    assert storage.list_tasks_with_prescription() == []
+
+
+def test_list_tasks_with_prescription_one_task_returns_item(results_dir: Path):
+    """list_tasks_with_prescription with one task having prescription.geojson returns one item."""
+    storage = FileStorageService(results_dir=results_dir)
+    task_id = "task-1"
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True)
+    (task_dir / "prescription.geojson").write_text('{"type":"FeatureCollection","features":[]}')
+    tasks = storage.list_tasks_with_prescription()
+    assert len(tasks) == 1
+    assert tasks[0]["taskId"] == task_id
+    assert "prescriptionUrl" in tasks[0]
+    assert "/api/v1/prescription/task-1" in tasks[0]["prescriptionUrl"]
+
+
+def test_list_tasks_with_prescription_includes_task_name_from_manifest(results_dir: Path):
+    """list_tasks_with_prescription includes taskName when manifest has task_name."""
+    storage = FileStorageService(results_dir=results_dir)
+    task_id = "task-named-rx"
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True)
+    (task_dir / "prescription.geojson").write_text('{"type":"FeatureCollection","features":[]}')
+    storage.write_manifest(task_id, {"task_id": task_id, "task_name": "My Prescription", "created_at": "2024-01-01T00:00:00"})
+    tasks = storage.list_tasks_with_prescription()
+    assert len(tasks) == 1
+    assert tasks[0].get("taskName") == "My Prescription"
