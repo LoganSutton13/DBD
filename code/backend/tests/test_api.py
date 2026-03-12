@@ -1,6 +1,8 @@
 """
 API Testing Script for Drone Imagery Backend
-Test all endpoints programmatically
+Tests in this module require a running server and (for upload/status) NodeODM.
+Marked with @pytest.mark.integration; exclude from default run with:
+  pytest tests/ -m "not integration"
 """
 
 import requests
@@ -45,8 +47,9 @@ def test_health_endpoints():
     
     return True
 
+@pytest.mark.integration
 def test_health_endpoints_pytest():
-    """Test health check endpoints for pytest"""
+    """Test health check endpoints for pytest (requires server on localhost:8001)."""
     try:
         # Test root endpoint
         response = requests.get(f"{BASE_URL}/")
@@ -158,6 +161,7 @@ def test_upload_small_batch():
     print_separator("TESTING UPLOAD ENDPOINT (SMALL BATCH)")
     return test_upload_endpoint(max_files=5)
 
+@pytest.mark.integration
 def test_upload_status(nodeodm_task_id):
     """Test upload status endpoint"""
     if not nodeodm_task_id:

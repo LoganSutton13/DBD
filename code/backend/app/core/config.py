@@ -40,8 +40,16 @@ class Settings(BaseSettings):
     # Allowed image extensions (for chunked upload finalize where content_type is not available)
     ALLOWED_IMAGE_EXTENSIONS: List[str] = [".jpg", ".jpeg", ".png", ".tif", ".tiff"]
 
+    # Pathing (shapefile path generation)
+    PATH_JOBS_DIR: str = "./path_jobs"
+    SHAPEFILE_EXTENSIONS: List[str] = [".shp", ".shx", ".dbf", ".prj", ".cpg", ".qix", ".sbn", ".sbx"]
+    PATH_JOB_MAX_FILES: int = 20
+    PATH_JOB_MAX_FILE_SIZE_BYTES: int = 100 * 1024 * 1024  # 100MB
+
     # Node ODM Configuration
     NODEODM_URL: str = "http://localhost:3000"
+    NODEODM_HOST: str = "localhost"
+    NODEODM_PORT: int = 3000
     NODEODM_TIMEOUT: int = 3600  # 1 hour
     
     class Config:

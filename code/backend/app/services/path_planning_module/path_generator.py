@@ -238,6 +238,7 @@ class PathGenerator:
     def _build_track(self, path_points : list[PathPoint]) -> Track:
         start = Pose3F64(
             a_from_b=Isometry3F64(
+                # NOTE: These are manual offset coordinates
                 translation=np.array([path_points[0].lon, path_points[0].lat, 0.0])
             ),
             frame_a="world",

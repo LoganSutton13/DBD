@@ -1,171 +1,57 @@
-# The purpose of this API is to handle the uploads of shape files for path preview.
-# The farmer can adjust heading and regenerate until satisfied. Only the most recent
-# path job is kept in memory for preview. Paths are persisted to disk only when the
-# farmer links the path to a NodeODM task (stitched field) and clicks Save.
+# Pathing API: shapefile upload for path preview, RTK base, save to task.
+# Routes delegate to handlers; response shapes match schemas for OpenAPI.
 
-import asyncio
-import json
-import logging
-import shutil
-import uuid
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional
 
-import aiofiles
-from fastapi import APIRouter, BackgroundTasks, Body, File, Form, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request, UploadFile
 
-from app.services.path_planning_module.path_generator import PathGenerator
-
-logger = logging.getLogger(__name__)
+from app.api.deps import (
+    get_path_jobs_dir,
+    get_path_jobs_store_dep,
+    get_rtk_base_config_path,
+    get_shapefile_extensions,
+)
+from app.core.config import settings
+from app.handlers import pathing as pathing_handlers
+from app.schemas.pathing import (
+    PathJobAcceptedResponse,
+    PathJobResultResponse,
+    PathJobStatusResponse,
+    PathSaveResponse,
+    RtkBaseResponse,
+    RtkBaseUpdate,
+)
 
 router = APIRouter()
 
-# Base directory for path generation jobs (shapefiles + outputs)
-PATH_JOBS_DIR = Path("path_jobs")
-PATH_JOBS_DIR.mkdir(parents=True, exist_ok=True)
 
-# RTK base station config path (persisted for future use)
-RTK_BASE_CONFIG_PATH = PATH_JOBS_DIR / "rtk_base_config.json"
-
-# Only the most recent path job is kept in memory (single entry for preview).
-_path_jobs: Dict[str, Dict[str, Any]] = {}
-
-# Allowed shapefile component extensions (must include .shp)
-SHAPEFILE_EXTENSIONS = {".shp", ".shx", ".dbf", ".prj", ".cpg", ".qix", ".sbn", ".sbx"}
-
-
-def _read_rtk_base_config() -> Tuple[float, float]:
-    """Read stored RTK base (lon, lat). Returns (0, 0) if missing or invalid."""
-    if not RTK_BASE_CONFIG_PATH.exists():
-        return (0.0, 0.0)
-    try:
-        with open(RTK_BASE_CONFIG_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        lon = float(data.get("longitude", 0))
-        lat = float(data.get("latitude", 0))
-        return (lon, lat)
-    except (json.JSONDecodeError, TypeError, ValueError):
-        return (0.0, 0.0)
-
-
-def _write_rtk_base_config(longitude: float, latitude: float) -> None:
-    """Persist RTK base coordinates."""
-    with open(RTK_BASE_CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump({"longitude": longitude, "latitude": latitude}, f, indent=2)
-
-
-def _run_path_generation_sync(
-    job_dir: Path,
-    heading: float,
-    robot_width: float,
-    coverage_width: float,
-    base_station_coords: Tuple[float, float],
-) -> Dict[str, Any]:
-    """Synchronous path generation (runs in thread). Returns result dict or raises."""
-    shp_files = list(job_dir.glob("*.shp"))
-    if not shp_files:
-        raise ValueError("No .shp file found in uploaded shapefile components")
-    shapefile_path = shp_files[0]
-    csv_path = job_dir / "path.csv"
-    farmng_path = job_dir / "track.json"
-
-    generator = PathGenerator(
-        pid=0,
-        shapefile_path=shapefile_path,
-        farmng_track_file=farmng_path,
-        csv_output_path=csv_path,
-        heading=heading,
-        robot_width=robot_width,
-        coverage_width=coverage_width,
-        base_station_coords=base_station_coords,
-    )
-    generator.generate_path()
-    generator.convert_path_to_farmng()
-
-    if generator.waypoints is None:
-        raise ValueError("Path generated but waypoints not available")
-    x_list, y_list, _ = generator.waypoints  # x=lon, y=lat per PathGenerator
-    waypoints = [{"lat": float(y_list[i]), "lon": float(x_list[i])} for i in range(len(x_list))]
-    return {
-        "waypoints": waypoints,
-        "heading": heading,
-        "generated_at": None,  # set by caller
-    }
-
-
-async def _run_path_generation_task(
-    path_job_id: str,
-    job_dir: Path,
-    heading: float,
-    robot_width: float,
-    coverage_width: float,
-    base_station_coords: Tuple[float, float],
-) -> None:
-    """Background task: run path generation and update job store. No persistence to results/ here."""
-    from datetime import datetime
-
-    store = _path_jobs.get(path_job_id)
-    if not store or store.get("status") != "processing":
-        return
-    try:
-        result = await asyncio.to_thread(
-            _run_path_generation_sync,
-            job_dir,
-            heading,
-            robot_width,
-            coverage_width,
-            base_station_coords,
-        )
-        result["generated_at"] = datetime.utcnow().isoformat()
-        store["status"] = "completed"
-        store["waypoints"] = result["waypoints"]
-        store["heading"] = result["heading"]
-        store["generated_at"] = result["generated_at"]
-        store["error"] = None
-        store["job_dir"] = str(job_dir)
-    except Exception as e:
-        logger.exception("Path generation failed for job %s", path_job_id)
-        store["status"] = "failed"
-        store["error"] = str(e)
-        store["waypoints"] = None
-        store["heading"] = None
-        store["generated_at"] = None
-
-
-@router.get("/rtk-base")
-async def get_rtk_base():
+@router.get("/rtk-base", response_model=RtkBaseResponse)
+def get_rtk_base(
+    rtk_base_config_path=Depends(get_rtk_base_config_path),
+):
     """Return stored RTK base station coordinates (longitude, latitude). Defaults to (0, 0) if not set."""
-    lon, lat = _read_rtk_base_config()
-    return {"longitude": lon, "latitude": lat}
+    return pathing_handlers.get_rtk_base(rtk_base_config_path)
 
 
-@router.put("/rtk-base")
-async def set_rtk_base(
-    body: Dict[str, float] = Body(..., embed=False),
+@router.put("/rtk-base", response_model=RtkBaseResponse)
+def set_rtk_base(
+    body: RtkBaseUpdate,
+    rtk_base_config_path=Depends(get_rtk_base_config_path),
 ):
     """Save RTK base station coordinates. Valid ranges: longitude [-180, 180], latitude [-90, 90]."""
-    longitude = body.get("longitude")
-    latitude = body.get("latitude")
-    if longitude is None or latitude is None:
-        raise HTTPException(status_code=400, detail="longitude and latitude are required")
-    try:
-        lon = float(longitude)
-        lat = float(latitude)
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="longitude and latitude must be numbers")
-    if not -180 <= lon <= 180:
-        raise HTTPException(status_code=400, detail="longitude must be in [-180, 180]")
-    if not -90 <= lat <= 90:
-        raise HTTPException(status_code=400, detail="latitude must be in [-90, 90]")
-    _write_rtk_base_config(lon, lat)
-    return {"longitude": lon, "latitude": lat}
+    return pathing_handlers.set_rtk_base(
+        rtk_base_config_path, body.longitude, body.latitude
+    )
 
 
-@router.post("/")
+@router.post("/", response_model=PathJobAcceptedResponse, status_code=202)
 async def upload_shape_files(
+    request: Request,
     background_tasks: BackgroundTasks,
-    files: List[UploadFile] = File(...),
+    path_jobs_dir=Depends(get_path_jobs_dir),
+    rtk_base_config_path=Depends(get_rtk_base_config_path),
+    path_jobs_store=Depends(get_path_jobs_store_dep),
+    shapefile_extensions=Depends(get_shapefile_extensions),
     heading: float = Form(0.0),
     robot_width: float = Form(0.0),
     coverage_width: float = Form(0.0),
@@ -177,165 +63,86 @@ async def upload_shape_files(
     Upload shapefile components for path generation (preview only). Returns immediately
     with a path_job_id. Only the most recent job is kept in memory. Poll status then
     GET result for waypoints. To persist the path, call POST /{path_job_id}/save with
-    task_id after linking to a stitched field. Optional base_lon/base_lat update stored
-    RTK base and are used for relative easting/northing in the saved track.
+    task_id after linking to a stitched field.
     """
+    form = await request.form()
+    files: List[UploadFile] = list(form.getlist("files"))
+
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
-    if len(files) > 20:
-        raise HTTPException(status_code=400, detail="Too many files (maximum 20)")
-
-    path_job_id = str(uuid.uuid4())
-    job_dir = PATH_JOBS_DIR / path_job_id
-    job_dir.mkdir(parents=True, exist_ok=True)
-    saved_names: List[str] = []
-
-    for file in files:
-        if not file.filename:
-            raise HTTPException(status_code=400, detail="File with no filename detected")
-        ext = Path(file.filename).suffix.lower()
-        if ext not in SHAPEFILE_EXTENSIONS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported file type: {file.filename}. Allowed: {', '.join(SHAPEFILE_EXTENSIONS)}",
-            )
-        content = await file.read()
-        if len(content) > 100 * 1024 * 1024:
-            raise HTTPException(
-                status_code=413,
-                detail=f"File {file.filename} exceeds 100MB",
-            )
-        file_path = job_dir / file.filename
-        async with aiofiles.open(file_path, "wb") as f:
-            await f.write(content)
-        saved_names.append(file.filename)
-
-    shp_count = sum(1 for n in saved_names if n.lower().endswith(".shp"))
-    if shp_count == 0:
-        for p in job_dir.iterdir():
-            p.unlink()
-        job_dir.rmdir()
-        raise HTTPException(status_code=400, detail="At least one .shp file is required")
-
-    # Resolve RTK base: use form values if both provided and not (0,0); else use stored config.
-    if base_lon is not None and base_lat is not None and (base_lon != 0 or base_lat != 0):
-        base_station_coords = (float(base_lon), float(base_lat))
-        _write_rtk_base_config(base_station_coords[0], base_station_coords[1])
-    else:
-        base_station_coords = _read_rtk_base_config()
-
-    # Only keep the most recent path job in memory (preview); any previous job is evicted.
-    _path_jobs.clear()
-    _path_jobs[path_job_id] = {
-        "status": "processing",
-        "error": None,
-        "waypoints": None,
-        "heading": heading,
-        "robot_width": robot_width,
-        "coverage_width": coverage_width,
-        "generated_at": None,
-        "boundary_name": boundary_name,
-        "files": saved_names,
-    }
-
-    background_tasks.add_task(
-        _run_path_generation_task,
-        path_job_id,
-        job_dir,
-        heading,
-        robot_width,
-        coverage_width,
-        base_station_coords,
-    )
-
-    return JSONResponse(
-        status_code=202,
-        content={
-            "message": "Path generation started",
-            "path_job_id": path_job_id,
-            "status": "processing",
-            "heading": heading,
-            "robot_width": robot_width,
-            "coverage_width": coverage_width,
-            "files": saved_names,
-            "boundary_name": boundary_name,
-        },
-    )
+    if len(files) > settings.PATH_JOB_MAX_FILES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many files (maximum {settings.PATH_JOB_MAX_FILES})",
+        )
+    try:
+        return await pathing_handlers.upload_shape_files(
+            background_tasks,
+            path_jobs_dir,
+            rtk_base_config_path,
+            path_jobs_store,
+            shapefile_extensions,
+            settings.PATH_JOB_MAX_FILE_SIZE_BYTES,
+            files,
+            heading,
+            robot_width,
+            coverage_width,
+            boundary_name,
+            base_lon,
+            base_lat,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/{path_job_id}/status")
-async def get_path_job_status(path_job_id: str):
+@router.get("/{path_job_id}/status", response_model=PathJobStatusResponse)
+def get_path_job_status(
+    path_job_id: str,
+    path_jobs_store=Depends(get_path_jobs_store_dep),
+):
     """Poll for path job status. Returns status: processing | completed | failed."""
-    if path_job_id not in _path_jobs:
+    try:
+        return pathing_handlers.get_path_job_status(path_job_id, path_jobs_store)
+    except KeyError:
         raise HTTPException(status_code=404, detail="Path job not found")
-    store = _path_jobs[path_job_id]
-    out = {"status": store["status"]}
-    if store.get("error"):
-        out["error"] = store["error"]
-    return out
 
 
-@router.get("/{path_job_id}")
-async def get_path_job_result(path_job_id: str):
+@router.get("/{path_job_id}", response_model=PathJobResultResponse)
+def get_path_job_result(
+    path_job_id: str,
+    path_jobs_store=Depends(get_path_jobs_store_dep),
+):
     """
     Get path job result. When status is completed, returns waypoints and metadata
     for frontend preview. When processing or failed, returns status (and error if failed).
     """
-    if path_job_id not in _path_jobs:
+    try:
+        return pathing_handlers.get_path_job_result(path_job_id, path_jobs_store)
+    except KeyError:
         raise HTTPException(status_code=404, detail="Path job not found")
-    store = _path_jobs[path_job_id]
-    status = store["status"]
-    if status == "processing":
-        return {"status": "processing", "message": "Path generation in progress"}
-    if status == "failed":
-        return {
-            "status": "failed",
-            "error": store.get("error", "Unknown error"),
-        }
-    # completed
-    return {
-        "status": "completed",
-        "waypoints": store["waypoints"],
-        "heading": store["heading"],
-        "generated_at": store["generated_at"],
-        "boundary_name": store.get("boundary_name"),
-        "robot_width": store.get("robot_width"),
-        "coverage_width": store.get("coverage_width"),
-    }
 
 
-@router.post("/{path_job_id}/save")
-async def save_path_to_task(path_job_id: str, task_id: str = Form(...)):
+@router.post("/{path_job_id}/save", response_model=PathSaveResponse)
+def save_path_to_task(
+    path_job_id: str,
+    task_id: str = Form(...),
+    path_jobs_store=Depends(get_path_jobs_store_dep),
+):
     """
     Persist the generated path to a NodeODM task (stitched field). Call this only when
-    the farmer has linked the path to a task and chosen to save. Copies the FarmNG
-    track JSON into results/<task_id>/robot_path.json.
+    the farmer has linked the path to a task and chosen to save.
     """
-    if path_job_id not in _path_jobs:
-        raise HTTPException(status_code=404, detail="Path job not found")
-    store = _path_jobs[path_job_id]
-    if store.get("status") != "completed":
-        raise HTTPException(
-            status_code=400,
-            detail="Path is not ready to save (status: {})".format(store.get("status") or "unknown"),
+    try:
+        from pathlib import Path
+        return pathing_handlers.save_path_to_task(
+            path_job_id,
+            task_id,
+            path_jobs_store,
+            Path(settings.RESULTS_DIR),
         )
-    task_id = task_id.strip()
-    if not task_id:
-        raise HTTPException(status_code=400, detail="task_id is required")
-
-    job_dir = store.get("job_dir")
-    if not job_dir:
-        raise HTTPException(status_code=500, detail="Path job directory not found")
-    track_src = Path(job_dir) / "track.json"
-    if not track_src.exists():
-        raise HTTPException(status_code=404, detail="Generated track file not found")
-
-    from app.core.config import settings
-    results_dir = Path(settings.RESULTS_DIR)
-    task_dir = results_dir / task_id
-    task_dir.mkdir(parents=True, exist_ok=True)
-    dest = task_dir / "robot_path.json"
-    shutil.copy2(track_src, dest)
-    logger.info("Saved robot_path.json to task folder %s", task_dir)
-
-    return {"message": "Path saved to task", "task_id": task_id, "saved_path": str(dest)}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Path job not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))

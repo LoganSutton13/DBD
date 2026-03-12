@@ -10,6 +10,7 @@ from app.api.v1.upload import router as upload_router
 from app.api.v1.results import router as results_router
 from app.api.v1.pathing import router as pathing_router
 from app.core.config import settings
+from app.schemas.common import HealthResponse, RootResponse
 
 # Configure logging
 logging.basicConfig(
@@ -36,15 +37,16 @@ app.add_middleware(
 )
 
 # Health check endpoints
-@app.get("/")
+@app.get("/", response_model=RootResponse)
 async def root():
     """Root endpoint - health check"""
-    return {"message": "Drone Imagery API is running", "status": "healthy"}
+    return RootResponse(message="Drone Imagery API is running", status="healthy")
 
-@app.get("/health")
+
+@app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "service": "drone-imagery-api"}
+    return HealthResponse(status="healthy", service="drone-imagery-api")
 
 # Include API routers
 app.include_router(upload_router, prefix="/api/v1/upload", tags=["upload"])

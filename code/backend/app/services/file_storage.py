@@ -20,9 +20,9 @@ COMPLETED_STATUS = 'taskstatus.completed'
 FAILED_STATUS = 'taskstatus.failed'
 class FileStorageService:
     """Service for managing NodeODM output file storage"""
-    
-    def __init__(self):
-        self.results_dir = Path(settings.RESULTS_DIR)
+
+    def __init__(self, results_dir: Optional[Path] = None):
+        self.results_dir = Path(results_dir) if results_dir is not None else Path(settings.RESULTS_DIR)
         self.results_dir.mkdir(parents=True, exist_ok=True)
 
     def _result_url(self, task_id: str, artifact_name: str) -> str:
