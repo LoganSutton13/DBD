@@ -218,8 +218,8 @@ class PathGenerator:
             easting, northing = transformer.transform(pt.lon, pt.lat)
             
             # Calculate relative position from base station
-            rel_easting = -(easting - base_easting + 58080)
-            rel_northing = northing - base_northing - 72578
+            rel_easting = easting - base_easting
+            rel_northing = northing - base_northing
             
             relative_points.append(PathPoint(rel_easting, rel_northing, *pt.extra))
         
