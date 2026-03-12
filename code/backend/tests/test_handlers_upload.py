@@ -22,7 +22,7 @@ def test_upload_init_creates_dir_and_returns_task_id(upload_dir: Path, file_stor
     """upload_init creates task_id subdir and returns UploadInitResponse with task_id."""
     result = upload_handlers.upload_init(upload_dir, file_storage_service)
     assert result.task_id
-    (upload_dir / result.task_id).exists()
+    assert (upload_dir / result.task_id).exists()
     assert (upload_dir / result.task_id).is_dir()
 
 
