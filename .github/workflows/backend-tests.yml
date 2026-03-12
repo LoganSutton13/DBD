@@ -1,4 +1,6 @@
 # Run backend tests on push (and pull_request).
+# Path generation (fields2cover) is not pip-installable and is loaded only when
+# path generation runs; the app and all tests that don't run path generation work without it.
 name: Backend tests
 
 on:
