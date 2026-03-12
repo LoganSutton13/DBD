@@ -1,11 +1,15 @@
 """Unit tests for PathGenerator service (path planning from shapefile)."""
 
-import os
 from pathlib import Path
 
 import pytest
 
-from app.services.path_planning_module.path_generator import PathGenerator
+# These tests rely on heavy, non-pip-friendly native deps (e.g. geopandas / fields2cover).
+# In CI we skip them cleanly during collection if those deps are missing.
+geopandas = pytest.importorskip("geopandas")
+fields2cover = pytest.importorskip("fields2cover")
+
+pytestmark = pytest.mark.integration
 
 # Paths relative to this test file
 TEST_DIR = Path(__file__).resolve().parent
@@ -30,6 +34,9 @@ def test_generate_path_and_convert():
     """PathGenerator.generate_path and convert_path_to_farmng produce CSV and JSON."""
     if not TEST_SHAPEFILE.exists():
         pytest.skip("Test shapefile missing: tests/test_data/boundaries.shp")
+    # Import here so missing deps are handled by importorskip above (during collection)
+    from app.services.path_planning_module.path_generator import PathGenerator
+
     generator = PathGenerator(
         pid=1,
         shapefile_path=TEST_SHAPEFILE,
