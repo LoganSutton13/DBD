@@ -171,7 +171,7 @@ generatePrescription <- function (orthophoto, boundary, heading, cell_size, clus
 }
 
 # example call of this function:
-# Rscript prescription_module.R --orthophoto="../../../../../data/odm_orthophoto_updated.tif" --heading=6.5 --maximum_vertices=50000
+# # Rscript prescription_module.R --orthophoto="../../../../../data/odm_orthophoto_updated.tif" --boundary="../../../../../data/boundaries.shp" --maximum_vertices=50000
 option_list <- list(
   make_option(c("--orthophoto"), help="stitched drone image filepath, file generated with WebODM", type="character"),
   make_option(c("--boundary"), help="shapefile of the field's boundary. The orthophoto will crop to this.", type="character"),
