@@ -139,8 +139,8 @@ generatePrescription <- function (orthophoto, boundary, heading, cell_size, clus
       # convert UTM easting / northing into latitude / longitude
       #longitude = utm2lonlat(easting = easting, northing = northing, zone = 11, hemisphere = "N")$longitude,
       #latitude = utm2lonlat(easting = easting, northing = northing, zone = 11, hemisphere = "N")$latitude,
-      boundary_sfc = st_sfc(boundary, crs=32611),
-      boundary_latlong = st_transform(boundary_sfc, crs=4326)
+      boundary_sfc = st_sfc(boundary, crs = st_crs(boundary)),
+      boundary_latlong = st_transform(boundary_sfc, crs = 4326)
       
     ) %>%
     select(NDVI_max, boundary_latlong, cluster)
@@ -175,7 +175,7 @@ option_list <- list(
   make_option(c("--orthophoto"), help="stitched drone image filepath, file generated with WebODM", type="character"),
   make_option(c("--boundary"), help="shapefile of the field's boundary. The orthophoto will crop to this.", type="character"),
   make_option(c("--heading"), help="in degrees, the heading that the robot will use on the field", type="double", default=0.0),
-  make_option(c("--cell_size"), help="in degrees, the heading that the robot will use on the field", type="integer", default=NA),
+  make_option(c("--cell_size"), help="cell size in meters; if NA, the resolution is automatically determined using --maximum_vertices", type="double", default=NA_real_),
   make_option(c("--cluster_count"), help="the number of categories of health to divide the map into", type="integer", default=3),
   make_option(c("--smoothing_rounds"), help="the number of time the data gets smoothed. The more smoothing, the larger the data clumps.", type="integer", default=3),
   make_option(c("--smoothing_sigma"), help="the intensity of each round of smoothing. The more smoothing, the larger the data clumps.", type="integer", default=10),
