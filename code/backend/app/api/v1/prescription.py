@@ -57,7 +57,10 @@ def update_prescription(
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to process prescription data.",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
