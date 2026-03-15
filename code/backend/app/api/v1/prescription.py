@@ -1,5 +1,7 @@
 """Prescription API endpoints. Routes delegate to handlers; response shapes match schemas."""
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -9,6 +11,8 @@ from app.schemas.prescription import (
     PrescriptionListResponse,
     PrescriptionUpdateRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -57,10 +61,11 @@ def update_prescription(
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except ValueError:
+    except ValueError as e:
+        logger.exception("Failed to update prescription for task %s due to invalid GeoJSON.", task_id)
         raise HTTPException(
             status_code=500,
-            detail="Failed to process prescription data.",
+            detail=f"Failed to update prescription: {e}",
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
