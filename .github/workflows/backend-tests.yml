@@ -1,0 +1,37 @@
+# Run backend tests on push (and pull_request).
+# Path generation (fields2cover) is not pip-installable and is loaded only when
+# path generation runs; the app and all tests that don't run path generation work without it.
+name: Backend tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: code/backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: abatilo/actions-poetry@v2
+        with:
+          poetry-version: '1.8.4'
+
+      - name: Configure Poetry (no virtualenv in CI)
+        run: poetry config virtualenvs.create false
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Run tests
+        run: poetry run pytest tests/ -v --tb=short -m "not integration"

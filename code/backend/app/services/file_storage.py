@@ -15,9 +15,25 @@ import pyodm
 import logging
 
 from ..core.config import settings
+
 LOGGER = logging.getLogger(__name__)
-COMPLETED_STATUS = 'taskstatus.completed'
-FAILED_STATUS = 'taskstatus.failed'
+
+# Task status (NodeODM)
+COMPLETED_STATUS = "taskstatus.completed"
+FAILED_STATUS = "taskstatus.failed"
+
+# Path segments under each task_id directory
+MANIFEST_FILE = "manifest.json"
+ORTHO_DIR = "odm_orthophoto"
+ORTHO_FILE = "odm_orthophoto.png"
+REPORT_DIR = "odm_report"
+REPORT_FILE = "report.pdf"
+PRESCRIPTION_FILE = "prescription.geojson"
+
+# Local API base paths
+PRESCRIPTION_BASE_PATH = "/api/v1/prescription"
+
+
 class FileStorageService:
     """Service for managing NodeODM output file storage"""
 
@@ -30,7 +46,7 @@ class FileStorageService:
         return f"/api/v1/results/{task_id}/{artifact_name}"
 
     def _manifest_path(self, task_id: str) -> Path:
-        return self.results_dir / task_id / "manifest.json"
+        return self.results_dir / task_id / MANIFEST_FILE
 
     def write_manifest(self, task_id: str, data: Dict[str, str]) -> None:
         task_dir = self.results_dir / task_id
@@ -119,16 +135,44 @@ class FileStorageService:
     
     def get_image_path(self, task_id: str) -> Optional[Path]:
         """Get local path for a stored orthophoto PNG"""
-        file_path = self.results_dir / task_id / Path("odm_orthophoto") / "odm_orthophoto.png"
+        file_path = self.results_dir / task_id / ORTHO_DIR / ORTHO_FILE
         LOGGER.info(f"Retrieving image path: {file_path}")
         return file_path if file_path.exists() else None
     
     def get_report_path(self, task_id: str) -> Optional[Path]:
         """Get local path for a stored PDF report"""
-        file_path = self.results_dir / task_id / Path("odm_report") / "report.pdf"
+        file_path = self.results_dir / task_id / REPORT_DIR / REPORT_FILE
         LOGGER.info(f"Retrieving report path: {file_path}")
         return file_path if file_path.exists() else None
-    
+
+    def get_prescription_path(self, task_id: str) -> Optional[Path]:
+        """Get local path for a prescription GeoJSON file, or None if not found."""
+        file_path = self.results_dir / task_id / PRESCRIPTION_FILE
+        return file_path if file_path.exists() else None
+
+    def list_tasks_with_prescription(self) -> List[Dict[str, str]]:
+        """Return tasks that have a prescription.geojson file."""
+        tasks: List[Dict[str, str]] = []
+        if not self.results_dir.exists():
+            return tasks
+        for task_dir in self.results_dir.iterdir():
+            if not task_dir.is_dir():
+                continue
+            task_id = task_dir.name
+            if not (task_dir / PRESCRIPTION_FILE).exists():
+                continue
+            item: Dict[str, str] = {
+                'taskId': task_id,
+                    'prescriptionUrl': f"{PRESCRIPTION_BASE_PATH}/{task_id}",
+            }
+            manifest = self.read_manifest(task_id)
+            if manifest and isinstance(manifest, dict):
+                task_name = manifest.get('task_name') or manifest.get('taskName')
+                if task_name:
+                    item['taskName'] = task_name
+            tasks.append(item)
+        return tasks
+
     def list_stored_files(self, task_id: str) -> List[Dict[str, str]]:
         """List all stored files for a task (non-recursive)."""
         task_dir = self.results_dir / task_id
@@ -154,11 +198,6 @@ class FileStorageService:
         tasks: List[Dict[str, str]] = []
         if not self.results_dir.exists():
             return tasks
-        ORTHO_DIR = "odm_orthophoto"
-        ORTHO_FILE = "odm_orthophoto.png"
-        REPORT_DIR = "odm_report"
-        REPORT_FILE = "report.pdf"
-
         for task_dir in self.results_dir.iterdir():
             if not task_dir.is_dir():
                 continue

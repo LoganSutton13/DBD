@@ -20,7 +20,6 @@ from app.schemas.pathing import (
     PathSaveResponse,
     RtkBaseResponse,
 )
-from app.services.path_planning_module.path_generator import PathGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +60,12 @@ def _run_path_generation_sync(
     coverage_width: float,
     base_station_coords: Tuple[float, float],
 ) -> Dict[str, Any]:
-    """Synchronous path generation (runs in thread). Returns result dict or raises."""
+    """Synchronous path generation (runs in thread). Returns result dict or raises.
+    PathGenerator (and thus fields2cover) is imported here so the app loads in CI
+    without requiring a local/source install of fields2cover.
+    """
+    from app.services.path_planning_module.path_generator import PathGenerator
+
     shp_files = list(job_dir.glob("*.shp"))
     if not shp_files:
         raise ValueError("No .shp file found in uploaded shapefile components")

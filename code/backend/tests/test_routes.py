@@ -1,5 +1,8 @@
 """Route tests via FastAPI TestClient. No running server required."""
 
+import json
+from pathlib import Path
+
 
 def test_health_root_returns_200_and_message_status(client):
     """GET / returns 200 with message and status."""
@@ -178,3 +181,81 @@ def test_results_get_orthophoto_not_found_returns_404(client):
     """GET /api/v1/results/{task_id}/orthophoto.png when not found returns 404."""
     r = client.get("/api/v1/results/nonexistent-task/orthophoto.png")
     assert r.status_code == 404
+
+
+def test_prescription_get_list_returns_200_empty_list(client):
+    """GET /api/v1/prescription/ returns 200 with items (empty when no prescriptions)."""
+    r = client.get("/api/v1/prescription/")
+    assert r.status_code == 200
+    data = r.json()
+    assert "items" in data
+    assert data["items"] == []
+
+
+def test_prescription_get_list_with_one_prescription_returns_item(client, results_dir: Path):
+    """GET /api/v1/prescription/ with one prescription file returns one item."""
+    task_id = "task-rx-list"
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True)
+    (task_dir / "prescription.geojson").write_text('{"type":"FeatureCollection","features":[]}')
+    r = client.get("/api/v1/prescription/")
+    assert r.status_code == 200
+    data = r.json()
+    assert "items" in data
+    assert len(data["items"]) == 1
+    assert data["items"][0]["taskId"] == task_id
+    assert "prescriptionUrl" in data["items"][0]
+    assert f"/api/v1/prescription/{task_id}" in data["items"][0]["prescriptionUrl"]
+
+
+def test_prescription_get_by_id_not_found_returns_404(client):
+    """GET /api/v1/prescription/{task_id} when no prescription returns 404."""
+    r = client.get("/api/v1/prescription/nonexistent-task")
+    assert r.status_code == 404
+
+
+def test_prescription_get_by_id_returns_200_geojson(client, results_dir: Path):
+    """GET /api/v1/prescription/{task_id} when prescription exists returns 200 and GeoJSON."""
+    task_id = "task-rx-get"
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True)
+    geojson = {"type": "FeatureCollection", "features": [{"type": "Feature", "id": "1", "properties": {}, "geometry": None}]}
+    (task_dir / "prescription.geojson").write_text(json.dumps(geojson))
+    r = client.get(f"/api/v1/prescription/{task_id}")
+    assert r.status_code == 200
+    assert "application/geo+json" in r.headers.get("content-type", "")
+    data = r.json()
+    assert data["type"] == "FeatureCollection"
+    assert "features" in data
+    assert len(data["features"]) == 1
+
+
+def test_prescription_put_not_found_returns_404(client):
+    """PUT /api/v1/prescription/{task_id} when no prescription returns 404."""
+    r = client.put("/api/v1/prescription/nonexistent-task", json={"updates": [{"featureId": "1", "spray": "low"}]})
+    assert r.status_code == 404
+
+
+def test_prescription_put_valid_body_returns_200_and_updated_geojson(client, results_dir: Path):
+    """PUT /api/v1/prescription/{task_id} with valid body updates and returns GeoJSON with spray set."""
+    task_id = "task-rx-put"
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True)
+    geojson = {"type": "FeatureCollection", "features": [{"type": "Feature", "id": "1", "properties": {}, "geometry": None}]}
+    (task_dir / "prescription.geojson").write_text(json.dumps(geojson))
+    r = client.put(f"/api/v1/prescription/{task_id}", json={"updates": [{"featureId": "1", "spray": "low"}]})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["features"][0]["properties"]["spray"] == "low"
+    get_r = client.get(f"/api/v1/prescription/{task_id}")
+    assert get_r.json()["features"][0]["properties"]["spray"] == "low"
+
+
+def test_prescription_put_invalid_body_returns_422(client, results_dir: Path):
+    """PUT /api/v1/prescription/{task_id} with invalid body (e.g. invalid spray) returns 422."""
+    task_id = "task-rx-422"
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True)
+    (task_dir / "prescription.geojson").write_text('{"type":"FeatureCollection","features":[]}')
+    r = client.put(f"/api/v1/prescription/{task_id}", json={"updates": [{"featureId": "1", "spray": "invalid"}]})
+    assert r.status_code == 422
