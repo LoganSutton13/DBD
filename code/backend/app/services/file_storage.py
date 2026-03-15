@@ -30,6 +30,9 @@ REPORT_DIR = "odm_report"
 REPORT_FILE = "report.pdf"
 PRESCRIPTION_FILE = "prescription.geojson"
 
+# Local API base paths
+PRESCRIPTION_BASE_PATH = "/api/v1/prescription"
+
 
 class FileStorageService:
     """Service for managing NodeODM output file storage"""
@@ -160,7 +163,7 @@ class FileStorageService:
                 continue
             item: Dict[str, str] = {
                 'taskId': task_id,
-                'prescriptionUrl': f"/api/v1/prescription/{task_id}",
+                    'prescriptionUrl': f"{PRESCRIPTION_BASE_PATH}/{task_id}",
             }
             manifest = self.read_manifest(task_id)
             if manifest and isinstance(manifest, dict):
