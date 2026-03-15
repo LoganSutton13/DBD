@@ -23,10 +23,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-          # NOTE: $GITHUB_ENV expects KEY=VALUE lines; use $GITHUB_PATH for PATH updates.
+        uses: abatilo/actions-poetry@v2
+        with:
+          poetry-version: '1.8.4'
 
       - name: Configure Poetry (no virtualenv in CI)
         run: poetry config virtualenvs.create false
