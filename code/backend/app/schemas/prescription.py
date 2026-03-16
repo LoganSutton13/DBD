@@ -1,6 +1,6 @@
 """Prescription API request/response schemas."""
 
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -29,3 +29,10 @@ class PrescriptionListItem(BaseModel):
 class PrescriptionListResponse(BaseModel):
     """Response for GET /prescription/."""
     items: List[PrescriptionListItem]
+
+
+class PrescriptionStatusResponse(BaseModel):
+    """Status for prescription generation for a task."""
+    taskId: str
+    status: Literal["not_started", "processing", "completed", "failed"]
+    message: Optional[str] = None
