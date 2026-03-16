@@ -9,6 +9,13 @@ import {
   TaskStatusResponse,
   ProcessingTask,
 } from '../types/upload';
+import {
+  PrescriptionListResponse,
+  PrescriptionStatusResponse,
+  PrescriptionGeoJSON,
+  PrescriptionUpdateRequest,
+  PrescriptionConfig,
+} from '../types/prescription';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001';
 
@@ -318,6 +325,76 @@ class ApiService {
     if (!response.ok) {
       const text = await response.text();
       throw new Error(`Path result failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * List tasks that have a prescription file.
+   */
+  async listPrescriptions(): Promise<PrescriptionListResponse> {
+    const response = await fetch(`${this.baseUrl}/api/v1/prescription/`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`List prescriptions failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Get prescription generation status for a task.
+   */
+  async getPrescriptionStatus(taskId: string): Promise<PrescriptionStatusResponse> {
+    const response = await fetch(`${this.baseUrl}/api/v1/prescription/${taskId}/status`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Prescription status failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Get prescription GeoJSON for a task.
+   */
+  async getPrescription(taskId: string): Promise<PrescriptionGeoJSON> {
+    const response = await fetch(`${this.baseUrl}/api/v1/prescription/${taskId}`, {
+      headers: { Accept: 'application/geo+json' },
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Get prescription failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Update prescription spray levels for features.
+   */
+  async updatePrescription(taskId: string, body: PrescriptionUpdateRequest): Promise<PrescriptionGeoJSON> {
+    const response = await fetch(`${this.baseUrl}/api/v1/prescription/${taskId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Update prescription failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Set per-task prescription module configuration.
+   */
+  async setPrescriptionConfig(taskId: string, config: PrescriptionConfig): Promise<PrescriptionConfig> {
+    const response = await fetch(`${this.baseUrl}/api/v1/prescription/${taskId}/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Set prescription config failed: ${response.status} ${text}`);
     }
     return response.json();
   }

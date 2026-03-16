@@ -127,6 +127,8 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
   const [selectedStitchedField, setSelectedStitchedField] = useState<string>('');
   const [linkResult, setLinkResult] = useState<string | null>(null);
   const [isSavingPath, setIsSavingPath] = useState(false);
+  const [stitchedFields, setStitchedFields] = useState<Array<{ id: string; name: string }>>([]);
+  const [stitchedFieldsLoading, setStitchedFieldsLoading] = useState(false);
 
   // Check backend connection on component mount
   useEffect(() => {
@@ -137,6 +139,33 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
 
     checkInitialConnection();
   }, []);
+
+  // Load stitched fields (tasks with orthophoto) for path linking
+  useEffect(() => {
+    if (!backendAvailable) return;
+    let cancelled = false;
+    setStitchedFieldsLoading(true);
+    apiService
+      .listResults()
+      .then((data) => {
+        if (cancelled) return;
+        setStitchedFields(
+          data.map((item) => ({
+            id: item.taskId,
+            name: item.taskName || `Task ${item.taskId.slice(0, 8)}`,
+          }))
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setStitchedFields([]);
+      })
+      .finally(() => {
+        if (!cancelled) setStitchedFieldsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [backendAvailable]);
 
   // Load stored RTK base coordinates when backend is available
   useEffect(() => {
@@ -387,12 +416,6 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
   const boundarySampleFiles = boundaryFiles.slice(0, 5).map(f => f.metadata?.name || 'Unknown');
   const pathLatLngs = pathPreview?.waypoints.map((point) => [point.lat, point.lon] as [number, number]) ?? [];
 
-  const stitchedFields = [
-    { id: 'stitched-001', name: 'Field A - 2025-10-30' },
-    { id: 'stitched-002', name: 'Field B - 2025-11-05' },
-    { id: 'stitched-003', name: 'West Lot - 2025-11-10' },
-  ];
-
   const POLL_INTERVAL_MS = 2000;
   const generatePathPreview = async () => {
     if (boundaryPendingFiles.length === 0) {
@@ -462,7 +485,7 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
     setLinkResult(null);
     try {
       await apiService.savePathToTask(pathJobId, selectedStitchedField);
-      setLinkResult(`Path saved to ${field?.name ?? 'selected field'}.`);
+      setLinkResult(`Path and boundary saved to ${field?.name ?? 'selected field'}. Prescription will be generated if the orthophoto is ready (check Prescriptions tab).`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to save path';
       setLinkResult(`Error: ${msg}`);
@@ -969,24 +992,30 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
                 <select
                   value={selectedStitchedField}
                   onChange={(e) => setSelectedStitchedField(e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  disabled={stitchedFieldsLoading}
+                  className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                 >
-                  <option value="">Select a stitched field</option>
+                  <option value="">
+                    {stitchedFieldsLoading ? 'Loading…' : stitchedFields.length === 0 ? 'No stitched fields' : 'Select a stitched field'}
+                  </option>
                   {stitchedFields.map((field) => (
                     <option key={field.id} value={field.id}>
                       {field.name}
                     </option>
                   ))}
                 </select>
+                {stitchedFields.length === 0 && !stitchedFieldsLoading && (
+                  <p className="text-xs text-dark-400">No stitched fields. Process images in the Upload tab first.</p>
+                )}
                 <button
                   onClick={linkPathToField}
-                  disabled={!pathPreview || !selectedStitchedField || !pathJobId || isSavingPath}
+                  disabled={!pathPreview || !selectedStitchedField || !pathJobId || isSavingPath || stitchedFields.length === 0}
                   className="w-full px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
                 >
                   {isSavingPath ? 'Saving…' : 'Link and Save Path'}
                 </button>
                 <p className="text-xs text-dark-400">
-                  Saves the current path to the selected stitched field. Stitched fields list will be populated from the backend.
+                  Saves the path and boundary to the selected field. A boundary is required before a prescription can be generated; linking here ensures the prescription job can run when the orthophoto is ready.
                 </p>
               </div>
             </div>

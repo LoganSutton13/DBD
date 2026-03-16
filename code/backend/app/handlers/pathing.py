@@ -302,6 +302,15 @@ def save_path_to_task(
     dest = task_dir / "robot_path.json"
     shutil.copy2(track_src, dest)
     logger.info("Saved robot_path.json to task folder %s", task_dir)
+
+    # Copy boundary shapefile components into task dir so prescription module can find them
+    job_path = Path(job_dir)
+    for name in store.get("files") or []:
+        src_file = job_path / name
+        if src_file.exists():
+            shutil.copy2(src_file, task_dir / name)
+            logger.debug("Copied boundary file %s to task folder %s", name, task_dir)
+
     return PathSaveResponse(
         message="Path saved to task", task_id=task_id, saved_path=str(dest)
     )
