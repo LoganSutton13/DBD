@@ -22,24 +22,40 @@ The backend invokes this script via `Rscript` after orthophoto processing comple
      libfftw3-dev \
      libcurl4-openssl-dev \
      libssl-dev \
-     libxml2-dev
+     libxml2-dev \
+     libx11-dev \
+     libtiff-dev
    ```
 
-2. **Install required R packages** (from an R console):
+2. **Install required R packages** (from an R console or command line).
+
+   **FIELDimageR** and **FIELDimageR.Extra** are not on CRAN—they are only available from GitHub. There is no alternative (e.g. CRAN or binary); the slow install is from building from source and their dependencies. Installing CRAN packages first reduces duplicate builds and can speed things up.
+
+   **Order matters:** install CRAN packages first, then GitHub packages (FIELDimageR before FIELDimageR.Extra). Expect the first GitHub install to take several minutes (10–20+ depending on machine) while dependencies compile.
 
    ```r
+   # One-time: install remotes for GitHub installs
+   install.packages("remotes", repos = "https://cloud.r-project.org")
+
+   # CRAN packages first (so FIELDimageR reuses them instead of building from source)
    install.packages(c(
-     "FIELDimageR",
-     "FIELDimageR.Extra",
-     "imager",
-     "optparse",
-     "stars",
-     "terra",
-     "sf",
-     "dplyr",
-     "oce",
-     "viridisLite"
-   ))
+     "optparse", "stars", "terra", "sf", "dplyr", "oce", "viridisLite"
+   ), repos = "https://cloud.r-project.org")
+
+   # imager (if this fails, ensure libx11-dev and libtiff-dev are installed via apt above)
+   install.packages("imager", repos = "https://cloud.r-project.org")
+
+   # GitHub-only (no CRAN option). Install FIELDimageR first, then Extra. This step is slow.
+   remotes::install_github("filipematias23/FIELDimageR", upgrade = "never")
+   remotes::install_github("filipematias23/FIELDimageR.Extra", upgrade = "never")
+   ```
+
+   Or as shell commands (same order; use `sudo R` if installing to system library):
+
+   ```bash
+   R -q -e 'install.packages(c("remotes","optparse","stars","terra","sf","dplyr","oce","viridisLite","imager"), repos="https://cloud.r-project.org")'
+   R -q -e 'remotes::install_github("filipematias23/FIELDimageR", upgrade = "never")'
+   R -q -e 'remotes::install_github("filipematias23/FIELDimageR.Extra", upgrade = "never")'
    ```
 
 3. **Verify `Rscript` is available**:
@@ -91,8 +107,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfftw3-dev \
     libcurl4-openssl-dev \
     libssl-dev \
-    libxml2-dev && \
-    R -q -e "install.packages(c('FIELDimageR','FIELDimageR.Extra','imager','optparse','stars','terra','sf','dplyr','oce','viridisLite'), repos='https://cloud.r-project.org')" && \
+    libxml2-dev \
+    libx11-dev \
+    libtiff-dev && \
+    R -q -e "install.packages(c('remotes','optparse','stars','terra','sf','dplyr','oce','viridisLite','imager'), repos='https://cloud.r-project.org')" && \
+    R -q -e "remotes::install_github('filipematias23/FIELDimageR')" && \
+    R -q -e "remotes::install_github('filipematias23/FIELDimageR.Extra')" && \
     rm -rf /var/lib/apt/lists/*
 ```
 
