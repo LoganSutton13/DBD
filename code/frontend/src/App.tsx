@@ -8,28 +8,16 @@ import ProcessingView from './components/ProcessingView';
 import FieldMapsView from './components/FieldMapsView';
 import PesticidePrescriptionsView from './components/PesticidePrescriptionsView';
 
-interface AppStats {
-  imagesUploaded: number;
-  processing: number;
-  completed: number;
-}
+const noopStats = { imagesUploaded: 0, processing: 0, completed: 0 };
+const noopUpdate = () => {};
 
 function App() {
   const [activeTab, setActiveTab] = useState<'upload' | 'gallery' | 'processing' | 'fieldmaps' | 'pesticides'>('upload');
-  const [stats, setStats] = useState<AppStats>({
-    imagesUploaded: 0,
-    processing: 0,
-    completed: 0,
-  });
-
-  const updateStats = (updateFn: (prev: AppStats) => Partial<AppStats>) => {
-    setStats(prev => ({ ...prev, ...updateFn(prev) }));
-  };
 
   const renderActiveView = () => {
     switch (activeTab) {
       case 'upload':
-        return <UploadView onStatsUpdate={updateStats} currentStats={stats} />;
+        return <UploadView onStatsUpdate={noopUpdate} currentStats={noopStats} />;
       case 'gallery':
         return <GalleryView />;
       case 'processing':
@@ -39,7 +27,7 @@ function App() {
       case 'pesticides':
         return <PesticidePrescriptionsView />;
       default:
-        return <UploadView onStatsUpdate={updateStats} currentStats={stats} />;
+        return <UploadView onStatsUpdate={noopUpdate} currentStats={noopStats} />;
     }
   };
 
@@ -47,7 +35,7 @@ function App() {
     <div className="min-h-screen bg-dark-900 text-dark-100">
       <Header />
       <div className="flex">
-        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} stats={stats} />
+        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
         <main className="flex-1 p-8">
           {renderActiveView()}
         </main>

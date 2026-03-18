@@ -129,10 +129,9 @@ def upload_finalize(
         "ignore-gsd": True,
         "skip-3dmodel": True,
         "orthophoto-resolution": 5.0,
-        "orthophoto-compression": "deflate",
         "orthophoto-no-tiled": False,
         "texturing-skip-global-seam-leveling": True,
-        "pc-quality": "lowest",
+        "pc-quality": "high",
         "orthophoto-png": True,
     }
     name = (task_name or "").strip()

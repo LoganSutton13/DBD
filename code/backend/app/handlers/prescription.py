@@ -2,13 +2,16 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from app.schemas.prescription import (
     PrescriptionListItem,
     PrescriptionListResponse,
+    PrescriptionStatusResponse,
+    PrescriptionUpdateItem,
     PrescriptionUpdateRequest,
 )
+from app.schemas.prescription_config import PrescriptionConfig
 from app.services.file_storage import FileStorageService
 
 
@@ -78,3 +81,53 @@ def list_prescriptions(storage: FileStorageService) -> PrescriptionListResponse:
         for item in raw
     ]
     return PrescriptionListResponse(items=items)
+
+
+def get_prescription_status(
+    task_id: str,
+    storage: FileStorageService,
+) -> PrescriptionStatusResponse:
+    """
+    Return status of the prescription generation job for a task.
+
+    If no explicit status file exists but a prescription file is present, treat
+    the status as completed. If neither exists, report not_started so the
+    frontend can distinguish between missing jobs and in-progress work.
+    """
+    status_data: Optional[Dict[str, Any]] = storage.read_prescription_status(task_id)
+    prescription_path = storage.get_prescription_path(task_id)
+
+    if status_data is None:
+        if prescription_path:
+            return PrescriptionStatusResponse(
+                taskId=task_id,
+                status="completed",
+                message="Prescription file found but no explicit status recorded.",
+                extra=None,
+            )
+        return PrescriptionStatusResponse(
+            taskId=task_id,
+            status="not_started",
+            message="Prescription job has not been started yet.",
+            extra=None,
+        )
+
+    status = str(status_data.get("status", "not_started"))
+    message = status_data.get("message")
+    extra = {k: v for k, v in status_data.items() if k not in {"taskId", "status", "message"}}
+    return PrescriptionStatusResponse(taskId=task_id, status=status, message=message)
+
+
+def set_prescription_config(
+    task_id: str,
+    config: PrescriptionConfig,
+    storage: FileStorageService,
+) -> PrescriptionConfig:
+    """
+    Store per-task configuration for the prescription job.
+
+    This does not immediately trigger a re-run; it only persists configuration
+    that will be used the next time the prescription module is invoked.
+    """
+    storage.write_prescription_config(task_id, config.model_dump(exclude_none=True))
+    return config

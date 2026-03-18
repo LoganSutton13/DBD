@@ -167,23 +167,6 @@ const GalleryView: React.FC = () => {
           </div>
         )}
       </div>
-      
-      {/* Gallery controls placeholder */}
-      <div className="bg-dark-800 rounded-lg p-6 border border-dark-700">
-        <div className="flex justify-between items-center">
-          <h3 className="text-lg font-medium text-primary-400">
-            Gallery Controls
-          </h3>
-          <div className="flex space-x-4">
-            <button className="px-4 py-2 bg-dark-700 text-dark-200 rounded hover:bg-dark-600 transition-colors duration-200">
-              Filter
-            </button>
-            <button className="px-4 py-2 bg-dark-700 text-dark-200 rounded hover:bg-dark-600 transition-colors duration-200">
-              Sort
-            </button>
-          </div>
-        </div>
-      </div>
 
       {isPreviewOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">

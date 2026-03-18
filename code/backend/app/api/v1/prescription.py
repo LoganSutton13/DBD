@@ -9,8 +9,10 @@ from app.api.deps import get_file_storage_service
 from app.handlers import prescription as prescription_handlers
 from app.schemas.prescription import (
     PrescriptionListResponse,
+    PrescriptionStatusResponse,
     PrescriptionUpdateRequest,
 )
+from app.schemas.prescription_config import PrescriptionConfig
 
 logger = logging.getLogger(__name__)
 
@@ -67,5 +69,35 @@ def update_prescription(
             status_code=500,
             detail=f"Failed to update prescription: {e}",
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{task_id}/status", response_model=PrescriptionStatusResponse)
+def get_prescription_status(
+    task_id: str,
+    storage=Depends(get_file_storage_service),
+):
+    """
+    Return status for prescription generation for a task.
+
+    This is intended for polling from the frontend, similar to the orthophoto
+    stitching status endpoint.
+    """
+    try:
+        return prescription_handlers.get_prescription_status(task_id, storage)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{task_id}/config", response_model=PrescriptionConfig)
+def set_prescription_config(
+    task_id: str,
+    body: PrescriptionConfig,
+    storage=Depends(get_file_storage_service),
+):
+    """Set or update per-task configuration for the prescription module."""
+    try:
+        return prescription_handlers.set_prescription_config(task_id, body, storage)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

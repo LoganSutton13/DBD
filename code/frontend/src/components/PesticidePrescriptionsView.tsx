@@ -1,250 +1,139 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import apiService from '../services/api';
+import type {
+  PrescriptionListItem,
+  PrescriptionStatus,
+  SprayLevel,
+  PrescriptionGeoJSON,
+  PrescriptionFeature,
+} from '../types/prescription';
 
-interface PesticidePrescription {
-  id: string;
-  name: string;
-  createdAt: string;
-  fieldMapId: string; // Reference to the field map this prescription is based on
-  prescriptionUrl: string; // Path to the prescription map image
-  thumbnailUrl: string;
-  status: 'generating' | 'ready' | 'failed';
-  metadata: {
-    fieldName: string;
-    cropType: string;
-    pestType: string;
-    pesticideType: string;
-    applicationRate: string; // e.g., "2.5 L/ha"
-    totalArea: string; // e.g., "45.2 acres"
-    estimatedCost: string; // e.g., "$245.50"
-    robotCompatible: boolean;
-  };
-  robotInstructions: {
-    pathFile: string; // Path to robot navigation file
-    waypoints: number;
-    estimatedDuration: string; // e.g., "3h 45m"
-    batteryRequired: string; // e.g., "85%"
-  };
+delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: string })._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+});
+
+function FitBounds({ geojsonData }: { geojsonData: PrescriptionGeoJSON | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (geojsonData?.features?.length) {
+      const bounds = L.geoJSON(geojsonData as GeoJSON.GeoJSON).getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
+    }
+  }, [geojsonData, map]);
+  return null;
 }
 
-type SprayLevel = 'high' | 'low' | 'no';
-
 const PesticidePrescriptionsView: React.FC = () => {
-  const [selectedPrescription, setSelectedPrescription] = useState<PesticidePrescription | null>(null);
+  const [items, setItems] = useState<PrescriptionListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'ready' | 'generating' | 'failed'>('all');
-  const [sprayMap, setSprayMap] = useState<SprayLevel[][]>([]);
-  const [selectedSprayLevel, setSelectedSprayLevel] = useState<SprayLevel>('high');
-  const [gridSize, setGridSize] = useState({ rows: 8, cols: 12 });
+  const [filterStatus, setFilterStatus] = useState<'all' | 'completed'>('all');
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [detailGeojson, setDetailGeojson] = useState<PrescriptionGeoJSON | null>(null);
+  const [detailStatus, setDetailStatus] = useState<{ status: PrescriptionStatus; message?: string } | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [sprayUpdates, setSprayUpdates] = useState<Record<string, SprayLevel>>({});
+  const [savingSpray, setSavingSpray] = useState(false);
 
-  // TODO: REPLACE MOCK DATA WITH REAL BACKEND API CALL
-  // Mock data - this would come from your Python backend after pesticide analysis
-  const [prescriptions] = useState<PesticidePrescription[]>([
-    {
-      id: '1',
-      name: 'North Field - Aphid Treatment',
-      createdAt: '2024-01-15T14:30:00Z',
-      fieldMapId: 'fieldmap-1',
-      prescriptionUrl: '/api/prescriptions/north-field-aphid.jpg',
-      thumbnailUrl: '/api/prescriptions/thumbnails/north-field-aphid.jpg',
-      status: 'ready',
-      metadata: {
-        fieldName: 'North Field',
-        cropType: 'Wheat',
-        pestType: 'Aphids',
-        pesticideType: 'Imidacloprid',
-        applicationRate: '2.5 L/ha',
-        totalArea: '45.2 acres',
-        estimatedCost: '$245.50',
-        robotCompatible: true,
-      },
-      robotInstructions: {
-        pathFile: '/api/robot-paths/north-field-aphid.gpx',
-        waypoints: 156,
-        estimatedDuration: '3h 45m',
-        batteryRequired: '85%',
-      },
-    },
-    {
-      id: '2',
-      name: 'South Field - Fungus Control',
-      createdAt: '2024-01-10T16:45:00Z',
-      fieldMapId: 'fieldmap-2',
-      prescriptionUrl: '/api/prescriptions/south-field-fungus.jpg',
-      thumbnailUrl: '/api/prescriptions/thumbnails/south-field-fungus.jpg',
-      status: 'ready',
-      metadata: {
-        fieldName: 'South Field',
-        cropType: 'Corn',
-        pestType: 'Fungal Infection',
-        pesticideType: 'Chlorothalonil',
-        applicationRate: '1.8 L/ha',
-        totalArea: '67.8 acres',
-        estimatedCost: '$389.20',
-        robotCompatible: true,
-      },
-      robotInstructions: {
-        pathFile: '/api/robot-paths/south-field-fungus.gpx',
-        waypoints: 234,
-        estimatedDuration: '5h 20m',
-        batteryRequired: '92%',
-      },
-    },
-    {
-      id: '3',
-      name: 'East Field - Weed Management',
-      createdAt: '2024-01-20T11:15:00Z',
-      fieldMapId: 'fieldmap-3',
-      prescriptionUrl: '',
-      thumbnailUrl: '',
-      status: 'generating',
-      metadata: {
-        fieldName: 'East Field',
-        cropType: 'Soybeans',
-        pestType: 'Broadleaf Weeds',
-        pesticideType: 'Glyphosate',
-        applicationRate: '3.2 L/ha',
-        totalArea: '32.1 acres',
-        estimatedCost: '$156.80',
-        robotCompatible: true,
-      },
-      robotInstructions: {
-        pathFile: '',
-        waypoints: 0,
-        estimatedDuration: '2h 30m',
-        batteryRequired: '70%',
-      },
-    },
-  ]);
-
-  // TODO: IMPLEMENT BACKEND INTEGRATION
-  // Replace mock data with real API calls:
-  /*
-  useEffect(() => {
-    const fetchPrescriptions = async () => {
-      try {
-        const response = await fetch('/api/pesticide-prescriptions');
-        if (!response.ok) {
-          throw new Error('Failed to fetch prescriptions');
-        }
-        const data = await response.json();
-        setPrescriptions(data);
-      } catch (error) {
-        console.error('Error fetching prescriptions:', error);
-        // Handle error state
-      }
-    };
-
-    fetchPrescriptions();
+  const fetchList = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiService.listPrescriptions();
+      setItems(res.items || []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load prescriptions');
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // TODO: IMPLEMENT PRESCRIPTION GENERATION
-  const generatePrescription = async (fieldMapId: string, pestType: string, pesticideType: string) => {
+  useEffect(() => {
+    fetchList();
+  }, [fetchList]);
+
+  const openDetail = useCallback(async (taskId: string) => {
+    setSelectedTaskId(taskId);
+    setDetailGeojson(null);
+    setDetailStatus(null);
+    setSprayUpdates({});
+    setDetailLoading(true);
     try {
-      const response = await fetch('/api/pesticide-prescriptions/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fieldMapId, pestType, pesticideType }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to generate prescription');
+      const [geojson, status] = await Promise.all([
+        apiService.getPrescription(taskId),
+        apiService.getPrescriptionStatus(taskId),
+      ]);
+      setDetailGeojson(geojson?.features ? geojson : null);
+      setDetailStatus({ status: status.status, message: status.message });
+      const initial: Record<string, SprayLevel> = {};
+      if (geojson?.features) {
+        for (const f of geojson.features) {
+          const id = f.id != null ? String(f.id) : f.properties?.id != null ? String(f.properties.id) : undefined;
+          const spray = f.properties?.spray;
+          if (id && spray) initial[id] = spray;
+        }
       }
-      
-      const result = await response.json();
-      // Refresh prescriptions list
-      fetchPrescriptions();
-      return result;
-    } catch (error) {
-      console.error('Prescription generation failed:', error);
+      setSprayUpdates(initial);
+    } catch (e) {
+      setDetailStatus({ status: 'failed', message: e instanceof Error ? e.message : 'Failed to load' });
+    } finally {
+      setDetailLoading(false);
     }
+  }, []);
+
+  const closeDetail = useCallback(() => {
+    setSelectedTaskId(null);
+    setDetailGeojson(null);
+    setDetailStatus(null);
+    setSprayUpdates({});
+  }, []);
+
+  const getFeatureId = (feature: PrescriptionFeature): string | null => {
+    if (feature.id != null) return String(feature.id);
+    if (feature.properties?.id != null) return String(feature.properties.id);
+    return null;
   };
 
-  // TODO: IMPLEMENT ROBOT PATH DOWNLOAD
-  const downloadRobotPath = async (prescriptionId: string) => {
+  const getSprayForFeature = (feature: PrescriptionFeature): SprayLevel => {
+    const id = getFeatureId(feature);
+    if (id && sprayUpdates[id] !== undefined) return sprayUpdates[id];
+    const p = feature.properties?.spray as string | undefined;
+    if (p === 'none' || p === 'low' || p === 'high') return p as SprayLevel;
+    return 'none';
+  };
+
+  const setSprayForFeature = (featureId: string, level: SprayLevel) => {
+    setSprayUpdates((prev) => ({ ...prev, [featureId]: level }));
+  };
+
+  const saveSprayUpdates = useCallback(async () => {
+    if (!selectedTaskId) return;
+    const updates = Object.entries(sprayUpdates).map(([featureId, spray]) => ({ featureId, spray }));
+    if (updates.length === 0) return;
+    setSavingSpray(true);
     try {
-      const response = await fetch(`/api/pesticide-prescriptions/${prescriptionId}/robot-path`);
-      if (!response.ok) {
-        throw new Error('Download failed');
-      }
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `robot-path-${prescriptionId}.gpx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error('Download failed:', error);
+      const updated = await apiService.updatePrescription(selectedTaskId, { updates });
+      setDetailGeojson(updated?.features ? updated : detailGeojson);
+    } catch (e) {
+      console.error('Failed to save spray updates', e);
+    } finally {
+      setSavingSpray(false);
     }
-  };
-  */
-
-  // Initialize spray map grid when prescription is selected
-  React.useEffect(() => {
-    if (selectedPrescription) {
-      const initialGrid: SprayLevel[][] = Array(gridSize.rows)
-        .fill(null)
-        .map(() => Array(gridSize.cols).fill('no' as SprayLevel));
-      setSprayMap(initialGrid);
-    } else {
-      setSprayMap([]);
-    }
-  }, [selectedPrescription, gridSize.rows, gridSize.cols]);
-
-  const handleGridCellClick = (row: number, col: number) => {
-    const newSprayMap = sprayMap.map((r, rIdx) =>
-      r.map((cell, cIdx) => (rIdx === row && cIdx === col ? selectedSprayLevel : cell))
-    );
-    setSprayMap(newSprayMap);
-  };
-
-  const handleBulkApply = (level: SprayLevel) => {
-    const newSprayMap = sprayMap.map(row => row.map(() => level));
-    setSprayMap(newSprayMap);
-  };
-
-  const getSprayLevelColor = (level: SprayLevel) => {
-    switch (level) {
-      case 'high':
-        return 'bg-red-500/80 hover:bg-red-500';
-      case 'low':
-        return 'bg-yellow-500/80 hover:bg-yellow-500';
-      case 'no':
-        return 'bg-gray-600/50 hover:bg-gray-600';
-      default:
-        return 'bg-gray-600/50';
-    }
-  };
-
-  const getSprayLevelLabel = (level: SprayLevel) => {
-    switch (level) {
-      case 'high':
-        return 'High Spray';
-      case 'low':
-        return 'Low Spray';
-      case 'no':
-        return 'No Spray';
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  }, [selectedTaskId, sprayUpdates, detailGeojson]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'ready':
+      case 'completed':
         return 'bg-green-500/20 text-green-400';
-      case 'generating':
+      case 'processing':
         return 'bg-yellow-500/20 text-yellow-400';
       case 'failed':
         return 'bg-red-500/20 text-red-400';
@@ -255,467 +144,239 @@ const PesticidePrescriptionsView: React.FC = () => {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'ready':
-        return (
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-          </svg>
-        );
-      case 'generating':
-        return (
-          <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-        );
+      case 'completed':
+        return <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />;
+      case 'processing':
+        return <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />;
       case 'failed':
-        return (
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        );
+        return <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />;
       default:
         return null;
     }
   };
 
-  const filteredPrescriptions = prescriptions.filter(p => 
-    filterStatus === 'all' || p.status === filterStatus
-  );
+  const filteredItems = filterStatus === 'all' ? items : items;
+
+  const selectedItem = selectedTaskId ? items.find((i) => i.taskId === selectedTaskId) : null;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="bg-dark-800 rounded-lg p-6 border border-dark-700">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h2 className="text-2xl font-semibold text-primary-400 mb-2">
-              Pesticide Prescriptions
-            </h2>
+            <h2 className="text-2xl font-semibold text-primary-400 mb-2">Prescriptions</h2>
             <p className="text-dark-300">
-              AI-generated pesticide application maps for agricultural robots
+              Prescription maps generated from orthophotos when a boundary is linked. View and edit spray levels.
             </p>
           </div>
-          
           <div className="flex items-center space-x-4">
-            {/* Filter Dropdown */}
             <select
               value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value as any)}
+              onChange={(e) => setFilterStatus(e.target.value as 'all' | 'completed')}
               className="bg-dark-700 border border-dark-600 rounded-lg px-3 py-2 text-dark-100 focus:border-primary-500 focus:outline-none"
             >
-              <option value="all">All Prescriptions</option>
-              <option value="ready">Ready</option>
-              <option value="generating">Generating</option>
-              <option value="failed">Failed</option>
+              <option value="all">All</option>
+              <option value="completed">Completed</option>
             </select>
-            
-            {/* View Mode Toggle */}
             <div className="flex bg-dark-700 rounded-lg p-1">
               <button
                 onClick={() => setViewMode('grid')}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${
-                  viewMode === 'grid'
-                    ? 'bg-primary-500 text-white'
-                    : 'text-dark-300 hover:text-dark-100'
-                }`}
+                className={`px-3 py-2 rounded-md text-sm font-medium ${viewMode === 'grid' ? 'bg-primary-500 text-white' : 'text-dark-300 hover:text-dark-100'}`}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                </svg>
+                Grid
               </button>
               <button
                 onClick={() => setViewMode('list')}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${
-                  viewMode === 'list'
-                    ? 'bg-primary-500 text-white'
-                    : 'text-dark-300 hover:text-dark-100'
-                }`}
+                className={`px-3 py-2 rounded-md text-sm font-medium ${viewMode === 'list' ? 'bg-primary-500 text-white' : 'text-dark-300 hover:text-dark-100'}`}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                </svg>
+                List
               </button>
             </div>
-            
-            {/* Generate New Prescription */}
-            <button className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200">
-              Generate New
-            </button>
           </div>
         </div>
-        
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-dark-700 rounded-lg p-4">
-            <div className="text-2xl font-bold text-primary-400">{prescriptions.length}</div>
+            <div className="text-2xl font-bold text-primary-400">{items.length}</div>
             <div className="text-dark-300 text-sm">Total Prescriptions</div>
-          </div>
-          <div className="bg-dark-700 rounded-lg p-4">
-            <div className="text-2xl font-bold text-green-400">
-              {prescriptions.filter(p => p.status === 'ready').length}
-            </div>
-            <div className="text-dark-300 text-sm">Ready for Robot</div>
-          </div>
-          <div className="bg-dark-700 rounded-lg p-4">
-            <div className="text-2xl font-bold text-yellow-400">
-              {prescriptions.filter(p => p.status === 'generating').length}
-            </div>
-            <div className="text-dark-300 text-sm">Generating</div>
-          </div>
-          <div className="bg-dark-700 rounded-lg p-4">
-            <div className="text-2xl font-bold text-blue-400">
-              ${prescriptions
-                .filter(p => p.status === 'ready')
-                .reduce((sum, p) => sum + parseFloat(p.metadata.estimatedCost.replace('$', '')), 0)
-                .toFixed(2)}
-            </div>
-            <div className="text-dark-300 text-sm">Total Estimated Cost</div>
           </div>
         </div>
       </div>
 
-      {/* Prescriptions Display */}
       <div className="bg-dark-800 rounded-lg p-6 border border-dark-700">
-        {viewMode === 'grid' ? (
+        {error && (
+          <div className="mb-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">{error}</div>
+        )}
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-500" />
+          </div>
+        ) : items.length === 0 ? (
+          <div className="text-center py-12 text-dark-400">
+            <p className="text-lg mb-2">No prescriptions yet</p>
+            <p className="text-sm">
+              Prescriptions are generated automatically when an orthophoto is ready and a boundary has been linked to the task.
+            </p>
+          </div>
+        ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredPrescriptions.map((prescription) => (
+            {filteredItems.map((item) => (
               <div
-                key={prescription.id}
-                className="bg-dark-700 rounded-lg overflow-hidden hover:bg-dark-600 transition-colors duration-200 cursor-pointer"
-                onClick={() => setSelectedPrescription(prescription)}
+                key={item.taskId}
+                className="bg-dark-700 rounded-lg overflow-hidden hover:bg-dark-600 transition-colors cursor-pointer"
+                onClick={() => openDetail(item.taskId)}
               >
                 <div className="aspect-video bg-dark-600 flex items-center justify-center">
-                  {prescription.status === 'generating' ? (
-                    <div className="text-center">
-                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500 mx-auto mb-4"></div>
-                      <p className="text-dark-300">Generating...</p>
-                    </div>
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-green-500/20 to-dark-600 flex items-center justify-center">
-                      <svg className="w-16 h-16 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                      </svg>
-                    </div>
-                  )}
+                  <svg className="w-16 h-16 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m0 0L9 7" />
+                  </svg>
                 </div>
-                
                 <div className="p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 className="text-dark-100 font-medium truncate">{prescription.name}</h3>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center space-x-1 ${getStatusColor(prescription.status)}`}>
-                      {getStatusIcon(prescription.status)}
-                      <span className="capitalize">{prescription.status}</span>
-                    </span>
-                  </div>
-                  
-                  <div className="space-y-1 text-sm text-dark-400">
-                    <p><span className="font-medium">Field:</span> {prescription.metadata.fieldName}</p>
-                    <p><span className="font-medium">Pest:</span> {prescription.metadata.pestType}</p>
-                    <p><span className="font-medium">Pesticide:</span> {prescription.metadata.pesticideType}</p>
-                    <p><span className="font-medium">Cost:</span> {prescription.metadata.estimatedCost}</p>
-                    <div className="flex items-center space-x-2 mt-2">
-                      {prescription.metadata.robotCompatible && (
-                        <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded-full text-xs">
-                          Robot Ready
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  <h3 className="text-dark-100 font-medium truncate">{item.taskName || `Task ${item.taskId}`}</h3>
+                  <p className="text-dark-400 text-sm mt-1">Task: {item.taskId.slice(0, 8)}…</p>
                 </div>
               </div>
             ))}
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredPrescriptions.map((prescription) => (
+            {filteredItems.map((item) => (
               <div
-                key={prescription.id}
-                className="flex items-center space-x-4 p-4 bg-dark-700 rounded-lg hover:bg-dark-600 transition-colors duration-200 cursor-pointer"
-                onClick={() => setSelectedPrescription(prescription)}
+                key={item.taskId}
+                className="flex items-center space-x-4 p-4 bg-dark-700 rounded-lg hover:bg-dark-600 transition-colors cursor-pointer"
+                onClick={() => openDetail(item.taskId)}
               >
-                <div className="w-20 h-20 bg-dark-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                  {prescription.status === 'generating' ? (
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
-                  ) : (
-                    <svg className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                    </svg>
-                  )}
+                <div className="w-12 h-12 bg-dark-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m0 0L9 7" />
+                  </svg>
                 </div>
-                
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <h3 className="text-dark-100 font-medium truncate">{prescription.name}</h3>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium flex items-center space-x-1 ${getStatusColor(prescription.status)}`}>
-                      {getStatusIcon(prescription.status)}
-                      <span className="capitalize">{prescription.status}</span>
-                    </span>
-                    {prescription.metadata.robotCompatible && (
-                      <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded-full text-xs">
-                        Robot Ready
-                      </span>
-                    )}
-                  </div>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-dark-400">
-                    <p><span className="font-medium">Field:</span> {prescription.metadata.fieldName}</p>
-                    <p><span className="font-medium">Pest:</span> {prescription.metadata.pestType}</p>
-                    <p><span className="font-medium">Pesticide:</span> {prescription.metadata.pesticideType}</p>
-                    <p><span className="font-medium">Cost:</span> {prescription.metadata.estimatedCost}</p>
-                  </div>
+                  <h3 className="text-dark-100 font-medium truncate">{item.taskName || `Task ${item.taskId}`}</h3>
+                  <p className="text-dark-400 text-sm">Task: {item.taskId.slice(0, 8)}…</p>
                 </div>
-                
-                <div className="flex items-center space-x-2">
-                  <button 
-                    className="p-2 text-dark-400 hover:text-primary-400 transition-colors duration-200"
-                    title="View Prescription Map"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  </button>
-                  <button 
-                    className="p-2 text-dark-400 hover:text-green-400 transition-colors duration-200"
-                    title="Download Robot Path"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </button>
-                </div>
+                <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400">Completed</span>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* Prescription Detail Modal */}
-      {selectedPrescription && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-dark-800 rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden">
-            <div className="p-6 border-b border-dark-700">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="text-xl font-semibold text-primary-400">{selectedPrescription.name}</h3>
-                  <p className="text-dark-300 text-sm mt-1">
-                    Generated on {formatDate(selectedPrescription.createdAt)}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setSelectedPrescription(null)}
-                  className="text-dark-400 hover:text-dark-100 transition-colors duration-200"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+      {selectedTaskId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={closeDetail}>
+          <div
+            className="bg-dark-800 rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-dark-700 flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-semibold text-primary-400">
+                  {selectedItem?.taskName || `Task ${selectedTaskId}`}
+                </h3>
+                {detailStatus && (
+                  <span className={`inline-flex items-center gap-1 mt-1 px-2 py-1 rounded text-xs ${getStatusColor(detailStatus.status)}`}>
+                    {detailStatus.status}
+                    {detailStatus.message && ` — ${detailStatus.message}`}
+                  </span>
+                )}
               </div>
+              <button onClick={closeDetail} className="text-dark-400 hover:text-dark-100 p-2">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
-            
-            <div className="p-6 max-h-[70vh] overflow-y-auto">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Prescription Map with Spray Settings */}
-                <div>
-                  <h4 className="text-lg font-medium text-primary-400 mb-4">Spray Map Settings</h4>
-                  
-                  {/* Spray Level Selector */}
-                  <div className="bg-dark-700 rounded-lg p-4 mb-4">
-                    <label className="block text-sm font-medium text-dark-200 mb-3">
-                      Select Spray Level
-                    </label>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => setSelectedSprayLevel('high')}
-                        className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
-                          selectedSprayLevel === 'high'
-                            ? 'bg-red-500 text-white'
-                            : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                        }`}
+            <div className="p-6 flex-1 overflow-y-auto">
+              {detailLoading ? (
+                <div className="flex justify-center py-12">
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-500" />
+                </div>
+              ) : detailStatus?.status === 'failed' ? (
+                <div className="space-y-3">
+                  <p className="text-red-400">{detailStatus.message}</p>
+                  {detailStatus.message?.toLowerCase().includes('boundary') && (
+                    <p className="text-dark-300 text-sm">
+                      Link a boundary to this field in the <strong>Pathing</strong> tab: upload a shapefile, generate the path, then use &quot;Link to Stitched Field&quot; and choose this task. After saving, prescription generation will run automatically.
+                    </p>
+                  )}
+                </div>
+              ) : detailGeojson?.features?.length ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="text-lg font-medium text-primary-400 mb-2">Prescription Map</h4>
+                    <div className="h-80 rounded-lg overflow-hidden border border-dark-600">
+                      <MapContainer
+                        center={[0, 0]}
+                        zoom={2}
+                        style={{ height: '100%', width: '100%' }}
+                        zoomControl
+                        attributionControl={false}
                       >
-                        High Spray
-                      </button>
-                      <button
-                        onClick={() => setSelectedSprayLevel('low')}
-                        className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
-                          selectedSprayLevel === 'low'
-                            ? 'bg-yellow-500 text-white'
-                            : 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30'
-                        }`}
-                      >
-                        Low Spray
-                      </button>
-                      <button
-                        onClick={() => setSelectedSprayLevel('no')}
-                        className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
-                          selectedSprayLevel === 'no'
-                            ? 'bg-gray-600 text-white'
-                            : 'bg-gray-600/20 text-gray-400 hover:bg-gray-600/30'
-                        }`}
-                      >
-                        No Spray
-                      </button>
+                        <TileLayer
+                          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                          maxZoom={19}
+                        />
+                        <GeoJSON
+                          data={detailGeojson as GeoJSON.GeoJSON}
+                          style={(feature) => {
+                            const spray = getSprayForFeature(feature as unknown as PrescriptionFeature);
+                            const fill = spray === 'high' ? '#ef4444' : spray === 'low' ? '#eab308' : '#6b7280';
+                            return { fillColor: fill, fillOpacity: 0.7, color: '#fff', weight: 1 };
+                          }}
+                          onEachFeature={(feature, layer) => {
+                            const fid = getFeatureId(feature as unknown as PrescriptionFeature);
+                            if (fid) {
+                              layer.bindPopup(
+                                `<div class="text-black">
+                                  <strong>Feature:</strong> ${fid}<br/>
+                                  <strong>Spray:</strong> ${getSprayForFeature(feature as unknown as PrescriptionFeature)}
+                                </div>`
+                              );
+                            }
+                          }}
+                        />
+                        <FitBounds geojsonData={detailGeojson} />
+                      </MapContainer>
                     </div>
                   </div>
-
-                  {/* Bulk Apply Buttons */}
-                  <div className="bg-dark-700 rounded-lg p-4 mb-4">
-                    <label className="block text-sm font-medium text-dark-200 mb-3">
-                      Bulk Apply to Entire Field
-                    </label>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => handleBulkApply('high')}
-                        className="flex-1 px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors duration-200 text-sm font-medium"
-                      >
-                        Apply High
-                      </button>
-                      <button
-                        onClick={() => handleBulkApply('low')}
-                        className="flex-1 px-3 py-2 bg-yellow-500/20 text-yellow-400 rounded-lg hover:bg-yellow-500/30 transition-colors duration-200 text-sm font-medium"
-                      >
-                        Apply Low
-                      </button>
-                      <button
-                        onClick={() => handleBulkApply('no')}
-                        className="flex-1 px-3 py-2 bg-gray-600/20 text-gray-400 rounded-lg hover:bg-gray-600/30 transition-colors duration-200 text-sm font-medium"
-                      >
-                        Apply No Spray
-                      </button>
+                  <div>
+                    <h4 className="text-lg font-medium text-primary-400 mb-2">Spray by cluster</h4>
+                    <p className="text-dark-400 text-sm mb-4">
+                      Set spray level per feature and click Save to update the prescription.
+                    </p>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {detailGeojson.features.map((f, idx) => {
+                        const fid = getFeatureId(f) ?? `feature-${idx}`;
+                        const spray = getSprayForFeature(f);
+                        return (
+                          <div key={fid} className="flex items-center justify-between bg-dark-700 rounded px-3 py-2">
+                            <span className="text-dark-200 text-sm">
+                              {fid} {f.properties?.cluster != null && `(cluster ${f.properties.cluster})`}
+                            </span>
+                            <select
+                              value={spray}
+                              onChange={(e) => setSprayForFeature(fid, e.target.value as SprayLevel)}
+                              className="bg-dark-600 text-dark-100 border border-dark-500 rounded px-2 py-1 text-sm"
+                            >
+                              <option value="none">None</option>
+                              <option value="low">Low</option>
+                              <option value="high">High</option>
+                            </select>
+                          </div>
+                        );
+                      })}
                     </div>
-                  </div>
-
-                  {/* Grid Field Map */}
-                  <div className="bg-dark-700 rounded-lg p-4">
-                    <div className="flex justify-between items-center mb-3">
-                      <label className="block text-sm font-medium text-dark-200">
-                        Field Map Grid
-                      </label>
-                      <p className="text-xs text-dark-400">
-                        Click cells to apply {getSprayLevelLabel(selectedSprayLevel).toLowerCase()}
-                      </p>
-                    </div>
-                    <div className="bg-dark-800 rounded-lg p-3 overflow-auto">
-                      {sprayMap.length > 0 ? (
-                        <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${gridSize.cols}, minmax(0, 1fr))` }}>
-                          {sprayMap.map((row, rowIdx) =>
-                            row.map((cell, colIdx) => (
-                              <button
-                                key={`${rowIdx}-${colIdx}`}
-                                onClick={() => handleGridCellClick(rowIdx, colIdx)}
-                                className={`aspect-square min-w-[24px] rounded transition-all duration-150 ${getSprayLevelColor(cell)} border border-dark-600 hover:border-dark-400`}
-                                title={`Row ${rowIdx + 1}, Col ${colIdx + 1}: ${getSprayLevelLabel(cell)}`}
-                              />
-                            ))
-                          )}
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 text-dark-400">
-                          <p>Loading field map grid...</p>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Legend */}
-                    <div className="mt-4 flex justify-center space-x-4 text-xs">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 bg-red-500/80 rounded"></div>
-                        <span className="text-dark-300">High Spray</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 bg-yellow-500/80 rounded"></div>
-                        <span className="text-dark-300">Low Spray</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 bg-gray-600/50 rounded"></div>
-                        <span className="text-dark-300">No Spray</span>
-                      </div>
-                    </div>
+                    <button
+                      onClick={saveSprayUpdates}
+                      disabled={savingSpray || Object.keys(sprayUpdates).length === 0}
+                      className="mt-4 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {savingSpray ? 'Saving…' : 'Save spray updates'}
+                    </button>
                   </div>
                 </div>
-                
-                {/* Prescription Details */}
-                <div>
-                  <h4 className="text-lg font-medium text-primary-400 mb-4">Application Details</h4>
-                  <div className="space-y-4">
-                    <div className="bg-dark-700 rounded-lg p-4">
-                      <h5 className="font-medium text-dark-100 mb-3">Treatment Information</h5>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-dark-400">Field:</span>
-                          <span className="text-dark-100">{selectedPrescription.metadata.fieldName}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-dark-400">Crop Type:</span>
-                          <span className="text-dark-100">{selectedPrescription.metadata.cropType}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-dark-400">Pest Type:</span>
-                          <span className="text-dark-100">{selectedPrescription.metadata.pestType}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-dark-400">Pesticide:</span>
-                          <span className="text-dark-100">{selectedPrescription.metadata.pesticideType}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-dark-400">Application Rate:</span>
-                          <span className="text-dark-100">{selectedPrescription.metadata.applicationRate}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-dark-400">Total Area:</span>
-                          <span className="text-dark-100">{selectedPrescription.metadata.totalArea}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-dark-400">Estimated Cost:</span>
-                          <span className="text-green-400 font-medium">{selectedPrescription.metadata.estimatedCost}</span>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-dark-700 rounded-lg p-4">
-                      <h5 className="font-medium text-dark-100 mb-3">Robot Instructions</h5>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-dark-400">Waypoints:</span>
-                          <span className="text-dark-100">{selectedPrescription.robotInstructions.waypoints}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-dark-400">Duration:</span>
-                          <span className="text-dark-100">{selectedPrescription.robotInstructions.estimatedDuration}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-dark-400">Battery Required:</span>
-                          <span className="text-dark-100">{selectedPrescription.robotInstructions.batteryRequired}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-dark-400">Robot Compatible:</span>
-                          <span className={`px-2 py-1 rounded-full text-xs ${
-                            selectedPrescription.metadata.robotCompatible 
-                              ? 'bg-green-500/20 text-green-400' 
-                              : 'bg-red-500/20 text-red-400'
-                          }`}>
-                            {selectedPrescription.metadata.robotCompatible ? 'Yes' : 'No'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Action Buttons */}
-              {selectedPrescription.status === 'ready' && (
-                <div className="mt-6 flex justify-center space-x-4">
-                  <button className="px-6 py-3 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200">
-                    Download Prescription Map
-                  </button>
-                  <button className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors duration-200">
-                    Download Robot Path (GPX)
-                  </button>
-                  <button className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200">
-                    Send to Robot
-                  </button>
-                </div>
+              ) : (
+                <p className="text-dark-400">No GeoJSON features to display.</p>
               )}
             </div>
           </div>

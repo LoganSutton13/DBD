@@ -6,6 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request, UploadFile
 
 from app.api.deps import (
+    get_file_storage_service,
     get_path_jobs_dir,
     get_path_jobs_store_dep,
     get_rtk_base_config_path,
@@ -125,21 +126,33 @@ def get_path_job_result(
 @router.post("/{path_job_id}/save", response_model=PathSaveResponse)
 def save_path_to_task(
     path_job_id: str,
+    background_tasks: BackgroundTasks,
     task_id: str = Form(...),
     path_jobs_store=Depends(get_path_jobs_store_dep),
+    storage=Depends(get_file_storage_service),
 ):
     """
     Persist the generated path to a NodeODM task (stitched field). Call this only when
-    the farmer has linked the path to a task and chosen to save.
+    the farmer has linked the path to a task and chosen to save. If the task has an
+    orthophoto and no prescription file yet, prescription generation is started in
+    the background (skipped if prescription.geojson already exists).
     """
     try:
         from pathlib import Path
-        return pathing_handlers.save_path_to_task(
+        result = pathing_handlers.save_path_to_task(
             path_job_id,
             task_id,
             path_jobs_store,
             Path(settings.RESULTS_DIR),
         )
+        # If this task has an orthophoto but no prescription yet, we now have boundary + orthophoto → run prescription.
+        if (
+            background_tasks
+            and storage.get_orthophoto_tif_path(task_id)
+            and not storage.get_prescription_path(task_id)
+        ):
+            background_tasks.add_task(storage.run_prescription_job, task_id)
+        return result
     except KeyError:
         raise HTTPException(status_code=404, detail="Path job not found")
     except ValueError as e:

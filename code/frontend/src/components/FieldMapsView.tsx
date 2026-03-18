@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import area from '@turf/area';
 import 'leaflet/dist/leaflet.css';
+import apiService from '../services/api';
+import type { PrescriptionGeoJSON } from '../types/prescription';
 
 // Fix for default marker icons in Leaflet with webpack
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -12,32 +14,12 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
 
-interface GeoJSONFeature {
-  type: string;
-  properties: {
-    PlotID?: number;
-    NDVI_max?: number;
-    NDVI_mean?: number;
-    cluster?: number;
-    id?: string;
-  };
-  geometry: {
-    type: string;
-    coordinates: number[][][] | number[][][][];
-  };
-}
-
-interface GeoJSONData {
-  type: string;
-  features: GeoJSONFeature[];
-}
-
 interface FieldMap {
   id: string;
   name: string;
   createdAt: string;
   geojsonUrl: string;
-  geojsonData: GeoJSONData | null;
+  geojsonData: PrescriptionGeoJSON | null;
   metadata: {
     fieldName: string;
     area: string; // in acres/hectares
@@ -50,12 +32,12 @@ interface FieldMap {
 }
 
 // Component to fit map bounds to GeoJSON
-function FitBounds({ geojsonData }: { geojsonData: GeoJSONData | null }) {
+function FitBounds({ geojsonData }: { geojsonData: PrescriptionGeoJSON | null }) {
   const map = useMap();
   
   useEffect(() => {
     if (geojsonData && geojsonData.features.length > 0) {
-      const bounds = L.geoJSON(geojsonData as any).getBounds();
+      const bounds = L.geoJSON(geojsonData as GeoJSON.GeoJSON).getBounds();
       if (bounds.isValid()) {
         map.fitBounds(bounds, { padding: [20, 20] });
         const padded = bounds.pad(0.05);
@@ -89,7 +71,7 @@ function BaseMapLayer({ isOnline }: { isOnline: boolean }) {
 }
 
 // Component to style GeoJSON features based on NDVI
-function GeoJSONLayer({ data }: { data: GeoJSONData }) {
+function GeoJSONLayer({ data }: { data: PrescriptionGeoJSON }) {
   const getNDVIColor = (ndvi: number | undefined): string => {
     if (ndvi === undefined || isNaN(ndvi)) return '#808080';
     
@@ -129,7 +111,7 @@ function GeoJSONLayer({ data }: { data: GeoJSONData }) {
     layer.bindPopup(popupContent);
   };
 
-  return <GeoJSON data={data as any} style={style} onEachFeature={onEachFeature} />;
+  return <GeoJSON data={data as GeoJSON.GeoJSON} style={style} onEachFeature={onEachFeature} />;
 }
 
 const FieldMapsView: React.FC = () => {
@@ -165,104 +147,60 @@ const FieldMapsView: React.FC = () => {
     checkConnectivity();
   }, []);
 
-  // Load GeoJSON files from public/geojson folder
-  useEffect(() => {
-    const loadGeoJSONFiles = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  const loadFromApi = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const listRes = await apiService.listPrescriptions();
+      const items = listRes.items || [];
+      const loadedMaps: FieldMap[] = [];
 
-        // List of known GeoJSON files (you can expand this or fetch from an API)
-        const geojsonFiles = [
-          { 
-            filename: 'field_ndvi_python.geojson', 
-            name: 'Field NDVI Analysis'
-          },
-          { 
-            filename: 'field_ndvi_python_1.geojson', 
-            name: 'Field NDVI Analysis (Python 1)'
-          }
-        ];
+      for (const item of items) {
+        try {
+          const geojsonData = await apiService.getPrescription(item.taskId);
+          if (!geojsonData?.features?.length) continue;
 
-        const loadedMaps: FieldMap[] = [];
+          const features = geojsonData.features;
+          const ndviValues = features
+            .map((f) => f.properties?.NDVI_max ?? f.properties?.NDVI_mean)
+            .filter((v): v is number => typeof v === 'number' && !isNaN(v));
 
-        for (const file of geojsonFiles) {
-          try {
-            const response = await fetch(`/geojson/${file.filename}`);
-            
-            if (!response.ok) {
-              // If file doesn't exist or is empty, skip it
-              if (response.status === 404) {
-                console.warn(`GeoJSON file not found: ${file.filename}`);
-                continue;
-              }
-              throw new Error(`Failed to load ${file.filename}: ${response.statusText}`);
-            }
+          const areaInSquareMeters = area(geojsonData as Parameters<typeof area>[0]);
+          const areaInAcres = areaInSquareMeters / 4046.86;
 
-            const text = await response.text();
-            
-            // Check if file is empty
-            if (!text || text.trim().length === 0) {
-              console.warn(`GeoJSON file is empty: ${file.filename}`);
-              continue;
-            }
-
-            const geojsonData: GeoJSONData = JSON.parse(text);
-
-            // Validate GeoJSON structure
-            if (!geojsonData || !geojsonData.features || geojsonData.features.length === 0) {
-              console.warn(`GeoJSON file has no features: ${file.filename}`);
-              continue;
-            }
-
-            // Calculate metadata from GeoJSON
-            const features = geojsonData.features;
-            const ndviValues = features
-              .map(f => f.properties.NDVI_max ?? f.properties.NDVI_mean)
-              .filter((v): v is number => v !== undefined && !isNaN(v));
-
-            // Calculate total area using Turf.js (returns square meters)
-            const areaInSquareMeters = area(geojsonData as any);
-            // Convert to acres (1 acre = 4046.86 square meters)
-            const areaInAcres = areaInSquareMeters / 4046.86;
-
-            const map: FieldMap = {
-              id: file.filename.replace('.geojson', ''),
-              name: file.name || file.filename.replace('.geojson', '').replace(/_/g, ' '),
-              createdAt: new Date().toISOString(), // You might want to get this from file metadata
-              geojsonUrl: `/geojson/${file.filename}`,
-              geojsonData: geojsonData,
-              metadata: {
-                fieldName: file.name || 'Field',
-                area: areaInAcres > 0 ? `${areaInAcres.toFixed(2)} acres` : 'N/A',
-                plotCount: features.length,
-                avgNDVI: ndviValues.length > 0 
-                  ? ndviValues.reduce((a, b) => a + b, 0) / ndviValues.length 
-                  : undefined,
-                minNDVI: ndviValues.length > 0 ? Math.min(...ndviValues) : undefined,
-                maxNDVI: ndviValues.length > 0 ? Math.max(...ndviValues) : undefined,
-              },
-              status: 'completed',
-            };
-
-            loadedMaps.push(map);
-          } catch (err) {
-            console.error(`Error loading ${file.filename}:`, err);
-            // Continue loading other files even if one fails
-          }
+          loadedMaps.push({
+            id: item.taskId,
+            name: item.taskName || `Task ${item.taskId.slice(0, 8)}`,
+            createdAt: new Date().toISOString(),
+            geojsonUrl: item.prescriptionUrl || `/api/v1/prescription/${item.taskId}`,
+            geojsonData,
+            metadata: {
+              fieldName: item.taskName || item.taskId,
+              area: areaInAcres > 0 ? `${areaInAcres.toFixed(2)} acres` : 'N/A',
+              plotCount: features.length,
+              avgNDVI: ndviValues.length > 0 ? ndviValues.reduce((a, b) => a + b, 0) / ndviValues.length : undefined,
+              minNDVI: ndviValues.length > 0 ? Math.min(...ndviValues) : undefined,
+              maxNDVI: ndviValues.length > 0 ? Math.max(...ndviValues) : undefined,
+            },
+            status: 'completed',
+          });
+        } catch (err) {
+          console.warn(`Failed to load prescription for task ${item.taskId}:`, err);
         }
-
-        setFieldMaps(loadedMaps);
-        setLoading(false);
-      } catch (err) {
-        console.error('Error loading GeoJSON files:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load field maps');
-        setLoading(false);
       }
-    };
 
-    loadGeoJSONFiles();
+      setFieldMaps(loadedMaps);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load field maps');
+      setFieldMaps([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadFromApi();
+  }, [loadFromApi]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -430,9 +368,9 @@ const FieldMapsView: React.FC = () => {
             <svg className="w-16 h-16 text-dark-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m0 0L9 7" />
             </svg>
-            <p className="text-dark-300 text-lg mb-2">No field maps found</p>
+            <p className="text-dark-300 text-lg mb-2">No field maps yet</p>
             <p className="text-dark-400 text-sm">
-              Add GeoJSON files to the <code className="bg-dark-700 px-2 py-1 rounded">public/geojson</code> folder
+              Prescriptions are generated automatically when an orthophoto is ready and a boundary has been linked to the task. View the Prescriptions tab for status.
             </p>
           </div>
         ) : viewMode === 'grid' ? (

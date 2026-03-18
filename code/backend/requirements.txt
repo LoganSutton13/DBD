@@ -18,7 +18,7 @@ pytest==7.4.3
 pytest-asyncio==0.21.1
 
 # Field image analysis dependencies
-numpy
+numpy<2
 rasterio
 rioxarray
 xarray
@@ -33,7 +33,6 @@ farm-ng-amiga
 #farm-ng-core
 
 # Core scientific and geospatial libraries
-numpy
 matplotlib
 geopandas
 

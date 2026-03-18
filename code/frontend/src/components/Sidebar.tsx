@@ -1,18 +1,11 @@
 import React from 'react';
 
-interface AppStats {
-  imagesUploaded: number;
-  processing: number;
-  completed: number;
-}
-
 interface SidebarProps {
   activeTab: 'upload' | 'gallery' | 'processing' | 'fieldmaps' | 'pesticides';
   onTabChange: (tab: 'upload' | 'gallery' | 'processing' | 'fieldmaps' | 'pesticides') => void;
-  stats: AppStats;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, stats }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
   const menuItems = [
     {
       id: 'upload' as const,
@@ -79,25 +72,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange, stats }) => {
               <span className="font-medium">{item.label}</span>
             </button>
           ))}
-        </div>
-        
-        {/* Quick Stats */}
-        <div className="mt-8 pt-6 border-t border-dark-700">
-          <h3 className="text-sm font-medium text-dark-400 mb-3">Quick Stats</h3>
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-dark-300 text-sm">Images Uploaded</span>
-              <span className="text-primary-400 font-medium">{stats.imagesUploaded}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-dark-300 text-sm">Processing</span>
-              <span className="text-yellow-400 font-medium">{stats.processing}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-dark-300 text-sm">Completed</span>
-              <span className="text-green-400 font-medium">{stats.completed}</span>
-            </div>
-          </div>
         </div>
       </nav>
     </aside>
