@@ -96,6 +96,11 @@ src/
 - **Task Management**: Task naming, metadata display, and organization
 - **Real-time Updates**: Automatic status polling and progress tracking
 
+### ✅ Added Since Sprint 2 (Sprint 4–5 highlights)
+- **Path preview workflow**: Upload boundary shapefile, configure heading/robot width/coverage width, and preview the generated snake-pattern path on the map UI.
+- **RTK base station support**: UI integrations that work with backend RTK base endpoints for relative/robot-friendly coordinate usage.
+- **Improved backend integrations**: Expanded API surface usage for newer pathing + prescription workflows (polling status and saving results).
+
 ## 🎨 UI Components
 
 ### Navigation
@@ -183,6 +188,13 @@ dark-300: #cbd5e1     /* Text primary */
 - Task deletion functionality
 - Advanced search and filtering
 - User authentication and authorization
+
+## Sprint 5 Updates
+
+### New Features / Integrations
+- **Deeper pathing integration**: Fields2Cover path generation is integrated into the user workflow for generating and previewing navigation paths.
+- **Backend-driven prescription integration (in progress)**: Frontend aligns with new prescription endpoints for status/config/update flows as the pipeline is linked end-to-end.
+- **Quality improvements**: Sprint 5 focused on raising confidence via backend unit test coverage and CI; frontend Jest testing is planned next.
 
 ## Sprint 2 Updates
 
