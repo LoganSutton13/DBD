@@ -259,7 +259,7 @@ docker run -p 3000:3000 opendronemap/nodeodm:stable
 
 ### Development Notes
 
-- The application is currently in active development (Sprint 4 completed)
+- The application is currently in active development (Sprint 5 completed)
 - **Sprint 1 Achievements**: 
   - Complete drone imagery upload system with drag-and-drop interface
   - Real-time processing queue monitoring
@@ -292,6 +292,13 @@ docker run -p 3000:3000 opendronemap/nodeodm:stable
   - Prescription module: shapefile output (replacing GeoJSON), bucketed-point clustering, automatic field resolution
   - Prescription and fieldShapeModified cleanup, documentation, and R style guide alignment
   - Meeting minutes (MoM) for Jan–Feb 2026
+- **Sprint 5 Achievements**:
+  - CI workflow for backend automated testing and expanded unit test coverage
+  - Prescription module integration progress: callable via CLI args and invoked from backend; improved polygon outputs for clusters
+  - Farmer-specified boundary shapefile support for prescription generation
+  - Fields2Cover pathing improvements and deeper UI integration for path preview workflows
+  - RTK base station configuration endpoints to support relative/robot-friendly coordinates
+  - Dockerized application setup to improve environment consistency
 - Some features like database persistence and authentication are planned but not yet implemented
 - Node ODM integration is functional with automatic polling and asset downloading
 - File-based storage with manifest files is currently used for task metadata
@@ -362,6 +369,7 @@ We welcome contributions to the DroneBasedDevelopment project! Please follow the
 - **[Sprint 2 Report](docs/Reports/02_Sprint_Report.md)** - Sprint 2 accomplishments and documentation
 - **[Sprint 3 Report](docs/Reports/03_Sprint_Report.md)** - Sprint 3 accomplishments and documentation
 - **[Sprint 4 Report](docs/Reports/04_Sprint_Report.md)** - Sprint 4 accomplishments and documentation
+- **[Sprint 5 Report](docs/Reports/05_Sprint_Report.md)** - Sprint 5 accomplishments and documentation
 - **[Meeting Minutes](docs/Mom/)** - Project meeting documentation and templates
 
 ### Resources

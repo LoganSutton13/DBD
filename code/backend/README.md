@@ -167,6 +167,21 @@ Once the server is running, visit:
 - `GET /api/v1/results/{task_id}/orthophoto.png` - Serve orthophoto PNG image
 - `GET /api/v1/results/{task_id}/report.pdf` - Serve PDF report
 
+### Pathing Endpoints (Sprint 4–5)
+- `POST /api/v1/pathing` - Upload boundary shapefile components and start a preview-only path job (heading, robot_width, coverage_width, optional base station)
+- `GET /api/v1/pathing/{path_job_id}/status` - Poll for path job status
+- `GET /api/v1/pathing/{path_job_id}` - Fetch completed path preview waypoints/metadata
+- `POST /api/v1/pathing/{path_job_id}/save` - Persist generated path to a task; may trigger prescription generation if orthophoto exists
+- `GET /api/v1/pathing/rtk-base` - Get stored RTK base station coordinates
+- `PUT /api/v1/pathing/rtk-base` - Set RTK base station coordinates
+
+### Prescription Endpoints (Sprint 5)
+- `GET /api/v1/prescription` - List tasks that have a prescription file
+- `GET /api/v1/prescription/{task_id}` - Fetch prescription GeoJSON for a task
+- `PUT /api/v1/prescription/{task_id}` - Update prescription GeoJSON (apply farmer spray choices)
+- `GET /api/v1/prescription/{task_id}/status` - Poll prescription generation status
+- `PUT /api/v1/prescription/{task_id}/config` - Set per-task prescription configuration
+
 ### Health Check
 - `GET /` - Root endpoint
 - `GET /health` - Health check endpoint
@@ -235,6 +250,12 @@ curl -X GET "http://localhost:8001/api/v1/results/{task_id}/report.pdf" -o repor
 - ✅ Configurable Node ODM options (orthophoto resolution, quality)
 - ✅ Enhanced error handling for Node ODM connection issues
 - ✅ Logging and monitoring
+
+### Added Since Sprint 2 (Sprint 4–5 highlights)
+- ✅ Pathing API for boundary shapefile upload and previewable waypoint generation (Fields2Cover-based)
+- ✅ RTK base station configuration endpoints to support relative/robot-friendly coordinates
+- ✅ Prescription API endpoints (status/config/update) and backend invocation surface for prescription generation
+- ✅ Expanded backend unit test coverage and CI workflow for automated tests
 
 ### Planned Features
 - [ ] Database integration for task persistence
