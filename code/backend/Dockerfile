@@ -131,6 +131,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsqlite3-dev \
     libudunits2-dev \
     libglpk40 \
+    r-cran-caret \
+    r-cran-s2 \
+    r-cran-sf \
+    r-cran-units \
     r-base \
     r-base-dev && \
     rm -rf /var/lib/apt/lists/*
@@ -140,7 +144,7 @@ RUN Rscript -e 'if (!requireNamespace("BiocManager", quietly = TRUE)) install.pa
     Rscript -e 'BiocManager::install(version = "3.13", ask = FALSE)' && \
     Rscript -e 'BiocManager::install("EBImage", version = "3.13", ask = FALSE)'
 
-RUN Rscript -e 'install.packages(c("s2", "sf", "units"), repos = "https://cloud.r-project.org")'
+RUN Rscript -e 'install.packages("leafsync", repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1))'
 
 RUN Rscript -e 'remotes::install_github("OpenDroneMap/FIELDimageR")' || \
     Rscript -e 'install.packages("remotes", repos = "https://cloud.r-project.org"); remotes::install_github("OpenDroneMap/FIELDimageR")'
