@@ -109,7 +109,7 @@ RUN cmake -DBUILD_PYTHON=ON \
           -DBUILD_TESTING=ON \
           -DBUILD_DOC=OFF \
           -DCMAKE_BUILD_TYPE=Release .. && \
-    make -j4 install && \
+    make -j"$(nproc)" install && \
     ldconfig
 
 
@@ -124,13 +124,27 @@ WORKDIR /workspaces
 
 # R and geospatial dependencies used by FIELDimageR
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    gfortran \
     libfftw3-dev \
     libgdal-dev \
+    libgit2-dev \
     libgeos++-dev \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    libssh2-1-dev \
+    libxml2-dev \
     libproj-dev \
     libsqlite3-dev \
     libudunits2-dev \
+    libfontconfig1-dev \
+    libfreetype6-dev \
+    libharfbuzz-dev \
+    libfribidi-dev \
+    libpng-dev \
+    libjpeg-dev \
+    libtiff-dev \
     libglpk40 \
+    libx11-dev \
     r-cran-caret \
     r-cran-s2 \
     r-cran-sf \
@@ -144,11 +158,55 @@ RUN Rscript -e 'if (!requireNamespace("BiocManager", quietly = TRUE)) install.pa
     Rscript -e 'BiocManager::install(version = "3.13", ask = FALSE)' && \
     Rscript -e 'BiocManager::install("EBImage", version = "3.13", ask = FALSE)'
 
-RUN Rscript -e 'install.packages("leafsync", repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1))'
+RUN Rscript -e 'install.packages(c("remotes", "leafsync", "git2r"), repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1))'
 
-RUN Rscript -e 'remotes::install_github("OpenDroneMap/FIELDimageR")' || \
-    Rscript -e 'install.packages("remotes", repos = "https://cloud.r-project.org"); remotes::install_github("OpenDroneMap/FIELDimageR")'
+# Install/verify DescTools explicitly.
+# Your Dockerfile uses R 4.1.2, but DescTools releases now require R >= 4.2.0.
+# Pin to an older CRAN archive version that works with R 4.1.x, and install its
+# dependencies explicitly.
+RUN Rscript -e 'install.packages(c("mvtnorm", "expm", "rstudioapi", "Exact", "gld", "BH"), repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1), quiet = FALSE)'
 
+RUN Rscript -e 'u="https://cran.r-project.org/src/contrib/Archive/DescTools/DescTools_0.99.44.tar.gz"; \
+    install.packages(u, repos = NULL, type = "source", quiet = FALSE); \
+    library(DescTools); \
+    cat("DescTools installed successfully. Version:", as.character(utils::packageVersion("DescTools")), "\n")'
+
+# Install FIELDimageR and geospatial dependencies explicitly (avoids remotes pulling
+# incompatible CRAN versions like the latest DescTools). Keep these in a dedicated
+# layer so Docker can cache them independently from GitHub package installs below.
+RUN Rscript -e 'install.packages(c("attempt", "config", "DT", "xml2", "doParallel", "processx", "fields"), repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1), quiet = FALSE)'
+
+# Install exactextractr (used by some geospatial workflows)
+RUN Rscript -e 'install.packages("exactextractr", repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1), quiet = FALSE)'
+
+# Verbose install so docker build logs clearly show failures.
+RUN Rscript -e 'remotes::install_github("OpenDroneMap/FIELDimageR", dependencies = FALSE, upgrade = "never", quiet = FALSE)' && \
+    Rscript -e 'library(FIELDimageR); cat("FIELDimageR installed successfully. Version:", as.character(utils::packageVersion("FIELDimageR")), "\n")'
+
+RUN Rscript -e 'install.packages("leafem", repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1), quiet = FALSE)'
+RUN Rscript -e 'install.packages("lwgeom", repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1), quiet = FALSE)'
+RUN Rscript -e 'install.packages("systemfonts", repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1), quiet = FALSE)'
+RUN Rscript -e 'install.packages("textshaping", repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1), quiet = FALSE)'
+RUN Rscript -e 'install.packages("svglite", repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1), quiet = FALSE)'
+RUN Rscript -e 'install.packages("leafpop", repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1), quiet = FALSE)'
+RUN Rscript -e 'install.packages("mapview", repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1), quiet = FALSE)'
+RUN Rscript -e 'install.packages("mapedit", repos = "https://cloud.r-project.org", dependencies = TRUE, Ncpus = max(1, parallel::detectCores() - 1), quiet = FALSE, verbose = TRUE)'
+RUN Rscript -e 'if (!requireNamespace("mapedit", quietly = TRUE)) { ap <- available.packages(repos = "https://cloud.r-project.org"); deps <- tools::package_dependencies("mapedit", db = ap, recursive = TRUE)[[1]]; needed <- unique(c("mapedit", deps)); missing <- needed[!vapply(needed, requireNamespace, logical(1), quietly = TRUE)]; stop(paste("mapedit installation failed; missing packages:", paste(missing, collapse = ", "))) } else { cat("mapedit installed successfully.\n") }'
+
+# Verify required R packages are installed before FIELDimageR.Extra.
+RUN Rscript -e 'pkgs <- c("FIELDimageR", "exactextractr", "fields", "DescTools", "plyr", "leafem", "lwgeom", "mapedit"); missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; if (length(missing) > 0) { stop(paste("Missing R packages:", paste(missing, collapse = ", "))) } else { cat("All pre-FIELDimageR.Extra R packages installed successfully.\n") }'
+
+
+
+# Install companion package FIELDimageR.Extra (required by some workflows)
+RUN Rscript -e 'remotes::install_github("filipematias23/FIELDimageR.Extra", dependencies = FALSE, upgrade = "never", quiet = FALSE)' && \
+    Rscript -e 'library(FIELDimageR.Extra); cat("FIELDimageR.Extra installed successfully. Version:", as.character(utils::packageVersion("FIELDimageR.Extra")), "\n")'
+
+RUN Rscript -e 'install.packages("imager", repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1), quiet = FALSE)'
+RUN Rscript -e 'install.packages("optparse", repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1), quiet = FALSE)'
+RUN Rscript -e 'install.packages("stars", repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1), quiet = FALSE)'
+RUN Rscript -e 'install.packages("terra", repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1), quiet = FALSE)'
+RUN Rscript -e 'install.packages("oce", repos = "https://cloud.r-project.org", Ncpus = max(1, parallel::detectCores() - 1), quiet = FALSE)'
 
 ##########################################
 # Stage 2: Final runtime (backend only)
