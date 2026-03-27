@@ -43,7 +43,15 @@ class FileStorageService:
     """Service for managing NodeODM output file storage"""
 
     def __init__(self, results_dir: Optional[Path] = None):
-        self.results_dir = Path(results_dir) if results_dir is not None else Path(settings.RESULTS_DIR)
+        if results_dir is not None:
+            self.results_dir = Path(results_dir)
+        else:
+            configured_results_dir = Path(settings.RESULTS_DIR)
+            if configured_results_dir.is_absolute():
+                self.results_dir = configured_results_dir
+            else:
+                backend_root = Path(__file__).resolve().parents[2]
+                self.results_dir = (backend_root / configured_results_dir).resolve()
         self.results_dir.mkdir(parents=True, exist_ok=True)
 
     def _result_url(self, task_id: str, artifact_name: str) -> str:

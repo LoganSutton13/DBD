@@ -161,9 +161,13 @@ generatePrescription <- function (orthophoto, boundary, heading, cell_size, clus
 
   cluster_polys_sf <- st_cast(cluster_polys_sf, "MULTIPOLYGON")
   
+  # Force final output CRS to WGS84 for Leaflet/frontend
+  cluster_polys_sf <- st_transform(cluster_polys_sf, 4326)
+  st_crs(cluster_polys_sf) <- st_crs("EPSG:4326")
+  
   # Write shapefile (writes .shp/.shx/.dbf/.prj)
   out_path <- file.path(output_file_path, output_file_name)
-  st_write(cluster_polys_sf, out_path, delete_dsn = FALSE)
+  st_write(cluster_polys_sf, out_path, delete_dsn = TRUE)
   print(paste0("prescription written to ", output_file_path, "/", output_file_name))
   
   return(TRUE)

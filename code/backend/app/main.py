@@ -37,6 +37,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+async def startup_event():
+    """Log configuration on startup"""
+    logging.info(f"NodeODM configured at: {settings.NODEODM_HOST}:{settings.NODEODM_PORT}")
+    logging.info(f"Upload directory: {settings.UPLOAD_DIR}")
+    logging.info(f"Results directory: {settings.RESULTS_DIR}")
+
 # Health check endpoints
 @app.get("/", response_model=RootResponse)
 async def root():
