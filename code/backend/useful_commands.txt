@@ -13,3 +13,18 @@ docker run --rm --network="host" dbd-backend:local
 
 Backend run:
 docker run --rm --network="host" dbd-frontend:local
+
+
+####################### START HERE ######################################
+Build using: docker build -t dbd-frontend:local ./code/frontend
+Build backend using: docker build -t dbd-backend:local ./code/backend
+
+Frontend build time: quick
+Backend build time: ~ 20 min fresh
+
+For RUNNING frontend: docker run --rm --network="host" dbd-backend:local
+For RUNNING backend on Logan's machine, includes file mounts: 
+docker run --rm -p 8001:8001   --add-host=host.docker.internal:host-gateway   -e NODEODM_HOST=host.docker.internal   -e NODEODM_PORT=3000  -e UPLOAD_DIR=/app/uploads                                                                          
+-e RESULTS_DIR=/app/results                                                                                    
+-e PATH_JOBS_DIR=/app/path_jobs -v "/home/logan/repos/DBD/code/backend/uploads:/app/uploads"   -v "/home/logan/repos/DBD/code/backend/res
+ults:/app/results"   -v "/home/logan/repos/DBD/code/backend/path_jobs:/app/path_jobs"   dbd-backend:local
