@@ -2,10 +2,18 @@ FROM node:20-bullseye
 
 WORKDIR /app
 
+# Copy package files
 COPY package*.json ./
-RUN npm install --legacy-peer-deps
 
+# Clean install from lockfile (deterministic)
+RUN npm ci --legacy-peer-deps
+
+# Copy the rest of the code
 COPY . .
+
+# Make sure .dockerignore excludes node_modules
+# Then install fresh in container
+RUN npm ci --legacy-peer-deps
 
 ENV PORT=8000
 EXPOSE 8000

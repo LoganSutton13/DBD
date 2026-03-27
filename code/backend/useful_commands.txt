@@ -3,3 +3,13 @@ For building the docker image: docker build -t dbd-backend:local ./code/backend
 
 For running the frontend: docker run --rm -p 8000:8000 dbd-frontend:local
 For building the frontend: docker build -t dbd-frontend:local ./code/frontend
+
+Backend test, no file mount: 
+For running the docker image: docker run --rm -p 8001:8001 dbd-backend:local
+
+
+Frontend run: 
+docker run --rm --network="host" dbd-backend:local
+
+Backend run:
+docker run --rm --network="host" dbd-frontend:local

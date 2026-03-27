@@ -5,6 +5,7 @@ Configuration settings for the Drone Imagery API
 from pydantic_settings import BaseSettings
 from typing import List
 import os
+from pathlib import Path
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
@@ -59,5 +60,21 @@ class Settings(BaseSettings):
 # Create settings instance
 settings = Settings()
 
-# Ensure upload directory exists
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _resolve_storage_path(path_value: str) -> str:
+    path = Path(path_value)
+    if path.is_absolute():
+        return str(path)
+    return str((BACKEND_ROOT / path).resolve())
+
+
+settings.UPLOAD_DIR = _resolve_storage_path(settings.UPLOAD_DIR)
+settings.RESULTS_DIR = _resolve_storage_path(settings.RESULTS_DIR)
+settings.PATH_JOBS_DIR = _resolve_storage_path(settings.PATH_JOBS_DIR)
+
+# Ensure storage directories exist
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+os.makedirs(settings.RESULTS_DIR, exist_ok=True)
+os.makedirs(settings.PATH_JOBS_DIR, exist_ok=True)
