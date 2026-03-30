@@ -55,6 +55,8 @@ export interface PrescriptionFeatureProperties {
   cluster?: number;
   NDVI_max?: number;
   NDVI_mean?: number;
+  NDVI_max_mean?: number;
+  NDVI_max_max?: number;
   spray?: SprayLevel;
   [key: string]: unknown;
 }

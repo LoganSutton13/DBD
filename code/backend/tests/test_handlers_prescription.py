@@ -16,6 +16,7 @@ from app.schemas.prescription import (
 from app.services.file_storage import FileStorageService
 
 MINIMAL_GEOJSON = {"type": "FeatureCollection", "features": [{"type": "Feature", "id": "1", "properties": {}, "geometry": None}]}
+MINIMAL_CLUSTER_GEOJSON = {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"cluster": 1}, "geometry": None}]}
 
 
 def test_get_prescription_missing_raises_file_not_found():
@@ -59,6 +60,22 @@ def test_update_prescription_applies_updates_and_returns_geojson(results_dir: Pa
     body = PrescriptionUpdateRequest(updates=[PrescriptionUpdateItem(featureId="1", spray="high")])
     result = prescription_handlers.update_prescription(task_id, body, storage)
     assert result["features"][0]["properties"]["spray"] == "high"
+    with open(task_dir / "prescription.geojson", "r", encoding="utf-8") as f:
+        on_disk = json.load(f)
+    assert on_disk["features"][0]["properties"]["spray"] == "high"
+
+
+def test_update_prescription_cluster_id_applies_updates_and_returns_geojson(results_dir: Path):
+    """update_prescription applies spray updates when GeoJSON has no feature id but has properties.cluster."""
+    storage = FileStorageService(results_dir=results_dir)
+    task_id = "task-update-cluster"
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True)
+    (task_dir / "prescription.geojson").write_text(json.dumps(MINIMAL_CLUSTER_GEOJSON))
+    body = PrescriptionUpdateRequest(updates=[PrescriptionUpdateItem(featureId="1", spray="high")])
+    result = prescription_handlers.update_prescription(task_id, body, storage)
+    assert result["features"][0]["properties"]["spray"] == "high"
+
     with open(task_dir / "prescription.geojson", "r", encoding="utf-8") as f:
         on_disk = json.load(f)
     assert on_disk["features"][0]["properties"]["spray"] == "high"

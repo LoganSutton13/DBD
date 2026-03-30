@@ -87,7 +87,7 @@ function GeoJSONLayer({ data }: { data: PrescriptionGeoJSON }) {
 
   const style = (feature: any) => {
     const props = feature?.properties || {};
-    const ndvi = props.NDVI_max ?? props.NDVI_mean;
+    const ndvi = props.NDVI_max_mean ?? props.NDVI_max_max ?? props.NDVI_max ?? props.NDVI_mean;
     return {
       fillColor: getNDVIColor(ndvi),
       fillOpacity: 0.7,
@@ -99,7 +99,7 @@ function GeoJSONLayer({ data }: { data: PrescriptionGeoJSON }) {
 
   const onEachFeature = (feature: any, layer: L.Layer) => {
     const props = feature?.properties || {};
-    const ndvi = props.NDVI_max ?? props.NDVI_mean;
+    const ndvi = props.NDVI_max_mean ?? props.NDVI_max_max ?? props.NDVI_max ?? props.NDVI_mean;
     const popupContent = `
       <div style="color: #000;">
         <strong>Plot ID:</strong> ${props.PlotID ?? props.id ?? 'N/A'}<br/>
@@ -162,7 +162,7 @@ const FieldMapsView: React.FC = () => {
 
           const features = geojsonData.features;
           const ndviValues = features
-            .map((f) => f.properties?.NDVI_max ?? f.properties?.NDVI_mean)
+            .map((f) => f.properties?.NDVI_max_mean ?? f.properties?.NDVI_max_max ?? f.properties?.NDVI_max ?? f.properties?.NDVI_mean)
             .filter((v): v is number => typeof v === 'number' && !isNaN(v));
 
           const areaInSquareMeters = area(geojsonData as Parameters<typeof area>[0]);

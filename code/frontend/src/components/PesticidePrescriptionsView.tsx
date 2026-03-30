@@ -42,6 +42,22 @@ const PesticidePrescriptionsView: React.FC = () => {
   const [sprayUpdates, setSprayUpdates] = useState<Record<string, SprayLevel>>({});
   const [savingSpray, setSavingSpray] = useState(false);
 
+  // Deterministic palette for visually distinguishing cluster polygons.
+  // (Only used when `properties.spray` is not set for a feature.)
+  const clusterPalette = [
+    '#ef4444', // red
+    '#eab308', // amber
+    '#22c55e', // green
+  ];
+
+  const getClusterColor = (cluster: number | null | undefined): string => {
+    if (cluster == null || Number.isNaN(cluster)) return '#6b7280';
+    // Default mapping: cluster 1=red, cluster 2=yellow, cluster 3=green.
+    // For any other cluster numbers, cycle through the 3 colors.
+    const idx = (Math.abs(Math.trunc(cluster)) - 1) % 3;
+    return clusterPalette[idx] ?? '#6b7280';
+  };
+
   const fetchList = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -76,7 +92,14 @@ const PesticidePrescriptionsView: React.FC = () => {
       const initial: Record<string, SprayLevel> = {};
       if (geojson?.features) {
         for (const f of geojson.features) {
-          const id = f.id != null ? String(f.id) : f.properties?.id != null ? String(f.properties.id) : undefined;
+          const id =
+            f.id != null
+              ? String(f.id)
+              : f.properties?.id != null
+                ? String(f.properties.id)
+                : f.properties?.cluster != null
+                  ? String(f.properties.cluster)
+                  : undefined;
           const spray = f.properties?.spray;
           if (id && spray) initial[id] = spray;
         }
@@ -99,6 +122,7 @@ const PesticidePrescriptionsView: React.FC = () => {
   const getFeatureId = (feature: PrescriptionFeature): string | null => {
     if (feature.id != null) return String(feature.id);
     if (feature.properties?.id != null) return String(feature.properties.id);
+    if (feature.properties?.cluster != null) return String(feature.properties.cluster);
     return null;
   };
 
@@ -319,17 +343,44 @@ const PesticidePrescriptionsView: React.FC = () => {
                         <GeoJSON
                           data={detailGeojson as GeoJSON.GeoJSON}
                           style={(feature) => {
-                            const spray = getSprayForFeature(feature as unknown as PrescriptionFeature);
-                            const fill = spray === 'high' ? '#ef4444' : spray === 'low' ? '#eab308' : '#6b7280';
+                            const f = feature as unknown as PrescriptionFeature;
+                            const fid = getFeatureId(f);
+                            const rawSpray = f.properties?.spray as SprayLevel | undefined;
+                            const userSpray = fid && sprayUpdates[fid] !== undefined ? sprayUpdates[fid] : undefined;
+                            const hasSpray = rawSpray != null || userSpray != null;
+
+                            if (hasSpray) {
+                              const spray = getSprayForFeature(f);
+                              const fill =
+                                spray === 'high'
+                                  ? '#22c55e'
+                                  : spray === 'low'
+                                    ? '#eab308'
+                                    : '#ef4444';
+                              return { fillColor: fill, fillOpacity: 0.7, color: '#fff', weight: 1 };
+                            }
+
+                            const fill = getClusterColor(f.properties?.cluster);
                             return { fillColor: fill, fillOpacity: 0.7, color: '#fff', weight: 1 };
                           }}
                           onEachFeature={(feature, layer) => {
-                            const fid = getFeatureId(feature as unknown as PrescriptionFeature);
-                            if (fid) {
+                            const f = feature as unknown as PrescriptionFeature;
+                            const fid = getFeatureId(f);
+                            const cluster = f.properties?.cluster;
+                            const ndviMaxMean = f.properties?.NDVI_max_mean;
+                            const rawSpray = f.properties?.spray as SprayLevel | undefined;
+                            const userSpray = fid && sprayUpdates[fid] !== undefined ? sprayUpdates[fid] : undefined;
+                            const hasSpray = rawSpray != null || userSpray != null;
+                            const sprayText = hasSpray ? getSprayForFeature(f) : 'Not set';
+
+                            if (fid || cluster != null) {
                               layer.bindPopup(
                                 `<div class="text-black">
-                                  <strong>Feature:</strong> ${fid}<br/>
-                                  <strong>Spray:</strong> ${getSprayForFeature(feature as unknown as PrescriptionFeature)}
+                                  <strong>Cluster:</strong> ${cluster ?? fid}<br/>
+                                  <strong>Max NDVI (mean):</strong> ${
+                                    ndviMaxMean !== undefined && ndviMaxMean !== null ? ndviMaxMean.toFixed(3) : 'N/A'
+                                  }<br/>
+                                  <strong>Spray:</strong> ${sprayText}
                                 </div>`
                               );
                             }
@@ -348,10 +399,14 @@ const PesticidePrescriptionsView: React.FC = () => {
                       {detailGeojson.features.map((f, idx) => {
                         const fid = getFeatureId(f) ?? `feature-${idx}`;
                         const spray = getSprayForFeature(f);
+                        const cluster = f.properties?.cluster;
+                        const ndviMaxMean = f.properties?.NDVI_max_mean;
                         return (
                           <div key={fid} className="flex items-center justify-between bg-dark-700 rounded px-3 py-2">
                             <span className="text-dark-200 text-sm">
-                              {fid} {f.properties?.cluster != null && `(cluster ${f.properties.cluster})`}
+                              {cluster != null ? `Cluster ${cluster}` : fid}
+                              {' '}
+                              Max NDVI: {ndviMaxMean != null && ndviMaxMean !== undefined ? ndviMaxMean.toFixed(3) : 'N/A'}
                             </span>
                             <select
                               value={spray}
