@@ -143,6 +143,20 @@ class ApiService {
     return response.json();
   }
 
+  async uploadBoundaryFiles(taskId: string, files: File[]): Promise<{ message: string; task_id: string; file_count: number; files: string[] }> {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file));
+    const response = await fetch(`${this.baseUrl}/api/v1/upload/${taskId}/boundary`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Boundary upload failed: ${response.status} ${errorText}`);
+    }
+    return response.json();
+  }
+
   async getUploadSettings(): Promise<UploadSystemSettings> {
     const response = await fetch(`${this.baseUrl}/api/v1/upload/settings`);
     if (!response.ok) {
@@ -303,6 +317,45 @@ class ApiService {
     }
 
     const response = await fetch(`${this.baseUrl}/api/v1/pathing/`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Path job failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  async submitPathJobFromTask(
+    taskId: string,
+    heading: number,
+    robotWidth: number,
+    coverageWidth: number,
+    boundaryName?: string,
+    rtkBase?: { longitude: number; latitude: number }
+  ): Promise<{
+    path_job_id: string;
+    status: string;
+    heading: number;
+    robot_width: number;
+    coverage_width: number;
+    files: string[];
+    boundary_name?: string;
+  }> {
+    const formData = new FormData();
+    formData.append('task_id', taskId);
+    formData.append('heading', heading.toString());
+    formData.append('robot_width', robotWidth.toString());
+    formData.append('coverage_width', coverageWidth.toString());
+    if (boundaryName !== undefined && boundaryName !== '') {
+      formData.append('boundary_name', boundaryName);
+    }
+    if (rtkBase !== undefined) {
+      formData.append('base_lon', rtkBase.longitude.toString());
+      formData.append('base_lat', rtkBase.latitude.toString());
+    }
+    const response = await fetch(`${this.baseUrl}/api/v1/pathing/from-task`, {
       method: 'POST',
       body: formData,
     });

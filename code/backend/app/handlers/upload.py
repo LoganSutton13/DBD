@@ -12,6 +12,7 @@ from pyodm import Node
 
 from app.schemas.upload import (
     ChunkReceivedResponse,
+    BoundaryUploadResponse,
     TaskStatusResponse,
     UploadFinalizeResponse,
     UploadInitResponse,
@@ -40,6 +41,55 @@ class UploadFinalizeConfig:
 def _sanitize_filename(filename: str) -> str:
     """Prevent path traversal; allow only basename."""
     return Path(filename).name if filename else ""
+
+
+async def upload_boundary_files_for_task(
+    storage: FileStorageService,
+    task_id: str,
+    files: List[UploadFile],
+    allowed_shapefile_extensions: List[str],
+    max_file_size_bytes: int,
+) -> BoundaryUploadResponse:
+    """Store boundary shapefile components under an existing task folder."""
+    task_dir = storage.results_dir / task_id
+    if not task_dir.exists():
+        raise FileNotFoundError("Task not found")
+
+    if not files:
+        raise ValueError("No boundary files provided")
+
+    extensions_set = set(allowed_shapefile_extensions)
+    saved_names: List[str] = []
+    for file in files:
+        if not file.filename:
+            raise ValueError("Boundary file with no filename detected")
+        safe_name = _sanitize_filename(file.filename)
+        ext = Path(safe_name).suffix.lower()
+        if ext not in extensions_set:
+            raise ValueError(
+                f"Unsupported boundary file type: {safe_name}. Allowed: {', '.join(sorted(extensions_set))}"
+            )
+
+        content = await file.read()
+        if len(content) > max_file_size_bytes:
+            raise ValueError(
+                f"Boundary file {safe_name} exceeds {max_file_size_bytes // (1024 * 1024)}MB"
+            )
+
+        output_path = task_dir / safe_name
+        async with aiofiles.open(output_path, "wb") as f:
+            await f.write(content)
+        saved_names.append(safe_name)
+
+    if not any(name.lower().endswith(".shp") for name in saved_names):
+        raise ValueError("At least one .shp file is required")
+
+    return BoundaryUploadResponse(
+        message="Boundary files saved",
+        task_id=task_id,
+        file_count=len(saved_names),
+        files=saved_names,
+    )
 
 
 def upload_init(

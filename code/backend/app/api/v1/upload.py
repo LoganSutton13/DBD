@@ -5,7 +5,7 @@ Routes delegate to handlers; response shapes match schemas for OpenAPI.
 
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 
 from app.api.deps import (
     get_file_storage_service,
@@ -17,6 +17,7 @@ from app.handlers import upload as upload_handlers
 from app.handlers import upload_settings as upload_settings_handlers
 from app.schemas.upload import (
     ChunkReceivedResponse,
+    BoundaryUploadResponse,
     TaskStatusResponse,
     UploadFinalizeResponse,
     UploadInitResponse,
@@ -112,6 +113,29 @@ async def upload_finalize(
                 detail="NodeODM server is not running. Please start NodeODM on localhost:3000",
             )
         raise HTTPException(status_code=500, detail=f"NodeODM processing failed: {str(e)}")
+
+
+@router.post("/{task_id}/boundary", response_model=BoundaryUploadResponse, status_code=201)
+async def upload_boundary_files(
+    task_id: str,
+    request: Request,
+    storage=Depends(get_file_storage_service),
+):
+    """Store boundary shapefile components for an existing upload task."""
+    form = await request.form()
+    files = list(form.getlist("files"))
+    try:
+        return await upload_handlers.upload_boundary_files_for_task(
+            storage=storage,
+            task_id=task_id,
+            files=files,
+            allowed_shapefile_extensions=list(settings.SHAPEFILE_EXTENSIONS),
+            max_file_size_bytes=settings.PATH_JOB_MAX_FILE_SIZE_BYTES,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/settings", response_model=UploadSettingsResponse)

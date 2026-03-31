@@ -97,6 +97,7 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
 
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSyncingBoundary, setIsSyncingBoundary] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadResponse, setUploadResponse] = useState<UploadResponse | null>(null);
 
@@ -298,6 +299,14 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
       const response = await apiService.uploadFinalize(task_id, fileList, fieldName.trim() || undefined);
       setUploadFiles((prev) => prev.map((file) => (file.status === 'uploading' ? { ...file, status: 'completed', progress: 100 } : file)));
       setUploadResponse(response);
+      setIsSyncingBoundary(true);
+      try {
+        await apiService.uploadBoundaryFiles(task_id, boundaryFiles.map((item) => item.file));
+      } catch (syncError) {
+        const syncMessage = syncError instanceof Error ? syncError.message : 'Boundary sync failed';
+        setUploadError(`${syncMessage}. Please retry boundary sync before continuing.`);
+        return;
+      }
       addUploadToQueue(response);
       setWizardStep('step3');
     } catch (error) {
@@ -307,14 +316,15 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
         prev.map((file) => (file.status === 'uploading' ? { ...file, status: 'error', error: message } : file))
       );
     } finally {
+      setIsSyncingBoundary(false);
       setIsUploading(false);
     }
   };
 
   const pathLatLngs = pathPreview?.waypoints.map((point) => [point.lat, point.lon] as [number, number]) ?? [];
   const generatePathPreview = async () => {
-    if (boundaryFiles.length === 0) {
-      setPathError('Boundary files are required.');
+    if (!uploadResponse?.task_id) {
+      setPathError('Task not found. Upload imagery first.');
       return;
     }
     setIsGeneratingPath(true);
@@ -322,8 +332,8 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
     try {
       const robotWidth = useDefaultRobotWidth && settings ? settings.robot_width : robotWidthOverride;
       const coverageWidth = useDefaultCoverageWidth && settings ? settings.coverage_width : coverageWidthOverride;
-      const response = await apiService.submitPathJob(
-        boundaryFiles.map((file) => file.file),
+      const response = await apiService.submitPathJobFromTask(
+        uploadResponse.task_id,
         pathHeading,
         robotWidth,
         coverageWidth,
@@ -360,6 +370,22 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
     }
   };
 
+  const retryBoundarySync = async () => {
+    if (!uploadResponse?.task_id) return;
+    setUploadError(null);
+    setIsSyncingBoundary(true);
+    try {
+      await apiService.uploadBoundaryFiles(uploadResponse.task_id, boundaryFiles.map((item) => item.file));
+      addUploadToQueue(uploadResponse);
+      setWizardStep('step3');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Boundary sync failed';
+      setUploadError(`${message}. Please retry boundary sync before continuing.`);
+    } finally {
+      setIsSyncingBoundary(false);
+    }
+  };
+
   const confirmPath = async () => {
     if (!uploadResponse || !pathJobId || !pathPreview) return;
     setIsSavingPath(true);
@@ -386,14 +412,22 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
     }
   };
 
-  const saveSettings = async (payload: UploadSystemSettingsUpdate) => {
+  const saveSettings = async (
+    payload: UploadSystemSettingsUpdate,
+    nextRtkBase: { longitude: number; latitude: number }
+  ) => {
     setIsSavingSettings(true);
     setSettingsError(null);
     try {
-      const updated = await apiService.updateUploadSettings(payload);
+      const [updated] = await Promise.all([
+        apiService.updateUploadSettings(payload),
+        apiService.setRtkBase(nextRtkBase.longitude, nextRtkBase.latitude),
+      ]);
       setSettings(updated);
       setRobotWidthOverride(updated.robot_width);
       setCoverageWidthOverride(updated.coverage_width);
+      setRtkBaseLongitude(nextRtkBase.longitude);
+      setRtkBaseLatitude(nextRtkBase.latitude);
       setIsSettingsOpen(false);
     } catch (error) {
       setSettingsError(error instanceof Error ? error.message : 'Failed to save settings');
@@ -422,6 +456,11 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
       <UploadSettingsModal
         isOpen={isSettingsOpen}
         settings={settings}
+        rtkBase={
+          typeof rtkBaseLongitude === 'number' && typeof rtkBaseLatitude === 'number'
+            ? { longitude: rtkBaseLongitude, latitude: rtkBaseLatitude }
+            : { longitude: 0, latitude: 0 }
+        }
         isSaving={isSavingSettings}
         error={settingsError}
         onClose={() => setIsSettingsOpen(false)}
@@ -548,14 +587,29 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
                 </button>
                 <button
                   onClick={startUpload}
-                  disabled={isUploading || pendingFiles.length === 0 || !backendAvailable}
+                  disabled={isUploading || isSyncingBoundary || pendingFiles.length === 0 || !backendAvailable}
                   className="rounded bg-primary-500 px-4 py-2 text-white hover:bg-primary-600 disabled:opacity-50"
                 >
-                  {isUploading ? 'Uploading...' : uploadError ? 'Retry Upload' : `Upload ${pendingFiles.length} Files`}
+                  {isUploading
+                    ? 'Uploading...'
+                    : isSyncingBoundary
+                      ? 'Saving boundary...'
+                      : uploadError
+                        ? 'Retry Upload'
+                        : `Upload ${pendingFiles.length} Files`}
                 </button>
                 <button onClick={() => setUploadFiles([])} className="rounded bg-dark-600 px-4 py-2 text-dark-100 hover:bg-dark-500">
                   Clear files
                 </button>
+                {uploadResponse && pendingFiles.length === 0 ? (
+                  <button
+                    onClick={retryBoundarySync}
+                    disabled={isSyncingBoundary}
+                    className="rounded bg-dark-600 px-4 py-2 text-dark-100 hover:bg-dark-500 disabled:opacity-50"
+                  >
+                    {isSyncingBoundary ? 'Saving boundary...' : 'Retry Boundary Sync'}
+                  </button>
+                ) : null}
               </div>
 
               {uploadError ? <p className="text-sm text-red-400">{uploadError}</p> : null}
@@ -684,34 +738,9 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
 
             <div className="rounded-lg border border-dark-600 bg-dark-700 p-4">
               <h4 className="font-medium text-primary-400">RTK base station</h4>
-              <label className="mt-3 block text-sm text-dark-300">
-                Longitude
-                <input
-                  className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
-                  type="number"
-                  value={rtkBaseLongitude}
-                  onChange={(e) => setRtkBaseLongitude(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                />
-              </label>
-              <label className="mt-3 block text-sm text-dark-300">
-                Latitude
-                <input
-                  className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
-                  type="number"
-                  value={rtkBaseLatitude}
-                  onChange={(e) => setRtkBaseLatitude(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                />
-              </label>
-              <button
-                className="mt-3 w-full rounded bg-dark-600 px-3 py-2 text-sm text-dark-100 hover:bg-dark-500"
-                onClick={async () => {
-                  const lon = typeof rtkBaseLongitude === 'number' ? rtkBaseLongitude : 0;
-                  const lat = typeof rtkBaseLatitude === 'number' ? rtkBaseLatitude : 0;
-                  await apiService.setRtkBase(lon, lat);
-                }}
-              >
-                Save RTK base
-              </button>
+              <p className="mt-2 text-sm text-dark-300">
+                Configure RTK base station in Settings (top-right gear icon).
+              </p>
             </div>
           </div>
         ) : null}

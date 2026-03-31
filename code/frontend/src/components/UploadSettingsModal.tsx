@@ -4,16 +4,21 @@ import { UploadSystemSettings, UploadSystemSettingsUpdate } from '../types/uploa
 interface UploadSettingsModalProps {
   isOpen: boolean;
   settings: UploadSystemSettings | null;
+  rtkBase: { longitude: number; latitude: number } | null;
   isSaving: boolean;
   error: string | null;
   onClose: () => void;
-  onSave: (payload: UploadSystemSettingsUpdate) => Promise<void>;
+  onSave: (
+    payload: UploadSystemSettingsUpdate,
+    rtkBase: { longitude: number; latitude: number }
+  ) => Promise<void>;
   onReset: () => Promise<void>;
 }
 
 const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
   isOpen,
   settings,
+  rtkBase,
   isSaving,
   error,
   onClose,
@@ -21,12 +26,19 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
   onReset,
 }) => {
   const [local, setLocal] = useState<UploadSystemSettings | null>(null);
+  const [localRtkBase, setLocalRtkBase] = useState<{ longitude: number; latitude: number }>({
+    longitude: 0,
+    latitude: 0,
+  });
 
   useEffect(() => {
     if (isOpen && settings) {
       setLocal(settings);
     }
-  }, [isOpen, settings]);
+    if (isOpen && rtkBase) {
+      setLocalRtkBase(rtkBase);
+    }
+  }, [isOpen, settings, rtkBase]);
 
   if (!isOpen || !local) return null;
 
@@ -188,6 +200,46 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
               </label>
             </div>
           </section>
+
+          <section className="rounded-lg border border-dark-600 bg-dark-700 p-4">
+            <h4 className="mb-3 text-sm font-semibold text-primary-400">RTK Base Station</h4>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label className="text-sm text-dark-300">
+                Longitude
+                <input
+                  className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
+                  type="number"
+                  min="-180"
+                  max="180"
+                  step="any"
+                  value={localRtkBase.longitude}
+                  onChange={(e) =>
+                    setLocalRtkBase((prev) => ({
+                      ...prev,
+                      longitude: parseFloat(e.target.value) || 0,
+                    }))
+                  }
+                />
+              </label>
+              <label className="text-sm text-dark-300">
+                Latitude
+                <input
+                  className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
+                  type="number"
+                  min="-90"
+                  max="90"
+                  step="any"
+                  value={localRtkBase.latitude}
+                  onChange={(e) =>
+                    setLocalRtkBase((prev) => ({
+                      ...prev,
+                      latitude: parseFloat(e.target.value) || 0,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+          </section>
         </div>
 
         {error ? <p className="mt-4 text-sm text-red-400">{error}</p> : null}
@@ -197,22 +249,25 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
             className="rounded bg-primary-500 px-4 py-2 text-sm text-white hover:bg-primary-600 disabled:opacity-50"
             disabled={isSaving}
             onClick={() =>
-              onSave({
-                robot_width: local.robot_width,
-                coverage_width: local.coverage_width,
-                nodeodm: {
-                  radiometric_calibration: local.nodeodm.radiometric_calibration,
-                  feature_quality: local.nodeodm.feature_quality,
-                  matcher_type: local.nodeodm.matcher_type,
-                  min_num_features: local.nodeodm.min_num_features,
-                  ignore_gsd: local.nodeodm.ignore_gsd,
-                  skip_3dmodel: local.nodeodm.skip_3dmodel,
-                  orthophoto_resolution: local.nodeodm.orthophoto_resolution,
-                  orthophoto_no_tiled: local.nodeodm.orthophoto_no_tiled,
-                  texturing_skip_global_seam_leveling: local.nodeodm.texturing_skip_global_seam_leveling,
-                  pc_quality: local.nodeodm.pc_quality,
+              onSave(
+                {
+                  robot_width: local.robot_width,
+                  coverage_width: local.coverage_width,
+                  nodeodm: {
+                    radiometric_calibration: local.nodeodm.radiometric_calibration,
+                    feature_quality: local.nodeodm.feature_quality,
+                    matcher_type: local.nodeodm.matcher_type,
+                    min_num_features: local.nodeodm.min_num_features,
+                    ignore_gsd: local.nodeodm.ignore_gsd,
+                    skip_3dmodel: local.nodeodm.skip_3dmodel,
+                    orthophoto_resolution: local.nodeodm.orthophoto_resolution,
+                    orthophoto_no_tiled: local.nodeodm.orthophoto_no_tiled,
+                    texturing_skip_global_seam_leveling: local.nodeodm.texturing_skip_global_seam_leveling,
+                    pc_quality: local.nodeodm.pc_quality,
+                  },
                 },
-              })
+                localRtkBase
+              )
             }
           >
             {isSaving ? 'Saving...' : 'Save Settings'}
