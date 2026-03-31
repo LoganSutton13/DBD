@@ -11,12 +11,13 @@ import {
   UploadSystemSettingsUpdate,
 } from '../types/upload';
 import {
+  DisplayPathResponse,
   PrescriptionListResponse,
   PrescriptionStatusResponse,
   PrescriptionGeoJSON,
   PrescriptionUpdateRequest,
   PrescriptionConfig,
-  RobotPathResponse,
+  RobotPathRawResponse,
 } from '../types/prescription';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001';
@@ -472,13 +473,25 @@ class ApiService {
   }
 
   /**
-   * Get saved robot path preview waypoints for a task.
+   * Get robot-native saved path for a task.
    */
-  async getTaskRobotPath(taskId: string): Promise<RobotPathResponse> {
+  async getTaskRobotPath(taskId: string): Promise<RobotPathRawResponse> {
     const response = await fetch(`${this.baseUrl}/api/v1/results/${taskId}/robot-path`);
     if (!response.ok) {
       const text = await response.text();
       throw new Error(`Get robot path failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Get display-safe path coordinates (EPSG:4326) for frontend map overlays.
+   */
+  async getTaskDisplayPath(taskId: string): Promise<DisplayPathResponse> {
+    const response = await fetch(`${this.baseUrl}/api/v1/results/${taskId}/display-path`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Get display path failed: ${response.status} ${text}`);
     }
     return response.json();
   }

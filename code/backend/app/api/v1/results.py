@@ -10,7 +10,12 @@ from fastapi.responses import FileResponse
 
 from app.api.deps import get_file_storage_service
 from app.handlers import results as results_handlers
-from app.schemas.results import RobotPathResponse, TaskResultItem, TaskSummaryResponse
+from app.schemas.results import (
+    DisplayPathResponse,
+    RobotPathRawResponse,
+    TaskResultItem,
+    TaskSummaryResponse,
+)
 
 router = APIRouter()
 
@@ -75,15 +80,29 @@ def get_report_pdf(
     )
 
 
-@router.get("/{task_id}/robot-path", response_model=RobotPathResponse)
+@router.get("/{task_id}/robot-path", response_model=RobotPathRawResponse)
 def get_robot_path(
     task_id: str,
     storage=Depends(get_file_storage_service),
 ):
-    """Return map-preview robot path waypoints for a task."""
+    """Return robot-native path coordinates for a task."""
     try:
         return results_handlers.get_robot_path(task_id, storage)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Robot path not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get robot path: {str(e)}")
+
+
+@router.get("/{task_id}/display-path", response_model=DisplayPathResponse)
+def get_display_path(
+    task_id: str,
+    storage=Depends(get_file_storage_service),
+):
+    """Return map display path coordinates (EPSG:4326) for a task."""
+    try:
+        return results_handlers.get_display_path(task_id, storage)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Display path not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get display path: {str(e)}")

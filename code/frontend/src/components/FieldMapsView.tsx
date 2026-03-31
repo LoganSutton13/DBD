@@ -233,7 +233,7 @@ const FieldMapsView: React.FC = () => {
           if (!geojsonData?.features?.length) continue;
           let pathWaypoints: Array<{ lat: number; lon: number }> = [];
           try {
-            const pathRes = await apiService.getTaskRobotPath(item.taskId);
+            const pathRes = await apiService.getTaskDisplayPath(item.taskId);
             pathWaypoints = pathRes.waypoints || [];
           } catch {
             pathWaypoints = [];

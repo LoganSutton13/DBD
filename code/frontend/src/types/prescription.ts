@@ -79,11 +79,27 @@ export interface PrescriptionGeoJSON {
 }
 
 export interface RobotPathPoint {
+  x: number;
+  y: number;
+}
+
+export interface RobotPathRawResponse {
+  taskId: string;
+  frame: string;
+  crs: string;
+  units: string;
+  waypoints: RobotPathPoint[];
+}
+
+export interface DisplayPathPoint {
   lat: number;
   lon: number;
 }
 
-export interface RobotPathResponse {
+export interface DisplayPathResponse {
   taskId: string;
-  waypoints: RobotPathPoint[];
+  frame: string;
+  crs: string;
+  units: string;
+  waypoints: DisplayPathPoint[];
 }

@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 # Only the most recent path job is kept in memory (single entry for preview).
 _path_jobs: Dict[str, Dict[str, Any]] = {}
 
+DISPLAY_PATH_FILENAME = "display_path.geojson"
+PATH_METADATA_FILENAME = "path_metadata.json"
+
 
 def get_path_jobs_store() -> Dict[str, Dict[str, Any]]:
     """Return the in-memory path jobs store (for DI)."""
@@ -223,6 +226,7 @@ async def upload_shape_files(
         "generated_at": None,
         "boundary_name": boundary_name,
         "files": saved_names,
+        "base_station_coords": base_station_coords,
     }
 
     background_tasks.add_task(
@@ -305,6 +309,7 @@ async def upload_shape_files_from_task(
         "generated_at": None,
         "boundary_name": boundary_name,
         "files": saved_names,
+        "base_station_coords": base_station_coords,
     }
 
     background_tasks.add_task(
@@ -374,7 +379,7 @@ def save_path_to_task(
     path_jobs_store: Dict[str, Dict[str, Any]],
     results_dir: Path,
 ) -> PathSaveResponse:
-    """Persist generated path to task folder (robot_path.json)."""
+    """Persist generated path to task folder (robot + display artifacts)."""
     if path_job_id not in path_jobs_store:
         raise KeyError("Path job not found")
     store = path_jobs_store[path_job_id]
@@ -396,6 +401,55 @@ def save_path_to_task(
     dest = task_dir / "robot_path.json"
     shutil.copy2(track_src, dest)
     logger.info("Saved robot_path.json to task folder %s", task_dir)
+
+    # Persist display path in explicit geographic CRS for frontend map overlays.
+    display_geojson_path = task_dir / DISPLAY_PATH_FILENAME
+    waypoints = store.get("waypoints") or []
+    display_coordinates = []
+    for waypoint in waypoints:
+        if not isinstance(waypoint, dict):
+            continue
+        lon = waypoint.get("lon")
+        lat = waypoint.get("lat")
+        if isinstance(lon, (int, float)) and isinstance(lat, (int, float)):
+            display_coordinates.append([float(lon), float(lat)])
+    if display_coordinates:
+        display_geojson_payload = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {"source": "path_job_preview"},
+                    "geometry": {
+                        "type": "LineString",
+                        "coordinates": display_coordinates,
+                    },
+                }
+            ],
+        }
+        with open(display_geojson_path, "w", encoding="utf-8") as f:
+            json.dump(display_geojson_payload, f, indent=2)
+
+    base_station_coords = store.get("base_station_coords") or (0.0, 0.0)
+    is_relative = bool(
+        isinstance(base_station_coords, (list, tuple))
+        and len(base_station_coords) == 2
+        and (float(base_station_coords[0]) != 0.0 or float(base_station_coords[1]) != 0.0)
+    )
+    metadata_payload = {
+        "robot_frame": "robot_relative" if is_relative else "map_geographic",
+        "robot_crs": "UTM-relative-from-rtk-base" if is_relative else "EPSG:4326",
+        "robot_units": "meters" if is_relative else "degrees",
+        "display_frame": "map_display",
+        "display_crs": "EPSG:4326",
+        "display_units": "degrees",
+        "rtk_base": {
+            "longitude": float(base_station_coords[0]),
+            "latitude": float(base_station_coords[1]),
+        },
+    }
+    with open(task_dir / PATH_METADATA_FILENAME, "w", encoding="utf-8") as f:
+        json.dump(metadata_payload, f, indent=2)
 
     # Copy boundary shapefile components into task dir so prescription module can find them
     job_path = Path(job_dir)
