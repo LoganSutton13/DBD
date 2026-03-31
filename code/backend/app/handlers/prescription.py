@@ -111,13 +111,11 @@ def get_prescription_status(
                 taskId=task_id,
                 status="completed",
                 message="Prescription file found but no explicit status recorded.",
-                extra=None,
             )
         return PrescriptionStatusResponse(
             taskId=task_id,
             status="not_started",
             message="Prescription job has not been started yet.",
-            extra=None,
         )
 
     status = str(status_data.get("status", "not_started"))
