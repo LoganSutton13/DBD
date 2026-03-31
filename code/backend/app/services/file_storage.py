@@ -420,10 +420,13 @@ class FileStorageService:
         if not self.results_dir.exists():
             return tasks
         for task_dir in self.results_dir.iterdir():
+            LOGGER.info(f"task_dir: {task_dir}")
             if not task_dir.is_dir():
+                LOGGER.info(f"task_dir is not a directory: {task_dir}")
                 continue
             task_id = task_dir.name
             if not (task_dir / ORTHO_DIR / ORTHO_FILE).exists():
+                LOGGER.info(f"orthophoto file does not exist: {task_dir / ORTHO_DIR / ORTHO_FILE}")
                 continue
 
             item: Dict[str, str] = {
@@ -437,6 +440,7 @@ class FileStorageService:
                 if task_name:
                     item['taskName'] = task_name
             tasks.append(item)
+            LOGGER.info(f"task appended to list: {item}")
         return tasks
 
 # Create service instance

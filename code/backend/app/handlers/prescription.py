@@ -8,7 +8,6 @@ from app.schemas.prescription import (
     PrescriptionListItem,
     PrescriptionListResponse,
     PrescriptionStatusResponse,
-    PrescriptionUpdateItem,
     PrescriptionUpdateRequest,
 )
 from app.schemas.prescription_config import PrescriptionConfig
@@ -22,6 +21,29 @@ def get_prescription(task_id: str, storage: FileStorageService) -> Dict[str, Any
         raise FileNotFoundError(f"Prescription not found for task {task_id}")
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def _normalize_fid(value: Any) -> Optional[str]:
+    """
+    Normalize a GeoJSON feature/cluster identifier to match the update request keys.
+
+    In practice, the prescription standard sometimes stores numeric IDs as floats
+    (e.g. `cluster: 1.0`), while the API update uses string feature IDs
+    (e.g. `featureId: "1"`). This normalization makes those interoperable.
+    """
+    if value is None:
+        return None
+
+    # Note: `bool` is a subclass of `int`; clusters/IDs shouldn't be bools, but we
+    # keep behavior consistent by stringifying them.
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        return str(value)
+    if isinstance(value, int):
+        return str(value)
+
+    return str(value)
 
 
 def update_prescription(
@@ -46,15 +68,26 @@ def update_prescription(
     for feature in features:
         if not isinstance(feature, dict):
             continue
-        fid = feature.get("id")
-        if fid is None and isinstance(feature.get("properties"), dict):
-            fid = feature["properties"].get("id")
-        if fid is not None:
-            fid_str = str(fid)
+        # GeoJSON feature identity may be provided as:
+        # - feature["id"]
+        # - feature["properties"]["id"]
+        # - feature["properties"]["cluster"] (current prescription standard)
+        props = feature.get("properties") if isinstance(feature.get("properties"), dict) else None
+        fid_candidates: List[Any] = [feature.get("id")]
+        if props is not None:
+            fid_candidates.extend([props.get("id"), props.get("cluster")])
+
+        for fid in fid_candidates:
+            if fid is None:
+                continue
+            fid_str = _normalize_fid(fid)
+            if fid_str is None:
+                continue
             if fid_str in updates_by_id:
                 if "properties" not in feature or not isinstance(feature["properties"], dict):
                     feature["properties"] = {}
                 feature["properties"]["spray"] = updates_by_id[fid_str]
+                break
 
     path = Path(path)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
@@ -103,18 +136,15 @@ def get_prescription_status(
                 taskId=task_id,
                 status="completed",
                 message="Prescription file found but no explicit status recorded.",
-                extra=None,
             )
         return PrescriptionStatusResponse(
             taskId=task_id,
             status="not_started",
             message="Prescription job has not been started yet.",
-            extra=None,
         )
 
     status = str(status_data.get("status", "not_started"))
     message = status_data.get("message")
-    extra = {k: v for k, v in status_data.items() if k not in {"taskId", "status", "message"}}
     return PrescriptionStatusResponse(taskId=task_id, status=status, message=message)
 
 

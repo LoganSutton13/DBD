@@ -251,6 +251,48 @@ def test_prescription_put_valid_body_returns_200_and_updated_geojson(client, res
     assert get_r.json()["features"][0]["properties"]["spray"] == "low"
 
 
+def test_prescription_put_valid_body_cluster_only_returns_200_and_updates_spray(client, results_dir: Path):
+    """PUT /api/v1/prescription/{task_id} updates spray using properties.cluster when no feature id exists."""
+    task_id = "task-rx-put-cluster"
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True)
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [{"type": "Feature", "properties": {"cluster": 1}, "geometry": None}],
+    }
+    (task_dir / "prescription.geojson").write_text(json.dumps(geojson))
+    r = client.put(
+        f"/api/v1/prescription/{task_id}",
+        json={"updates": [{"featureId": "1", "spray": "low"}]},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["features"][0]["properties"]["spray"] == "low"
+    get_r = client.get(f"/api/v1/prescription/{task_id}")
+    assert get_r.json()["features"][0]["properties"]["spray"] == "low"
+
+
+def test_prescription_put_valid_body_cluster_only_float_cluster_returns_200_and_updates_spray(
+    client, results_dir: Path
+):
+    """PUT /api/v1/prescription/{task_id} updates spray when properties.cluster is a float (e.g. 1.0)."""
+    task_id = "task-rx-put-cluster-float"
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True)
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [{"type": "Feature", "properties": {"cluster": 1.0}, "geometry": None}],
+    }
+    (task_dir / "prescription.geojson").write_text(json.dumps(geojson))
+    r = client.put(
+        f"/api/v1/prescription/{task_id}",
+        json={"updates": [{"featureId": "1", "spray": "low"}]},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["features"][0]["properties"]["spray"] == "low"
+    get_r = client.get(f"/api/v1/prescription/{task_id}")
+    assert get_r.json()["features"][0]["properties"]["spray"] == "low"
 def test_prescription_put_invalid_body_returns_422(client, results_dir: Path):
     """PUT /api/v1/prescription/{task_id} with invalid body (e.g. invalid spray) returns 422."""
     task_id = "task-rx-422"
