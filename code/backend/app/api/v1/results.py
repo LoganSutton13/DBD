@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 
 from app.api.deps import get_file_storage_service
 from app.handlers import results as results_handlers
-from app.schemas.results import TaskResultItem, TaskSummaryResponse
+from app.schemas.results import RobotPathResponse, TaskResultItem, TaskSummaryResponse
 
 router = APIRouter()
 
@@ -73,3 +73,17 @@ def get_report_pdf(
         filename="report.pdf",
         headers={"Content-Disposition": "inline; filename=report.pdf"},
     )
+
+
+@router.get("/{task_id}/robot-path", response_model=RobotPathResponse)
+def get_robot_path(
+    task_id: str,
+    storage=Depends(get_file_storage_service),
+):
+    """Return map-preview robot path waypoints for a task."""
+    try:
+        return results_handlers.get_robot_path(task_id, storage)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Robot path not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get robot path: {str(e)}")

@@ -14,6 +14,7 @@ import {
 } from '../types/upload';
 import UploadQueueBoard from './UploadQueueBoard';
 import UploadSettingsModal from './UploadSettingsModal';
+import PathGenerationOptions from './PathGenerationOptions';
 import { useProcessingQueue } from '../hooks/useProcessingQueue';
 
 interface BoundaryUploadFile {
@@ -660,43 +661,19 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
             <div className="space-y-4 lg:col-span-2">
               <h3 className="text-xl font-semibold text-primary-400">Step 3: Generate and confirm path</h3>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <label className="text-sm text-dark-300">
-                  Heading (degrees)
-                  <input
-                    className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100"
-                    type="number"
-                    value={pathHeading}
-                    onChange={(e) => setPathHeading(parseFloat(e.target.value) || 0)}
-                  />
-                </label>
-                <label className="text-sm text-dark-300">
-                  <span className="flex items-center gap-2">
-                    <input type="checkbox" checked={useDefaultRobotWidth} onChange={(e) => setUseDefaultRobotWidth(e.target.checked)} />
-                    Use default robot width ({settings?.robot_width ?? 2} m)
-                  </span>
-                  <input
-                    className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100 disabled:opacity-50"
-                    type="number"
-                    disabled={useDefaultRobotWidth}
-                    value={robotWidthOverride}
-                    onChange={(e) => setRobotWidthOverride(parseFloat(e.target.value) || 0.1)}
-                  />
-                </label>
-                <label className="text-sm text-dark-300">
-                  <span className="flex items-center gap-2">
-                    <input type="checkbox" checked={useDefaultCoverageWidth} onChange={(e) => setUseDefaultCoverageWidth(e.target.checked)} />
-                    Use default boom width ({settings?.coverage_width ?? 6} m)
-                  </span>
-                  <input
-                    className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100 disabled:opacity-50"
-                    type="number"
-                    disabled={useDefaultCoverageWidth}
-                    value={coverageWidthOverride}
-                    onChange={(e) => setCoverageWidthOverride(parseFloat(e.target.value) || 0.1)}
-                  />
-                </label>
-              </div>
+              <PathGenerationOptions
+                pathHeading={pathHeading}
+                onPathHeadingChange={setPathHeading}
+                useDefaultRobotWidth={useDefaultRobotWidth}
+                onUseDefaultRobotWidthChange={setUseDefaultRobotWidth}
+                robotWidthOverride={robotWidthOverride}
+                onRobotWidthOverrideChange={setRobotWidthOverride}
+                useDefaultCoverageWidth={useDefaultCoverageWidth}
+                onUseDefaultCoverageWidthChange={setUseDefaultCoverageWidth}
+                coverageWidthOverride={coverageWidthOverride}
+                onCoverageWidthOverrideChange={setCoverageWidthOverride}
+                settings={settings}
+              />
 
               <div className="flex gap-2">
                 <button

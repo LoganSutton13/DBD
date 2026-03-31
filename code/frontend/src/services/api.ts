@@ -16,6 +16,7 @@ import {
   PrescriptionGeoJSON,
   PrescriptionUpdateRequest,
   PrescriptionConfig,
+  RobotPathResponse,
 } from '../types/prescription';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001';
@@ -343,27 +344,43 @@ class ApiService {
     files: string[];
     boundary_name?: string;
   }> {
-    const formData = new FormData();
-    formData.append('task_id', taskId);
-    formData.append('heading', heading.toString());
-    formData.append('robot_width', robotWidth.toString());
-    formData.append('coverage_width', coverageWidth.toString());
-    if (boundaryName !== undefined && boundaryName !== '') {
-      formData.append('boundary_name', boundaryName);
+    const buildFormData = () => {
+      const formData = new FormData();
+      formData.append('task_id', taskId);
+      formData.append('heading', heading.toString());
+      formData.append('robot_width', robotWidth.toString());
+      formData.append('coverage_width', coverageWidth.toString());
+      if (boundaryName !== undefined && boundaryName !== '') {
+        formData.append('boundary_name', boundaryName);
+      }
+      if (rtkBase !== undefined) {
+        formData.append('base_lon', rtkBase.longitude.toString());
+        formData.append('base_lat', rtkBase.latitude.toString());
+      }
+      return formData;
+    };
+
+    const attempt = async (path: string) => {
+      const response = await fetch(`${this.baseUrl}${path}`, {
+        method: 'POST',
+        body: buildFormData(),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Path job failed: ${response.status} ${text}`);
+      }
+      return response.json();
+    };
+
+    try {
+      return await attempt('/api/v1/pathing/jobs/from-task');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (!message.includes('404') && !message.includes('405')) {
+        throw error;
+      }
+      return attempt('/api/v1/pathing/from-task');
     }
-    if (rtkBase !== undefined) {
-      formData.append('base_lon', rtkBase.longitude.toString());
-      formData.append('base_lat', rtkBase.latitude.toString());
-    }
-    const response = await fetch(`${this.baseUrl}/api/v1/pathing/from-task`, {
-      method: 'POST',
-      body: formData,
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Path job failed: ${response.status} ${text}`);
-    }
-    return response.json();
   }
 
   /**
@@ -450,6 +467,18 @@ class ApiService {
     if (!response.ok) {
       const text = await response.text();
       throw new Error(`Get prescription failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Get saved robot path preview waypoints for a task.
+   */
+  async getTaskRobotPath(taskId: string): Promise<RobotPathResponse> {
+    const response = await fetch(`${this.baseUrl}/api/v1/results/${taskId}/robot-path`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Get robot path failed: ${response.status} ${text}`);
     }
     return response.json();
   }

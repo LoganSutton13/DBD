@@ -77,3 +77,13 @@ export interface PrescriptionGeoJSON {
   type: 'FeatureCollection';
   features: PrescriptionFeature[];
 }
+
+export interface RobotPathPoint {
+  lat: number;
+  lon: number;
+}
+
+export interface RobotPathResponse {
+  taskId: string;
+  waypoints: RobotPathPoint[];
+}

@@ -97,6 +97,7 @@ async def upload_shape_files(
 
 
 @router.post("/from-task", response_model=PathJobAcceptedResponse, status_code=202)
+@router.post("/jobs/from-task", response_model=PathJobAcceptedResponse, status_code=202)
 async def upload_shape_files_from_task(
     background_tasks: BackgroundTasks,
     path_jobs_dir=Depends(get_path_jobs_dir),

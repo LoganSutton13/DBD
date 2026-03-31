@@ -9,6 +9,7 @@ class TaskSummaryResponse(BaseModel):
     taskId: str
     orthophotoPngUrl: Optional[str] = None
     reportPdfUrl: Optional[str] = None
+    robotPathUrl: Optional[str] = None
 
 
 class TaskResultItem(BaseModel):
@@ -17,3 +18,14 @@ class TaskResultItem(BaseModel):
     orthophotoPngUrl: str
     reportPdfUrl: str
     taskName: Optional[str] = None
+    robotPathUrl: Optional[str] = None
+
+
+class RobotPathPoint(BaseModel):
+    lat: float
+    lon: float
+
+
+class RobotPathResponse(BaseModel):
+    taskId: str
+    waypoints: list[RobotPathPoint]

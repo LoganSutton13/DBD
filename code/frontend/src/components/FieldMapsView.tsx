@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, GeoJSON, Marker, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import area from '@turf/area';
 import 'leaflet/dist/leaflet.css';
 import apiService from '../services/api';
 import type { PrescriptionGeoJSON } from '../types/prescription';
+import type { UploadSystemSettings } from '../types/upload';
+import PathGenerationOptions from './PathGenerationOptions';
 
 // Fix for default marker icons in Leaflet with webpack
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -29,28 +31,65 @@ interface FieldMap {
     maxNDVI?: number;
   };
   status: 'processing' | 'completed' | 'failed';
+  pathWaypoints: Array<{ lat: number; lon: number }>;
 }
 
 // Component to fit map bounds to GeoJSON
-function FitBounds({ geojsonData }: { geojsonData: PrescriptionGeoJSON | null }) {
+function FitBounds({
+  geojsonData,
+  pathPoints = [],
+}: {
+  geojsonData: PrescriptionGeoJSON | null;
+  pathPoints?: Array<[number, number]>;
+}) {
   const map = useMap();
   
   useEffect(() => {
+    let bounds: L.LatLngBounds | null = null;
     if (geojsonData && geojsonData.features.length > 0) {
-      const bounds = L.geoJSON(geojsonData as GeoJSON.GeoJSON).getBounds();
-      if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [20, 20] });
-        const padded = bounds.pad(0.05);
-        map.setMaxBounds(padded);
-        const targetZoom = map.getBoundsZoom(padded, false);
-        if (!isNaN(targetZoom)) {
-          map.setMinZoom(targetZoom - 1);
-        }
+      const featureBounds = L.geoJSON(geojsonData as GeoJSON.GeoJSON).getBounds();
+      if (featureBounds.isValid()) {
+        bounds = featureBounds;
       }
     }
-  }, [geojsonData, map]);
+    if (pathPoints.length > 0) {
+      const pathBounds = L.latLngBounds(pathPoints);
+      if (pathBounds.isValid()) {
+        bounds = bounds ? bounds.extend(pathBounds) : pathBounds;
+      }
+    }
+    if (bounds?.isValid()) {
+      map.fitBounds(bounds, { padding: [20, 20] });
+      const padded = bounds.pad(0.05);
+      map.setMaxBounds(padded);
+      const targetZoom = map.getBoundsZoom(padded, false);
+      if (!isNaN(targetZoom)) {
+        map.setMinZoom(targetZoom - 1);
+      }
+    }
+  }, [geojsonData, map, pathPoints]);
   
   return null;
+}
+
+function StartMarker({ position }: { position: [number, number] }) {
+  const icon = L.divIcon({
+    className: 'path-marker-start',
+    html: '<div style="width:24px;height:24px;border-radius:50%;background:#22c55e;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:11px;">S</div>',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+  return <Marker position={position} icon={icon} zIndexOffset={1000} />;
+}
+
+function EndMarker({ position }: { position: [number, number] }) {
+  const icon = L.divIcon({
+    className: 'path-marker-end',
+    html: '<div style="width:24px;height:24px;border-radius:50%;background:#ef4444;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:11px;">E</div>',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+  return <Marker position={position} icon={icon} zIndexOffset={1000} />;
 }
 
 // Component to render OpenStreetMap tiles when online
@@ -72,28 +111,13 @@ function BaseMapLayer({ isOnline }: { isOnline: boolean }) {
 
 // Component to style GeoJSON features based on NDVI
 function GeoJSONLayer({ data }: { data: PrescriptionGeoJSON }) {
-  const getNDVIColor = (ndvi: number | undefined): string => {
-    if (ndvi === undefined || isNaN(ndvi)) return '#808080';
-    
-    // NDVI typically ranges from -1 to 1, but for vegetation it's usually 0 to 1
-    // Color scale: red (low) -> yellow -> green (high)
-    if (ndvi < 0.2) return '#d73027'; // Red - low vegetation
-    if (ndvi < 0.4) return '#f46d43'; // Orange-red
-    if (ndvi < 0.5) return '#fee08b'; // Yellow
-    if (ndvi < 0.6) return '#abdda4'; // Light green
-    if (ndvi < 0.7) return '#66c2a5'; // Green
-    return '#3288bd'; // Blue-green - high vegetation
-  };
-
   const style = (feature: any) => {
-    const props = feature?.properties || {};
-    const ndvi = props.NDVI_max_mean ?? props.NDVI_max_max ?? props.NDVI_max ?? props.NDVI_mean;
     return {
-      fillColor: getNDVIColor(ndvi),
-      fillOpacity: 0.7,
-      color: '#ffffff',
-      weight: 1,
-      opacity: 0.5,
+      fillColor: '#9ca3af',
+      fillOpacity: 0.22,
+      color: '#d1d5db',
+      weight: 1.5,
+      opacity: 0.85,
     };
   };
 
@@ -116,11 +140,25 @@ function GeoJSONLayer({ data }: { data: PrescriptionGeoJSON }) {
 
 const FieldMapsView: React.FC = () => {
   const [selectedMap, setSelectedMap] = useState<FieldMap | null>(null);
+  const [isPathEditorOpen, setIsPathEditorOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [fieldMaps, setFieldMaps] = useState<FieldMap[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [settings, setSettings] = useState<UploadSystemSettings | null>(null);
+  const [pathHeading, setPathHeading] = useState(0);
+  const [useDefaultRobotWidth, setUseDefaultRobotWidth] = useState(true);
+  const [useDefaultCoverageWidth, setUseDefaultCoverageWidth] = useState(true);
+  const [robotWidthOverride, setRobotWidthOverride] = useState(2.0);
+  const [coverageWidthOverride, setCoverageWidthOverride] = useState(6.0);
+  const [rtkBaseLongitude, setRtkBaseLongitude] = useState<number | ''>('');
+  const [rtkBaseLatitude, setRtkBaseLatitude] = useState<number | ''>('');
+  const [pathPreview, setPathPreview] = useState<Array<{ lat: number; lon: number }> | null>(null);
+  const [pathJobId, setPathJobId] = useState<string | null>(null);
+  const [pathError, setPathError] = useState<string | null>(null);
+  const [isGeneratingPath, setIsGeneratingPath] = useState(false);
+  const [isSavingPath, setIsSavingPath] = useState(false);
 
   // Check internet connectivity
   useEffect(() => {
@@ -147,6 +185,40 @@ const FieldMapsView: React.FC = () => {
     checkConnectivity();
   }, []);
 
+  useEffect(() => {
+    const loadPathSettings = async () => {
+      try {
+        const [loadedSettings, rtkBase] = await Promise.all([
+          apiService.getUploadSettings(),
+          apiService.getRtkBase(),
+        ]);
+        setSettings(loadedSettings);
+        setRobotWidthOverride(loadedSettings.robot_width);
+        setCoverageWidthOverride(loadedSettings.coverage_width);
+        setRtkBaseLongitude(rtkBase.longitude);
+        setRtkBaseLatitude(rtkBase.latitude);
+      } catch {
+        // Keep defaults when settings are unavailable.
+      }
+    };
+    loadPathSettings();
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (isPathEditorOpen) {
+        setIsPathEditorOpen(false);
+        return;
+      }
+      if (selectedMap) {
+        setSelectedMap(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isPathEditorOpen, selectedMap]);
+
   const loadFromApi = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -159,6 +231,13 @@ const FieldMapsView: React.FC = () => {
         try {
           const geojsonData = await apiService.getPrescription(item.taskId);
           if (!geojsonData?.features?.length) continue;
+          let pathWaypoints: Array<{ lat: number; lon: number }> = [];
+          try {
+            const pathRes = await apiService.getTaskRobotPath(item.taskId);
+            pathWaypoints = pathRes.waypoints || [];
+          } catch {
+            pathWaypoints = [];
+          }
 
           const features = geojsonData.features;
           const ndviValues = features
@@ -183,6 +262,7 @@ const FieldMapsView: React.FC = () => {
               maxNDVI: ndviValues.length > 0 ? Math.max(...ndviValues) : undefined,
             },
             status: 'completed',
+            pathWaypoints,
           });
         } catch (err) {
           console.warn(`Failed to load prescription for task ${item.taskId}:`, err);
@@ -201,6 +281,13 @@ const FieldMapsView: React.FC = () => {
   useEffect(() => {
     loadFromApi();
   }, [loadFromApi]);
+
+  useEffect(() => {
+    setPathPreview(null);
+    setPathJobId(null);
+    setPathError(null);
+    setIsPathEditorOpen(false);
+  }, [selectedMap?.id]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -263,6 +350,61 @@ const FieldMapsView: React.FC = () => {
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
+  };
+
+  const activeMapWaypoints = pathPreview ?? selectedMap?.pathWaypoints ?? [];
+  const activeMapPathLatLngs = activeMapWaypoints.map((point) => [point.lat, point.lon] as [number, number]);
+
+  const generatePathPreview = async () => {
+    if (!selectedMap) return;
+    setIsGeneratingPath(true);
+    setPathError(null);
+    try {
+      const robotWidth = useDefaultRobotWidth && settings ? settings.robot_width : robotWidthOverride;
+      const coverageWidth = useDefaultCoverageWidth && settings ? settings.coverage_width : coverageWidthOverride;
+      const accepted = await apiService.submitPathJobFromTask(
+        selectedMap.id,
+        pathHeading,
+        robotWidth,
+        coverageWidth,
+        selectedMap.metadata.fieldName,
+        {
+          longitude: typeof rtkBaseLongitude === 'number' ? rtkBaseLongitude : 0,
+          latitude: typeof rtkBaseLatitude === 'number' ? rtkBaseLatitude : 0,
+        }
+      );
+      setPathJobId(accepted.path_job_id);
+      while (true) {
+        const status = await apiService.getPathJobStatus(accepted.path_job_id);
+        if (status.status === 'failed') {
+          throw new Error(status.error || 'Path generation failed');
+        }
+        if (status.status === 'completed') break;
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+      const result = await apiService.getPathJobResult(accepted.path_job_id);
+      setPathPreview(result.waypoints || []);
+    } catch (err) {
+      setPathError(err instanceof Error ? err.message : 'Failed to generate path');
+    } finally {
+      setIsGeneratingPath(false);
+    }
+  };
+
+  const confirmGeneratedPath = async () => {
+    if (!selectedMap || !pathJobId || !pathPreview) return;
+    setIsSavingPath(true);
+    setPathError(null);
+    try {
+      await apiService.savePathToTask(pathJobId, selectedMap.id);
+      setSelectedMap((prev) => (prev ? { ...prev, pathWaypoints: pathPreview } : prev));
+      setFieldMaps((prev) => prev.map((item) => (item.id === selectedMap.id ? { ...item, pathWaypoints: pathPreview } : item)));
+      setIsPathEditorOpen(false);
+    } catch (err) {
+      setPathError(err instanceof Error ? err.message : 'Failed to save path');
+    } finally {
+      setIsSavingPath(false);
+    }
   };
 
   if (loading) {
@@ -530,9 +672,19 @@ const FieldMapsView: React.FC = () => {
             }
           }}
         >
-          <div className="bg-dark-800 rounded-lg max-w-7xl w-full my-8 overflow-hidden flex flex-col shadow-2xl border border-dark-700">
+          <div className="bg-dark-800 rounded-lg max-w-6xl w-full my-6 overflow-y-auto flex flex-col shadow-2xl border border-dark-700 max-h-[88vh] relative">
+            <button
+              onClick={() => setSelectedMap(null)}
+              className="absolute top-3 right-3 z-20 p-2 bg-dark-950/80 text-dark-100 hover:text-white hover:bg-dark-700 rounded-full border border-dark-500 transition-colors duration-200"
+              title="Close"
+              aria-label="Close map view"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
             {/* Header */}
-            <div className="p-6 border-b border-dark-700 bg-dark-800/95 backdrop-blur-sm sticky top-0 z-10">
+            <div className="p-5 border-b border-dark-700 bg-dark-800/95 backdrop-blur-sm sticky top-0 z-10 pr-16">
               <div className="flex justify-between items-start">
                 <div className="flex-1">
                   <div className="flex items-center space-x-3 mb-3">
@@ -568,6 +720,13 @@ const FieldMapsView: React.FC = () => {
                 
                 <div className="flex items-center space-x-2 ml-4">
                   <button
+                    onClick={() => setIsPathEditorOpen(true)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 text-sm"
+                    title="Modify path"
+                  >
+                    Modify Path
+                  </button>
+                  <button
                     onClick={() => downloadGeoJSON(selectedMap)}
                     className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200 text-sm flex items-center space-x-2"
                     title="Download GeoJSON"
@@ -577,25 +736,16 @@ const FieldMapsView: React.FC = () => {
                     </svg>
                     <span>Download</span>
                   </button>
-                  <button
-                    onClick={() => setSelectedMap(null)}
-                    className="p-2 text-dark-400 hover:text-dark-100 hover:bg-dark-700 rounded-lg transition-colors duration-200"
-                    title="Close"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
                 </div>
               </div>
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 p-6 overflow-hidden">
+            <div className="flex-1 p-5 overflow-y-auto">
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
                 {/* Main Map View - Takes 2/3 of space */}
                 <div className="lg:col-span-2 flex flex-col">
-                  <div className="flex-1 rounded-lg overflow-hidden border border-dark-700 bg-dark-900 min-h-[500px]">
+                  <div className="flex-1 rounded-lg overflow-hidden border border-dark-700 bg-dark-900 min-h-[420px]">
                     {selectedMap.geojsonData ? (
                       <MapContainer
                         center={[0, 0]}
@@ -605,7 +755,14 @@ const FieldMapsView: React.FC = () => {
                       >
                         <BaseMapLayer isOnline={isOnline} />
                         <GeoJSONLayer data={selectedMap.geojsonData} />
-                        <FitBounds geojsonData={selectedMap.geojsonData} />
+                        {activeMapPathLatLngs.length > 0 && (
+                          <>
+                            <Polyline positions={activeMapPathLatLngs} pathOptions={{ color: '#22c55e', weight: 4 }} />
+                            <StartMarker position={activeMapPathLatLngs[0]} />
+                            <EndMarker position={activeMapPathLatLngs[activeMapPathLatLngs.length - 1]} />
+                          </>
+                        )}
+                        <FitBounds geojsonData={selectedMap.geojsonData} pathPoints={activeMapPathLatLngs} />
                       </MapContainer>
                     ) : (
                       <div className="w-full h-full bg-dark-700 flex items-center justify-center">
@@ -693,36 +850,9 @@ const FieldMapsView: React.FC = () => {
                         <span className="text-dark-400">Created:</span>
                         <span className="text-dark-100 font-medium">{formatDate(selectedMap.createdAt)}</span>
                       </div>
-                    </div>
-                  </div>
-
-                  {/* NDVI Color Legend */}
-                  <div className="bg-dark-700 rounded-lg p-4 border border-dark-600">
-                    <h4 className="text-sm font-semibold text-primary-400 mb-3">NDVI Color Legend</h4>
-                    <div className="space-y-2 text-xs">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 rounded bg-[#d73027]"></div>
-                        <span className="text-dark-300">Low (&lt; 0.2)</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 rounded bg-[#f46d43]"></div>
-                        <span className="text-dark-300">Low-Medium (0.2-0.4)</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 rounded bg-[#fee08b]"></div>
-                        <span className="text-dark-300">Medium (0.4-0.5)</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 rounded bg-[#abdda4]"></div>
-                        <span className="text-dark-300">Medium-High (0.5-0.6)</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 rounded bg-[#66c2a5]"></div>
-                        <span className="text-dark-300">High (0.6-0.7)</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 rounded bg-[#3288bd]"></div>
-                        <span className="text-dark-300">Very High (&gt; 0.7)</span>
+                      <div className="flex justify-between">
+                        <span className="text-dark-400">Path Points:</span>
+                        <span className="text-dark-100 font-medium">{activeMapPathLatLngs.length}</span>
                       </div>
                     </div>
                   </div>
@@ -747,12 +877,91 @@ const FieldMapsView: React.FC = () => {
                           {isOnline ? 'Online (OSM)' : 'Offline'}
                         </span>
                       </div>
+                      <div className="flex justify-between">
+                        <span className="text-dark-400">Path Overlay:</span>
+                        <span className={activeMapPathLatLngs.length > 0 ? 'text-green-400' : 'text-dark-300'}>
+                          {activeMapPathLatLngs.length > 0 ? 'Visible' : 'No saved path'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
+          {isPathEditorOpen && (
+            <div
+              className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setIsPathEditorOpen(false);
+              }}
+            >
+              <div className="w-full max-w-4xl rounded-lg border border-dark-600 bg-dark-800 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-dark-700 px-5 py-4">
+                  <h4 className="text-lg font-semibold text-primary-400">Modify Path</h4>
+                  <button
+                    onClick={() => setIsPathEditorOpen(false)}
+                    className="rounded-lg p-2 text-dark-300 hover:bg-dark-700 hover:text-dark-100"
+                    aria-label="Close path editor"
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="space-y-4 p-5">
+                  <PathGenerationOptions
+                    pathHeading={pathHeading}
+                    onPathHeadingChange={setPathHeading}
+                    useDefaultRobotWidth={useDefaultRobotWidth}
+                    onUseDefaultRobotWidthChange={setUseDefaultRobotWidth}
+                    robotWidthOverride={robotWidthOverride}
+                    onRobotWidthOverrideChange={setRobotWidthOverride}
+                    useDefaultCoverageWidth={useDefaultCoverageWidth}
+                    onUseDefaultCoverageWidthChange={setUseDefaultCoverageWidth}
+                    coverageWidthOverride={coverageWidthOverride}
+                    onCoverageWidthOverrideChange={setCoverageWidthOverride}
+                    settings={settings}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={generatePathPreview}
+                      disabled={isGeneratingPath}
+                      className="rounded bg-primary-500 px-4 py-2 text-white hover:bg-primary-600 disabled:opacity-50"
+                    >
+                      {isGeneratingPath ? 'Generating...' : 'Generate Path'}
+                    </button>
+                    <button
+                      onClick={confirmGeneratedPath}
+                      disabled={!pathPreview || !pathJobId || isSavingPath}
+                      className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {isSavingPath ? 'Saving...' : 'Save Path'}
+                    </button>
+                  </div>
+                  {pathError ? <p className="text-sm text-red-400">{pathError}</p> : null}
+                  <div className="h-80 overflow-hidden rounded-lg border border-dark-600 bg-dark-900">
+                    {activeMapPathLatLngs.length > 0 ? (
+                      <MapContainer center={activeMapPathLatLngs[0]} zoom={16} style={{ height: '100%', width: '100%' }}>
+                        <BaseMapLayer isOnline={isOnline} />
+                        <Polyline positions={activeMapPathLatLngs} pathOptions={{ color: '#22c55e', weight: 4 }} />
+                        <StartMarker position={activeMapPathLatLngs[0]} />
+                        <EndMarker position={activeMapPathLatLngs[activeMapPathLatLngs.length - 1]} />
+                        <FitBounds geojsonData={null} pathPoints={activeMapPathLatLngs} />
+                      </MapContainer>
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-dark-400">
+                        Generate a path to preview it here.
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-dark-400">
+                    This uses the same heading, robot width, and boom width controls as Upload Step 3.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
