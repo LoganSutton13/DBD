@@ -23,6 +23,29 @@ def get_prescription(task_id: str, storage: FileStorageService) -> Dict[str, Any
         return json.load(f)
 
 
+def _normalize_fid(value: Any) -> Optional[str]:
+    """
+    Normalize a GeoJSON feature/cluster identifier to match the update request keys.
+
+    In practice, the prescription standard sometimes stores numeric IDs as floats
+    (e.g. `cluster: 1.0`), while the API update uses string feature IDs
+    (e.g. `featureId: "1"`). This normalization makes those interoperable.
+    """
+    if value is None:
+        return None
+
+    # Note: `bool` is a subclass of `int`; clusters/IDs shouldn't be bools, but we
+    # keep behavior consistent by stringifying them.
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        return str(value)
+    if isinstance(value, int):
+        return str(value)
+
+    return str(value)
+
+
 def update_prescription(
     task_id: str,
     body: PrescriptionUpdateRequest,
@@ -57,7 +80,9 @@ def update_prescription(
         for fid in fid_candidates:
             if fid is None:
                 continue
-            fid_str = str(fid)
+            fid_str = _normalize_fid(fid)
+            if fid_str is None:
+                continue
             if fid_str in updates_by_id:
                 if "properties" not in feature or not isinstance(feature["properties"], dict):
                     feature["properties"] = {}
