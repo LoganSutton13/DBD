@@ -1,31 +1,26 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { MapContainer, TileLayer, Polyline, Marker, useMap } from 'react-leaflet';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useDropzone } from 'react-dropzone';
+import { MapContainer, Marker, Polyline, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { useDropzone } from 'react-dropzone';
-import { UploadFile, UploadResponse, ChunkedFileInfo } from '../types/upload';
 import apiService, { ApiService } from '../services/api';
-
-interface AppStats {
-  imagesUploaded: number;
-  processing: number;
-  completed: number;
-}
-
-interface UploadViewProps {
-  onStatsUpdate: (updateFn: (prev: AppStats) => Partial<AppStats>) => void;
-  currentStats: AppStats;
-}
+import {
+  ChunkedFileInfo,
+  ProcessingTask,
+  UploadFile,
+  UploadResponse,
+  UploadSystemSettings,
+  UploadSystemSettingsUpdate,
+} from '../types/upload';
+import UploadQueueBoard from './UploadQueueBoard';
+import UploadSettingsModal from './UploadSettingsModal';
+import { useProcessingQueue } from '../hooks/useProcessingQueue';
 
 interface BoundaryUploadFile {
   id: string;
   file: File;
-  status: 'pending' | 'uploading' | 'completed' | 'error';
-  error?: string;
   metadata?: {
     size: number;
-    type: string;
-    lastModified: number;
     name: string;
   };
 }
@@ -43,37 +38,14 @@ interface PathPreview {
   coverageWidth: number;
 }
 
-interface SimplePathResponse {
-  waypoints: PathPoint[]; // lon/lat coordinates
-  generated_at?: string;
-  heading?: number;
-  robot_width?: number;
-  coverage_width?: number;
-}
-
-const normalizePathResponse = (
-  response: SimplePathResponse,
-  fallbackHeading: number,
-  fallbackRobotWidth: number,
-  fallbackCoverageWidth: number
-): PathPreview => ({
-  waypoints: response.waypoints,
-  generatedAt: response.generated_at ?? new Date().toISOString(),
-  heading: response.heading ?? fallbackHeading,
-  robotWidth: response.robot_width ?? fallbackRobotWidth,
-  coverageWidth: response.coverage_width ?? fallbackCoverageWidth,
-});
-
 function FitBoundsToPath({ points }: { points: [number, number][] }) {
   const map = useMap();
 
   useEffect(() => {
     if (points.length === 0) return;
     const bounds = L.latLngBounds(points);
-    if (bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [20, 20] });
-    }
-  }, [points, map]);
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
+  }, [map, points]);
 
   return null;
 }
@@ -81,10 +53,7 @@ function FitBoundsToPath({ points }: { points: [number, number][] }) {
 function StartMarker({ position }: { position: [number, number] }) {
   const icon = L.divIcon({
     className: 'path-marker-start',
-    html: `<div style="
-      width:28px;height:28px;border-radius:50%;background:#22c55e;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);
-      display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:12px;
-    ">S</div>`,
+    html: '<div style="width:28px;height:28px;border-radius:50%;background:#22c55e;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:12px;">S</div>',
     iconSize: [28, 28],
     iconAnchor: [14, 14],
   });
@@ -94,97 +63,98 @@ function StartMarker({ position }: { position: [number, number] }) {
 function EndMarker({ position }: { position: [number, number] }) {
   const icon = L.divIcon({
     className: 'path-marker-end',
-    html: `<div style="
-      width:28px;height:28px;border-radius:50%;background:#ef4444;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);
-      display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:12px;
-    ">E</div>`,
+    html: '<div style="width:28px;height:28px;border-radius:50%;background:#ef4444;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:12px;">E</div>',
     iconSize: [28, 28],
     iconAnchor: [14, 14],
   });
   return <Marker position={position} icon={icon} zIndexOffset={1000} />;
 }
 
-const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) => {
+type WizardStep = 'entry' | 'step1' | 'step2' | 'step3' | 'done';
+type BoundaryUploadStatus = 'idle' | 'uploading' | 'success' | 'error';
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+};
+
+interface UploadViewProps {
+  openSettingsTick?: number;
+}
+
+const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
+  const [wizardStep, setWizardStep] = useState<WizardStep>('entry');
+  const [backendAvailable, setBackendAvailable] = useState(true);
+  const [connectionTestResult, setConnectionTestResult] = useState<string | null>(null);
+
+  const [fieldName, setFieldName] = useState('');
+  const [boundaryFiles, setBoundaryFiles] = useState<BoundaryUploadFile[]>([]);
+  const [boundaryUploadStatus, setBoundaryUploadStatus] = useState<BoundaryUploadStatus>('idle');
+  const [boundaryError, setBoundaryError] = useState<string | null>(null);
+
   const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [backendAvailable, setBackendAvailable] = useState<boolean>(true);
-  const [connectionTestResult, setConnectionTestResult] = useState<string | null>(null);
-  const [taskName, setTaskName] = useState<string>('');
-  const [heading, setHeading] = useState<number | ''>(0);
-  const [gridSize, setGridSize] = useState<number | ''>(1);
-  const [boundaryFiles, setBoundaryFiles] = useState<BoundaryUploadFile[]>([]);
-  const [boundaryHeading, setBoundaryHeading] = useState<number | ''>(0);
-  const [boundaryRobotWidth, setBoundaryRobotWidth] = useState<number | ''>(2.0);
-  const [boundaryCoverageWidth, setBoundaryCoverageWidth] = useState<number | ''>(6.0);
-  const [boundaryName, setBoundaryName] = useState<string>('');
+  const [uploadResponse, setUploadResponse] = useState<UploadResponse | null>(null);
+
+  const [pathHeading, setPathHeading] = useState(0);
+  const [useDefaultRobotWidth, setUseDefaultRobotWidth] = useState(true);
+  const [useDefaultCoverageWidth, setUseDefaultCoverageWidth] = useState(true);
+  const [robotWidthOverride, setRobotWidthOverride] = useState(2.0);
+  const [coverageWidthOverride, setCoverageWidthOverride] = useState(6.0);
   const [rtkBaseLongitude, setRtkBaseLongitude] = useState<number | ''>('');
   const [rtkBaseLatitude, setRtkBaseLatitude] = useState<number | ''>('');
-  const [isGeneratingPath, setIsGeneratingPath] = useState(false);
   const [pathPreview, setPathPreview] = useState<PathPreview | null>(null);
   const [pathJobId, setPathJobId] = useState<string | null>(null);
   const [pathError, setPathError] = useState<string | null>(null);
-  const [selectedStitchedField, setSelectedStitchedField] = useState<string>('');
-  const [linkResult, setLinkResult] = useState<string | null>(null);
+  const [isGeneratingPath, setIsGeneratingPath] = useState(false);
   const [isSavingPath, setIsSavingPath] = useState(false);
-  const [stitchedFields, setStitchedFields] = useState<Array<{ id: string; name: string }>>([]);
-  const [stitchedFieldsLoading, setStitchedFieldsLoading] = useState(false);
+  const [completionMessage, setCompletionMessage] = useState<string | null>(null);
 
-  // Check backend connection on component mount
+  const [settings, setSettings] = useState<UploadSystemSettings | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+
+  const [recentCompletedResults, setRecentCompletedResults] = useState<Array<{ taskId: string; taskName?: string }>>([]);
+
+  const { queuedTasks, runningTasks, processingTasks, addUploadToQueue, isPolling } = useProcessingQueue();
+
   useEffect(() => {
-    const checkInitialConnection = async () => {
-      const isAvailable = await apiService.isBackendAvailable();
-      setBackendAvailable(isAvailable);
-    };
+    if (openSettingsTick && openSettingsTick > 0) {
+      setIsSettingsOpen(true);
+    }
+  }, [openSettingsTick]);
 
-    checkInitialConnection();
-  }, []);
-
-  // Load stitched fields (tasks with orthophoto) for path linking
   useEffect(() => {
-    if (!backendAvailable) return;
-    let cancelled = false;
-    setStitchedFieldsLoading(true);
-    apiService
-      .listResults()
-      .then((data) => {
-        if (cancelled) return;
-        setStitchedFields(
-          data.map((item) => ({
-            id: item.taskId,
-            name: item.taskName || `Task ${item.taskId.slice(0, 8)}`,
-          }))
-        );
-      })
-      .catch(() => {
-        if (!cancelled) setStitchedFields([]);
-      })
-      .finally(() => {
-        if (!cancelled) setStitchedFieldsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [backendAvailable]);
-
-  // Load stored RTK base coordinates when backend is available
-  useEffect(() => {
-    if (!backendAvailable) return;
-    const loadRtkBase = async () => {
+    const loadInitial = async () => {
+      const available = await apiService.isBackendAvailable();
+      setBackendAvailable(available);
+      if (!available) return;
       try {
-        const coords = await apiService.getRtkBase();
-        setRtkBaseLongitude(coords.longitude);
-        setRtkBaseLatitude(coords.latitude);
-      } catch {
-        setRtkBaseLongitude(0);
-        setRtkBaseLatitude(0);
+        const [resultList, loadedSettings, rtkBase] = await Promise.all([
+          apiService.listResults(),
+          apiService.getUploadSettings(),
+          apiService.getRtkBase(),
+        ]);
+        setRecentCompletedResults(resultList.slice(0, 3).map((item) => ({ taskId: item.taskId, taskName: item.taskName })));
+        setSettings(loadedSettings);
+        setRobotWidthOverride(loadedSettings.robot_width);
+        setCoverageWidthOverride(loadedSettings.coverage_width);
+        setRtkBaseLongitude(rtkBase.longitude);
+        setRtkBaseLatitude(rtkBase.latitude);
+      } catch (error) {
+        setSettingsError(error instanceof Error ? error.message : 'Failed to load settings');
       }
     };
-    loadRtkBase();
-  }, [backendAvailable]);
+    loadInitial();
+  }, []);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    const newFiles: UploadFile[] = acceptedFiles.map((file) => ({
+    const next: UploadFile[] = acceptedFiles.map((file) => ({
       id: Math.random().toString(36).substr(2, 9),
       file,
       preview: URL.createObjectURL(file),
@@ -197,24 +167,22 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
         name: file.name,
       },
     }));
-
-    setUploadFiles((prev) => [...prev, ...newFiles]);
+    setUploadFiles((prev) => [...prev, ...next]);
+    setUploadError(null);
   }, []);
 
   const onBoundaryDrop = useCallback((acceptedFiles: File[]) => {
-    const newFiles: BoundaryUploadFile[] = acceptedFiles.map((file) => ({
+    const next = acceptedFiles.map((file) => ({
       id: Math.random().toString(36).substr(2, 9),
       file,
-      status: 'pending',
       metadata: {
         size: file.size,
-        type: file.type,
-        lastModified: file.lastModified,
         name: file.name,
       },
     }));
-
-    setBoundaryFiles((prev) => [...prev, ...newFiles]);
+    setBoundaryFiles((prev) => [...prev, ...next]);
+    setBoundaryUploadStatus('idle');
+    setBoundaryError(null);
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -222,869 +190,565 @@ const UploadView: React.FC<UploadViewProps> = ({ onStatsUpdate, currentStats }) 
     accept: {
       'image/jpeg': ['.jpg', '.jpeg'],
       'image/png': ['.png'],
-      'image/tiff': ['.tiff', '.tif'],
-      'image/tif': ['.tif'],
+      'image/tiff': ['.tif', '.tiff'],
       'application/octet-stream': ['.nav', '.obs', '.bin', '.mrk', '.MRK'],
     },
-    maxSize: 2 * 1024 * 1024 * 1024, // 2GB per file (chunked upload handles large files)
+    maxSize: 2 * 1024 * 1024 * 1024,
     multiple: true,
   });
 
-  const {
-    getRootProps: getBoundaryRootProps,
-    getInputProps: getBoundaryInputProps,
-    isDragActive: isBoundaryDragActive,
-  } = useDropzone({
+  const { getRootProps: getBoundaryRootProps, getInputProps: getBoundaryInputProps, isDragActive: isBoundaryDragActive } = useDropzone({
     onDrop: onBoundaryDrop,
     accept: {
       'application/octet-stream': ['.shp', '.shx', '.dbf', '.prj', '.cpg', '.qix', '.sbn', '.sbx'],
       'application/geo+json': ['.geojson'],
       'application/xml': ['.xml'],
     },
-    maxSize: 200 * 1024 * 1024, // 200MB
+    maxSize: 200 * 1024 * 1024,
     multiple: true,
   });
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  const pendingFiles = uploadFiles.filter((f) => f.status === 'pending' || f.status === 'error');
+  const uploadingFiles = uploadFiles.filter((f) => f.status === 'uploading');
+  const completedFiles = uploadFiles.filter((f) => f.status === 'completed');
+  const sampleFiles = uploadFiles.slice(0, 5).map((f) => f.metadata?.name || 'Unknown');
+  const totalUploadSize = uploadFiles.reduce((sum, file) => sum + (file.metadata?.size || 0), 0);
+  const boundarySampleFiles = boundaryFiles.slice(0, 5).map((f) => f.metadata?.name || 'Unknown');
+  const boundaryTotalSize = boundaryFiles.reduce((sum, file) => sum + (file.metadata?.size || 0), 0);
+
+  const activeTaskForUpload: ProcessingTask | undefined = useMemo(
+    () => (uploadResponse ? processingTasks.find((task) => task.nodeodm_task_id === uploadResponse.nodeodm_task_id) : undefined),
+    [processingTasks, uploadResponse]
+  );
+
+  const testBackendConnection = async () => {
+    setConnectionTestResult('Testing connection...');
+    const result = await apiService.testConnection();
+    if (result.success) {
+      setConnectionTestResult('Connection successful');
+      setBackendAvailable(true);
+      return;
+    }
+    setConnectionTestResult(`Connection failed: ${result.error}`);
+    setBackendAvailable(false);
   };
 
-  const removeFile = (id: string) => {
-    setUploadFiles((prev) => {
-      const fileToRemove = prev.find(f => f.id === id);
-      if (fileToRemove) {
-        URL.revokeObjectURL(fileToRemove.preview);
-      }
-      return prev.filter(f => f.id !== id);
-    });
-  };
-
-  const removeBoundaryFile = (id: string) => {
-    setBoundaryFiles((prev) => prev.filter(f => f.id !== id));
-  };
-
-  const markSuccess = (uploadResponse: UploadResponse, count: number) => {
-    setUploadFiles((prev) =>
-      prev.map(f =>
-        f.status === 'uploading' ? { ...f, status: 'completed', progress: 100 } : f
-      )
-    );
-    onStatsUpdate((prev) => ({
-      imagesUploaded: prev.imagesUploaded + count,
-      processing: prev.processing + count,
-      completed: prev.completed + count,
-    }));
-    setBackendAvailable(true);
-    const existingUploads = JSON.parse(localStorage.getItem('pendingUploads') || '[]');
-    existingUploads.push(uploadResponse);
-    localStorage.setItem('pendingUploads', JSON.stringify(existingUploads));
-    window.dispatchEvent(new CustomEvent('newUpload', { detail: uploadResponse }));
+  const handleBoundaryUpload = async () => {
+    setBoundaryUploadStatus('uploading');
+    setBoundaryError(null);
+    if (!fieldName.trim()) {
+      setBoundaryUploadStatus('error');
+      setBoundaryError('Field name is required before uploading boundary files.');
+      return;
+    }
+    if (boundaryFiles.length === 0) {
+      setBoundaryUploadStatus('error');
+      setBoundaryError('Please add boundary files before uploading.');
+      return;
+    }
+    const hasShp = boundaryFiles.some((file) => file.file.name.toLowerCase().endsWith('.shp'));
+    if (!hasShp) {
+      setBoundaryUploadStatus('error');
+      setBoundaryError('Boundary upload failed: include at least one .shp file, then retry.');
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    setBoundaryUploadStatus('success');
+    setWizardStep('step2');
   };
 
   const startUpload = async () => {
     setIsUploading(true);
     setUploadError(null);
-
-    const pendingFiles = uploadFiles.filter(f => f.status === 'pending');
-
-    if (pendingFiles.length === 0) {
+    const targets = uploadFiles.filter((f) => f.status === 'pending' || f.status === 'error');
+    if (targets.length === 0) {
       setIsUploading(false);
       return;
     }
 
     setUploadFiles((prev) =>
-      prev.map(f =>
-        f.status === 'pending' ? { ...f, status: 'uploading', progress: 0 } : f
-      )
+      prev.map((f) => (f.status === 'pending' || f.status === 'error' ? { ...f, status: 'uploading', progress: 0, error: undefined } : f))
     );
 
     try {
-      const numericHeading = typeof heading === 'number' ? heading : 0;
-      const numericGridSize = typeof gridSize === 'number' ? gridSize : 1;
-      const { task_id } = await apiService.uploadInit(
-        taskName?.trim() || undefined,
-        numericHeading,
-        numericGridSize
-      );
-
-      const chunkSize = ApiService.CHUNK_SIZE;
+      const { task_id } = await apiService.uploadInit(fieldName.trim() || undefined, pathHeading, 1);
       const fileList: ChunkedFileInfo[] = [];
+      const chunkSize = ApiService.CHUNK_SIZE;
 
-      for (let fileIdx = 0; fileIdx < pendingFiles.length; fileIdx++) {
-        const uf = pendingFiles[fileIdx];
-        const file = uf.file;
-        const totalChunks = Math.ceil(file.size / chunkSize);
+      for (let fileIdx = 0; fileIdx < targets.length; fileIdx += 1) {
+        const uploadFile = targets[fileIdx];
+        const totalChunks = Math.ceil(uploadFile.file.size / chunkSize);
         fileList.push({
-          filename: file.name,
+          filename: uploadFile.file.name,
           total_chunks: totalChunks,
-          size: file.size,
+          size: uploadFile.file.size,
         });
-
-        for (let ci = 0; ci < totalChunks; ci++) {
-          const start = ci * chunkSize;
-          const end = Math.min(start + chunkSize, file.size);
-          const blob = file.slice(start, end);
-          await apiService.uploadChunk(
-            task_id,
-            file.name,
-            ci,
-            totalChunks,
-            blob,
-            (loaded, total) => {
-              const chunkProgress = total ? loaded / total : 0;
-              const progress = Math.round(
-                ((ci + chunkProgress) / totalChunks) * 100
-              );
-              setUploadFiles((prev) =>
-                prev.map((f) =>
-                  f.id === uf.id ? { ...f, progress } : f
-                )
-              );
-            }
-          );
-          const progress = Math.round(((ci + 1) / totalChunks) * 100);
-          setUploadFiles((prev) =>
-            prev.map((f) =>
-              f.id === uf.id ? { ...f, progress } : f
-            )
-          );
+        for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+          const start = chunkIndex * chunkSize;
+          const end = Math.min(start + chunkSize, uploadFile.file.size);
+          const blob = uploadFile.file.slice(start, end);
+          await apiService.uploadChunk(task_id, uploadFile.file.name, chunkIndex, totalChunks, blob, (loaded, total) => {
+            const chunkProgress = total ? loaded / total : 0;
+            const progress = Math.round(((chunkIndex + chunkProgress) / totalChunks) * 100);
+            setUploadFiles((prev) => prev.map((file) => (file.id === uploadFile.id ? { ...file, progress } : file)));
+          });
         }
       }
 
-      const uploadResponse = await apiService.uploadFinalize(
-        task_id,
-        fileList,
-        taskName?.trim() || undefined
-      );
-
-      markSuccess(uploadResponse, pendingFiles.length);
-      console.log('Upload successful:', uploadResponse);
+      const response = await apiService.uploadFinalize(task_id, fileList, fieldName.trim() || undefined);
+      setUploadFiles((prev) => prev.map((file) => (file.status === 'uploading' ? { ...file, status: 'completed', progress: 100 } : file)));
+      setUploadResponse(response);
+      addUploadToQueue(response);
+      setWizardStep('step3');
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Upload failed';
+      setUploadError(message);
       setUploadFiles((prev) =>
-        prev.map((f) =>
-          f.status === 'uploading'
-            ? {
-                ...f,
-                status: 'error',
-                error: error instanceof Error ? error.message : 'Upload failed',
-              }
-            : f
-        )
+        prev.map((file) => (file.status === 'uploading' ? { ...file, status: 'error', error: message } : file))
       );
-      setBackendAvailable(false);
-      setUploadError(error instanceof Error ? error.message : 'Upload failed');
-      console.error('Upload failed:', error);
-    }
-
-    setIsUploading(false);
-  };
-
-  // Test backend connection manually
-  const testBackendConnection = async () => {
-    setConnectionTestResult('Testing connection...');
-    const result = await apiService.testConnection();
-
-    if (result.success) {
-      setConnectionTestResult('✅ Connection successful!');
-      setBackendAvailable(true);
-    } else {
-      setConnectionTestResult(`❌ Connection failed: ${result.error}`);
-      setBackendAvailable(false);
+    } finally {
+      setIsUploading(false);
     }
   };
 
-  const clearCompleted = () => {
-    setUploadFiles((prev) => {
-      prev.forEach(f => {
-        if (f.status === 'completed') {
-          URL.revokeObjectURL(f.preview);
-        }
-      });
-      return prev.filter(f => f.status !== 'completed');
-    });
-  };
-
-  const pendingFiles = uploadFiles.filter(f => f.status === 'pending');
-  const uploadingFiles = uploadFiles.filter(f => f.status === 'uploading');
-  const completedFiles = uploadFiles.filter(f => f.status === 'completed');
-  const boundaryPendingFiles = boundaryFiles.filter(f => f.status === 'pending');
-  const boundaryTotalSize = boundaryFiles.reduce((sum, f) => sum + (f.metadata?.size || 0), 0);
-  const boundarySampleFiles = boundaryFiles.slice(0, 5).map(f => f.metadata?.name || 'Unknown');
   const pathLatLngs = pathPreview?.waypoints.map((point) => [point.lat, point.lon] as [number, number]) ?? [];
-
-  const POLL_INTERVAL_MS = 2000;
   const generatePathPreview = async () => {
-    if (boundaryPendingFiles.length === 0) {
-      setPathError('Please add your field boundary shapefile files first.');
+    if (boundaryFiles.length === 0) {
+      setPathError('Boundary files are required.');
       return;
     }
-
     setIsGeneratingPath(true);
     setPathError(null);
-    setLinkResult(null);
-
     try {
-      const files = boundaryPendingFiles.map((f) => f.file);
-      const numericBoundaryHeading = typeof boundaryHeading === 'number' ? boundaryHeading : 0;
-      const numericRobotWidth = typeof boundaryRobotWidth === 'number' ? boundaryRobotWidth : 0;
-      const numericCoverageWidth = typeof boundaryCoverageWidth === 'number' ? boundaryCoverageWidth : 0;
-      const rtkLon = typeof rtkBaseLongitude === 'number' ? rtkBaseLongitude : 0;
-      const rtkLat = typeof rtkBaseLatitude === 'number' ? rtkBaseLatitude : 0;
-      const { path_job_id } = await apiService.submitPathJob(
-        files,
-        numericBoundaryHeading,
-        numericRobotWidth,
-        numericCoverageWidth,
-        boundaryName?.trim() || undefined,
-        { longitude: rtkLon, latitude: rtkLat }
+      const robotWidth = useDefaultRobotWidth && settings ? settings.robot_width : robotWidthOverride;
+      const coverageWidth = useDefaultCoverageWidth && settings ? settings.coverage_width : coverageWidthOverride;
+      const response = await apiService.submitPathJob(
+        boundaryFiles.map((file) => file.file),
+        pathHeading,
+        robotWidth,
+        coverageWidth,
+        fieldName,
+        {
+          longitude: typeof rtkBaseLongitude === 'number' ? rtkBaseLongitude : 0,
+          latitude: typeof rtkBaseLatitude === 'number' ? rtkBaseLatitude : 0,
+        }
       );
-      setPathJobId(path_job_id);
+      setPathJobId(response.path_job_id);
 
-      for (;;) {
-        const statusRes = await apiService.getPathJobStatus(path_job_id);
-        if (statusRes.status === 'completed') {
-          const result = await apiService.getPathJobResult(path_job_id);
-          if (result.waypoints && result.generated_at !== undefined) {
-            setPathPreview(
-              normalizePathResponse(
-                {
-                  waypoints: result.waypoints,
-                  generated_at: result.generated_at,
-                  heading: result.heading,
-                },
-                numericBoundaryHeading,
-                numericRobotWidth,
-                numericCoverageWidth
-              )
-            );
-          }
-          break;
+      while (true) {
+        const status = await apiService.getPathJobStatus(response.path_job_id);
+        if (status.status === 'failed') {
+          throw new Error(status.error || 'Path generation failed');
         }
-        if (statusRes.status === 'failed') {
-          setPathError(statusRes.error ?? 'Path generation failed');
-          break;
-        }
-        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        if (status.status === 'completed') break;
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
+
+      const result = await apiService.getPathJobResult(response.path_job_id);
+      const waypoints = result.waypoints || [];
+      setPathPreview({
+        waypoints,
+        generatedAt: result.generated_at || new Date().toISOString(),
+        heading: result.heading ?? pathHeading,
+        robotWidth: result.robot_width ?? robotWidth,
+        coverageWidth: result.coverage_width ?? coverageWidth,
+      });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Path generation failed';
-      setPathError(errorMessage);
+      setPathError(error instanceof Error ? error.message : 'Path generation failed');
     } finally {
       setIsGeneratingPath(false);
     }
   };
 
-  const linkPathToField = async () => {
-    if (!pathPreview || !selectedStitchedField || !pathJobId) return;
-    const field = stitchedFields.find((item) => item.id === selectedStitchedField);
+  const confirmPath = async () => {
+    if (!uploadResponse || !pathJobId || !pathPreview) return;
     setIsSavingPath(true);
-    setLinkResult(null);
+    setCompletionMessage(null);
     try {
-      await apiService.savePathToTask(pathJobId, selectedStitchedField);
-      setLinkResult(`Path and boundary saved to ${field?.name ?? 'selected field'}. Prescription will be generated if the orthophoto is ready (check Prescriptions tab).`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to save path';
-      setLinkResult(`Error: ${msg}`);
+      await apiService.savePathToTask(pathJobId, uploadResponse.task_id);
+      let status = '';
+      try {
+        const taskStatus = await apiService.getTaskStatus(uploadResponse.nodeodm_task_id);
+        status = taskStatus.status.toLowerCase();
+      } catch {
+        status = '';
+      }
+      if (status === 'completed' || status === 'success') {
+        setCompletionMessage('Path confirmed. Imagery processing is complete and prescription generation can proceed now.');
+      } else {
+        setCompletionMessage('Path confirmed. Your prescription will be generated as soon as imagery processing completes.');
+      }
+      setWizardStep('done');
+    } catch (error) {
+      setCompletionMessage(error instanceof Error ? error.message : 'Failed to confirm path');
     } finally {
       setIsSavingPath(false);
     }
   };
 
-  // Get sample filenames (first 5 files)
-  const sampleFiles = uploadFiles.slice(0, 5).map(f => f.metadata?.name || 'Unknown');
-  const totalSize = uploadFiles.reduce((sum, f) => sum + (f.metadata?.size || 0), 0);
+  const saveSettings = async (payload: UploadSystemSettingsUpdate) => {
+    setIsSavingSettings(true);
+    setSettingsError(null);
+    try {
+      const updated = await apiService.updateUploadSettings(payload);
+      setSettings(updated);
+      setRobotWidthOverride(updated.robot_width);
+      setCoverageWidthOverride(updated.coverage_width);
+      setIsSettingsOpen(false);
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : 'Failed to save settings');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  const resetSettings = async () => {
+    setIsSavingSettings(true);
+    setSettingsError(null);
+    try {
+      const updated = await apiService.resetUploadSettings();
+      setSettings(updated);
+      setRobotWidthOverride(updated.robot_width);
+      setCoverageWidthOverride(updated.coverage_width);
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : 'Failed to reset settings');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
-      <div className="bg-dark-800 rounded-lg p-8 border border-dark-700">
-        <div className="flex justify-between items-start mb-6">
-          <h2 className="text-2xl font-semibold text-primary-400">
-            Upload Drone Images
-          </h2>
-          <div className="flex items-center space-x-4">
+      <UploadSettingsModal
+        isOpen={isSettingsOpen}
+        settings={settings}
+        isSaving={isSavingSettings}
+        error={settingsError}
+        onClose={() => setIsSettingsOpen(false)}
+        onSave={saveSettings}
+        onReset={resetSettings}
+      />
+
+      <div className="rounded-lg border border-dark-700 bg-dark-800 p-8">
+        <div className="mb-6 flex items-start justify-between">
+          <h2 className="text-2xl font-semibold text-primary-400">Upload Imagery</h2>
+          <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
-              <div className={`w-2 h-2 rounded-full ${backendAvailable ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <div className={`h-2 w-2 rounded-full ${backendAvailable ? 'bg-green-500' : 'bg-red-500'}`} />
               <span className={`text-xs ${backendAvailable ? 'text-green-400' : 'text-red-400'}`}>
                 {backendAvailable ? 'Backend Connected' : 'Backend Disconnected'}
               </span>
             </div>
-            <button
-              onClick={testBackendConnection}
-              className="px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors duration-200"
-            >
+            <button onClick={testBackendConnection} className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700">
               Test Connection
             </button>
           </div>
         </div>
 
-        {uploadError && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-            <div className="flex items-center">
-              <svg className="w-5 h-5 text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p className="text-red-400 text-sm">{uploadError}</p>
-            </div>
-          </div>
-        )}
+        {connectionTestResult ? <p className="mt-3 text-xs text-dark-300">{connectionTestResult}</p> : null}
 
-        {connectionTestResult && (
-          <div className={`mb-6 p-4 border rounded-lg ${connectionTestResult.includes('✅')
-            ? 'bg-green-500/10 border-green-500/20'
-            : connectionTestResult.includes('❌')
-              ? 'bg-red-500/10 border-red-500/20'
-              : 'bg-blue-500/10 border-blue-500/20'
-            }`}>
-            <div className="flex items-center">
-              <p className={`text-sm ${connectionTestResult.includes('✅')
-                ? 'text-green-400'
-                : connectionTestResult.includes('❌')
-                  ? 'text-red-400'
-                  : 'text-blue-400'
-                }`}>
-                {connectionTestResult}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Two-column layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left column: Drag and drop area with inputs */}
-          <div className="lg:col-span-2 space-y-6">
-            <div>
-              <p className="text-dark-300 mb-4">
-                Drag and drop your drone images here or click to browse.
-                Supported formats: JPEG, PNG, TIFF (.tif, .tiff); auxiliary: .nav, .obs, .bin, .MRK. All uploads use chunked upload for reliability.
-              </p>
-
-              {/* Upload area */}
-              <div
-                {...getRootProps()}
-                className={`border-2 border-dashed rounded-lg p-12 text-center transition-all duration-200 cursor-pointer ${isDragActive
-                  ? 'border-primary-500 bg-primary-500/10'
-                  : 'border-dark-600 hover:border-primary-500 hover:bg-dark-700/50'
-                  }`}
-              >
-                <input {...getInputProps()} />
-                <div className="text-dark-400 mb-4">
-                  <svg className="mx-auto h-12 w-12" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </div>
-                <p className="text-dark-300 text-lg">
-                  {isDragActive ? 'Drop your images here' : 'Drop your drone images here'}
-                </p>
-                <p className="text-dark-400 text-sm mt-2">
-                  or click to browse files
-                </p>
-              </div>
-
-              {/* Input options at bottom of drag/drop area */}
-              <div className="mt-6 space-y-4">
-                <div>
-                  <label className="block text-sm text-dark-300 mb-2" htmlFor="taskName">Task name (optional)</label>
-                  <input
-                    id="taskName"
-                    type="text"
-                    value={taskName}
-                    onChange={(e) => setTaskName(e.target.value)}
-                    placeholder="e.g., Field A - 2025-10-30"
-                    className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-dark-300 mb-2" htmlFor="heading">Heading (degrees)</label>
-                    <input
-                      id="heading"
-                      type="number"
-                      value={heading}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === '') {
-                          setHeading('');
-                        } else {
-                          setHeading(parseFloat(val) || 0);
-                        }
-                      }}
-                      placeholder="0"
-                      min="0"
-                      max="360"
-                      step="0.1"
-                      className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-dark-300 mb-2" htmlFor="gridSize">Grid size (meters)</label>
-                    <input
-                      id="gridSize"
-                      type="number"
-                      value={gridSize}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === '') {
-                          setGridSize('');
-                        } else {
-                          setGridSize(parseFloat(val) || 1);
-                        }
-                      }}
-                      placeholder="1"
-                      min="0.1"
-                      step="0.1"
-                      className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Right column: Uploaded images summary */}
-          <div className="lg:col-span-1">
-            {uploadFiles.length > 0 ? (
-              <div className="bg-dark-700 rounded-lg p-6 border border-dark-600">
-                <h3 className="text-lg font-medium text-primary-400 mb-4">
-                  Uploaded Images
-                </h3>
-
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-dark-300 text-sm mb-2">Total Images</p>
-                    <p className="text-2xl font-semibold text-primary-400">{uploadFiles.length}</p>
-                  </div>
-
-                  <div>
-                    <p className="text-dark-300 text-sm mb-2">Total Size</p>
-                    <p className="text-lg text-dark-100">{formatFileSize(totalSize)}</p>
-                  </div>
-
-                  <div>
-                    <p className="text-dark-300 text-sm mb-2">Status</p>
-                    <div className="flex flex-wrap gap-2">
-                      {pendingFiles.length > 0 && (
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400">
-                          {pendingFiles.length} pending
-                        </span>
-                      )}
-                      {uploadingFiles.length > 0 && (
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400">
-                          {uploadingFiles.length} uploading
-                        </span>
-                      )}
-                      {completedFiles.length > 0 && (
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-400">
-                          {completedFiles.length} completed
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-dark-300 text-sm mb-2">Sample Files</p>
-                    <div className="space-y-1">
-                      {sampleFiles.map((name, index) => (
-                        <p key={index} className="text-dark-400 text-xs truncate" title={name}>
-                          {name}
-                        </p>
-                      ))}
-                      {uploadFiles.length > 5 && (
-                        <p className="text-dark-500 text-xs">
-                          +{uploadFiles.length - 5} more files
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="pt-4 border-t border-dark-600 space-y-2">
-                    {pendingFiles.length > 0 && (
-                      <button
-                        onClick={startUpload}
-                        disabled={isUploading || !backendAvailable}
-                        className="w-full px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                      >
-                        {isUploading ? 'Uploading...' : `Upload ${pendingFiles.length} Files`}
-                      </button>
-                    )}
-                    {completedFiles.length > 0 && (
-                      <button
-                        onClick={clearCompleted}
-                        className="w-full px-4 py-2 bg-dark-600 text-dark-300 rounded-lg hover:bg-dark-500 transition-colors duration-200"
-                      >
-                        Clear Completed
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-dark-700 rounded-lg p-6 border border-dark-600">
-                <h3 className="text-lg font-medium text-primary-400 mb-2">
-                  Uploaded Images
-                </h3>
-                <p className="text-dark-400 text-sm">
-                  No images uploaded yet. Drag and drop images to get started.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-      <div className="bg-dark-800 rounded-lg p-8 border border-dark-700">
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <h2 className="text-2xl font-semibold text-primary-400">
-              Upload Field Boundary (Shapefile)
-            </h2>
-            <p className="text-dark-300 text-sm mt-2">
-              Provide the boundary shapefile folder and a heading for path generation.
+        {wizardStep === 'entry' ? (
+          <div className="mt-6 rounded-lg border border-dark-600 bg-dark-700 p-6">
+            <h3 className="text-lg font-medium text-primary-400">Create a new field</h3>
+            <p className="mt-2 text-sm text-dark-300">
+              Start the guided flow: field + boundary, imagery upload, then path generation and confirmation.
             </p>
+            <button onClick={() => setWizardStep('step1')} className="mt-4 rounded bg-primary-500 px-4 py-2 text-white hover:bg-primary-600">
+              Create a New Field
+            </button>
           </div>
-          <div className="text-xs text-dark-400 text-right">
-            <p>Supported files:</p>
-            <p>.shp, .shx, .dbf, .prj, .cpg, .qix, .sbn, .sbx</p>
-          </div>
-        </div>
+        ) : null}
 
-        {pathError && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-            <div className="flex items-center">
-              <svg className="w-5 h-5 text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p className="text-red-400 text-sm">{pathError}</p>
-            </div>
-          </div>
-        )}
-
-        {linkResult && (
-          <div className="mb-6 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
-            <div className="flex items-center">
-              <p className="text-green-400 text-sm">{linkResult}</p>
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <div>
-              <p className="text-dark-300 mb-4">
-                Drag and drop all shapefile components or click to browse. Keep the files together from the same folder.
-              </p>
-
+        {wizardStep === 'step1' ? (
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="space-y-4 lg:col-span-2">
+              <h3 className="text-xl font-semibold text-primary-400">Step 1: Field name and boundary upload</h3>
+              <label className="block text-sm text-dark-300">
+                Field name
+                <input
+                  className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100"
+                  value={fieldName}
+                  onChange={(e) => {
+                    setFieldName(e.target.value);
+                    setBoundaryUploadStatus('idle');
+                  }}
+                />
+              </label>
               <div
                 {...getBoundaryRootProps()}
-                className={`border-2 border-dashed rounded-lg p-12 text-center transition-all duration-200 cursor-pointer ${isBoundaryDragActive
-                  ? 'border-primary-500 bg-primary-500/10'
-                  : 'border-dark-600 hover:border-primary-500 hover:bg-dark-700/50'
-                  }`}
+                className={`cursor-pointer rounded-lg border-2 border-dashed p-10 text-center ${
+                  isBoundaryDragActive ? 'border-primary-500 bg-primary-500/10' : 'border-dark-600 hover:border-primary-500 hover:bg-dark-700/50'
+                }`}
               >
                 <input {...getBoundaryInputProps()} />
-                <div className="text-dark-400 mb-4">
-                  <svg className="mx-auto h-12 w-12" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </div>
-                <p className="text-dark-300 text-lg">
-                  {isBoundaryDragActive ? 'Drop shapefile contents here' : 'Drop shapefile contents here'}
-                </p>
-                <p className="text-dark-400 text-sm mt-2">
-                  or click to browse files
-                </p>
+                <p className="text-dark-200">{isBoundaryDragActive ? 'Drop boundary files here' : 'Drop boundary files here'}</p>
+                <p className="mt-1 text-xs text-dark-400">Shapefile components (.shp required)</p>
               </div>
-
-              <div className="mt-6 space-y-4">
-                <div>
-                  <label className="block text-sm text-dark-300 mb-2" htmlFor="boundaryName">Boundary name (optional)</label>
-                  <input
-                    id="boundaryName"
-                    type="text"
-                    value={boundaryName}
-                    onChange={(e) => setBoundaryName(e.target.value)}
-                    placeholder="e.g., North Field Boundary"
-                    className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
-
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm text-dark-300 mb-2" htmlFor="boundaryHeading">Heading (degrees)</label>
-                    <input
-                      id="boundaryHeading"
-                      type="number"
-                      value={boundaryHeading}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === '') {
-                          setBoundaryHeading('');
-                        } else {
-                          setBoundaryHeading(parseFloat(val) || 0);
-                        }
-                      }}
-                      placeholder="0"
-                      min="0"
-                      max="360"
-                      step="0.1"
-                      className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-dark-300 mb-2" htmlFor="boundaryRobotWidth">Robot width (meters)</label>
-                    <input
-                      id="boundaryRobotWidth"
-                      type="number"
-                      value={boundaryRobotWidth}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === '') {
-                          setBoundaryRobotWidth('');
-                        } else {
-                          setBoundaryRobotWidth(parseFloat(val) || 0);
-                        }
-                      }}
-                      placeholder="2.0"
-                      min="0.1"
-                      step="0.1"
-                      className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-dark-300 mb-2" htmlFor="boundaryCoverageWidth">Coverage width (meters)</label>
-                    <input
-                      id="boundaryCoverageWidth"
-                      type="number"
-                      value={boundaryCoverageWidth}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === '') {
-                          setBoundaryCoverageWidth('');
-                        } else {
-                          setBoundaryCoverageWidth(parseFloat(val) || 0);
-                        }
-                      }}
-                      placeholder="6.0"
-                      min="0.1"
-                      step="0.1"
-                      className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    />
-                  </div>
-                </div>
-                <div className="mt-4 flex items-end">
-                  <button
-                    onClick={generatePathPreview}
-                    disabled={isGeneratingPath || boundaryPendingFiles.length === 0}
-                    className="w-full px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
-                  >
-                    {isGeneratingPath ? 'Generating...' : 'Generate Path (Preview)'}
-                  </button>
-                </div>
-                <p className="text-xs text-dark-400">
-                  Path is generated asynchronously; the map updates when generation completes.
-                </p>
-
-                {/* Path Preview — below heading, slightly smaller */}
-                <div className="mt-6">
-                  <h3 className="text-base font-medium text-primary-400 mb-3">Path Preview</h3>
-                  <div className="w-full h-[22rem] rounded-lg overflow-hidden border border-dark-600 bg-dark-900">
-                    {pathPreview ? (
-                      <MapContainer
-                        center={[47.0364, -117.0471]}
-                        zoom={16}
-                        style={{ height: '100%', width: '100%' }}
-                        className="z-0"
-                      >
-                        <TileLayer
-                          attribution="&copy; OpenStreetMap contributors"
-                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                        />
-                        <Polyline positions={pathLatLngs} pathOptions={{ color: '#22c55e', weight: 4 }} />
-                        <FitBoundsToPath points={pathLatLngs} />
-                        {pathLatLngs.length > 0 && (
-                          <>
-                            <StartMarker position={pathLatLngs[0]} />
-                            <EndMarker position={pathLatLngs[pathLatLngs.length - 1]} />
-                          </>
-                        )}
-                      </MapContainer>
-                    ) : (
-                      <div className="w-full h-full bg-dark-700 flex items-center justify-center">
-                        <div className="text-center">
-                          <svg className="w-12 h-12 text-primary-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m0 0L9 7" />
-                          </svg>
-                          <p className="text-dark-300 text-sm">No path yet. Generate path above.</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  {pathPreview && (
-                    <div className="mt-2 flex flex-wrap gap-4 text-xs text-dark-400">
-                      <span>Waypoints: {pathPreview.waypoints.length}</span>
-                      <span>Heading: {pathPreview.heading.toFixed(1)}°</span>
-                      <span>Robot width: {pathPreview.robotWidth.toFixed(2)} m</span>
-                      <span>Coverage width: {pathPreview.coverageWidth.toFixed(2)} m</span>
-                      <span>Start (S) → End (E)</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-dark-700 rounded-lg p-6 border border-dark-600">
-              <h3 className="text-lg font-medium text-primary-400 mb-4">
-                Boundary Upload
-              </h3>
-              {boundaryFiles.length > 0 ? (
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-dark-300 text-sm mb-2">Files Added</p>
-                    <p className="text-2xl font-semibold text-primary-400">{boundaryFiles.length}</p>
-                  </div>
-                  <div>
-                    <p className="text-dark-300 text-sm mb-2">Total Size</p>
-                    <p className="text-lg text-dark-100">{formatFileSize(boundaryTotalSize)}</p>
-                  </div>
-                  <div>
-                    <p className="text-dark-300 text-sm mb-2">Sample Files</p>
-                    <div className="space-y-1">
-                      {boundarySampleFiles.map((name, index) => (
-                        <p key={index} className="text-dark-400 text-xs truncate" title={name}>
-                          {name}
-                        </p>
-                      ))}
-                      {boundaryFiles.length > 5 && (
-                        <p className="text-dark-500 text-xs">
-                          +{boundaryFiles.length - 5} more files
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="pt-4 border-t border-dark-600 space-y-2">
-                    {boundaryPendingFiles.length > 0 && (
-                      <button
-                        onClick={() => setBoundaryFiles([])}
-                        className="w-full px-4 py-2 bg-dark-600 text-dark-300 rounded-lg hover:bg-dark-500 transition-colors duration-200"
-                      >
-                        Clear Files
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-dark-400 text-sm">
-                  No shapefile components uploaded yet.
-                </p>
-              )}
-            </div>
-
-            <div className="bg-dark-700 rounded-lg p-6 border border-dark-600">
-              <h3 className="text-lg font-medium text-primary-400 mb-4">
-                Link to Stitched Field
-              </h3>
-              <div className="space-y-3">
-                <select
-                  value={selectedStitchedField}
-                  onChange={(e) => setSelectedStitchedField(e.target.value)}
-                  disabled={stitchedFieldsLoading}
-                  className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
-                >
-                  <option value="">
-                    {stitchedFieldsLoading ? 'Loading…' : stitchedFields.length === 0 ? 'No stitched fields' : 'Select a stitched field'}
-                  </option>
-                  {stitchedFields.map((field) => (
-                    <option key={field.id} value={field.id}>
-                      {field.name}
-                    </option>
-                  ))}
-                </select>
-                {stitchedFields.length === 0 && !stitchedFieldsLoading && (
-                  <p className="text-xs text-dark-400">No stitched fields. Process images in the Upload tab first.</p>
-                )}
+              {boundaryError ? <p className="text-sm text-red-400">{boundaryError}</p> : null}
+              {boundaryUploadStatus === 'success' ? <p className="text-sm text-green-400">Boundary upload successful.</p> : null}
+              <div className="flex gap-2">
                 <button
-                  onClick={linkPathToField}
-                  disabled={!pathPreview || !selectedStitchedField || !pathJobId || isSavingPath || stitchedFields.length === 0}
-                  className="w-full px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+                  onClick={handleBoundaryUpload}
+                  disabled={boundaryUploadStatus === 'uploading'}
+                  className="rounded bg-primary-500 px-4 py-2 text-white hover:bg-primary-600 disabled:opacity-50"
                 >
-                  {isSavingPath ? 'Saving…' : 'Link and Save Path'}
+                  {boundaryUploadStatus === 'uploading' ? 'Uploading...' : boundaryUploadStatus === 'error' ? 'Retry Upload' : 'Upload Boundary'}
                 </button>
-                <p className="text-xs text-dark-400">
-                  Saves the path and boundary to the selected field. A boundary is required before a prescription can be generated; linking here ensures the prescription job can run when the orthophoto is ready.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-dark-700 rounded-lg p-6 border border-dark-600">
-              <h3 className="text-lg font-medium text-primary-400 mb-4">
-                RTK Base Station
-              </h3>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm text-dark-300 mb-2" htmlFor="rtkBaseLongitude">Longitude</label>
-                  <input
-                    id="rtkBaseLongitude"
-                    type="number"
-                    value={rtkBaseLongitude}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === '') {
-                        setRtkBaseLongitude('');
-                      } else {
-                        setRtkBaseLongitude(parseFloat(val) ?? 0);
-                      }
-                    }}
-                    placeholder="-117.0"
-                    min="-180"
-                    max="180"
-                    step="any"
-                    className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-dark-300 mb-2" htmlFor="rtkBaseLatitude">Latitude</label>
-                  <input
-                    id="rtkBaseLatitude"
-                    type="number"
-                    value={rtkBaseLatitude}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === '') {
-                        setRtkBaseLatitude('');
-                      } else {
-                        setRtkBaseLatitude(parseFloat(val) ?? 0);
-                      }
-                    }}
-                    placeholder="47.0"
-                    min="-90"
-                    max="90"
-                    step="any"
-                    className="w-full px-3 py-2 bg-dark-700 text-dark-100 border border-dark-600 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
                 <button
-                  type="button"
-                  onClick={async () => {
-                    const lon = typeof rtkBaseLongitude === 'number' ? rtkBaseLongitude : 0;
-                    const lat = typeof rtkBaseLatitude === 'number' ? rtkBaseLatitude : 0;
-                    try {
-                      await apiService.setRtkBase(lon, lat);
-                    } catch (err) {
-                      setPathError(err instanceof Error ? err.message : 'Failed to save RTK base');
-                    }
+                  onClick={() => {
+                    setBoundaryFiles([]);
+                    setBoundaryUploadStatus('idle');
+                    setBoundaryError(null);
                   }}
-                  className="w-full px-4 py-2 bg-dark-600 text-dark-100 rounded-lg hover:bg-dark-500 transition-colors duration-200"
+                  className="rounded bg-dark-600 px-4 py-2 text-dark-100 hover:bg-dark-500"
                 >
-                  Save RTK base
+                  Clear files
                 </button>
               </div>
             </div>
+
+            <div className="rounded-lg border border-dark-600 bg-dark-700 p-4">
+              <h4 className="font-medium text-primary-400">Boundary files</h4>
+              <p className="mt-2 text-sm text-dark-300">{boundaryFiles.length} files</p>
+              <p className="text-sm text-dark-300">{formatFileSize(boundaryTotalSize)}</p>
+              <div className="mt-3 space-y-1">
+                {boundarySampleFiles.length === 0 ? <p className="text-xs text-dark-400">No fields created yet</p> : null}
+                {boundarySampleFiles.map((name, index) => (
+                  <p key={index} className="truncate text-xs text-dark-400" title={name}>
+                    {name}
+                  </p>
+                ))}
+              </div>
+            </div>
           </div>
+        ) : null}
+
+        {wizardStep === 'step2' ? (
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="space-y-4 lg:col-span-2">
+              <h3 className="text-xl font-semibold text-primary-400">Step 2: Upload drone imagery</h3>
+              <p className="text-sm text-dark-300">Wait for upload completion before continuing.</p>
+              <div
+                {...getRootProps()}
+                className={`cursor-pointer rounded-lg border-2 border-dashed p-12 text-center ${
+                  isDragActive ? 'border-primary-500 bg-primary-500/10' : 'border-dark-600 hover:border-primary-500 hover:bg-dark-700/50'
+                }`}
+              >
+                <input {...getInputProps()} />
+                <p className="text-dark-200">{isDragActive ? 'Drop imagery here' : 'Drop drone imagery here'}</p>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setWizardStep('step1')}
+                  disabled={isUploading}
+                  className="rounded bg-dark-600 px-4 py-2 text-dark-100 hover:bg-dark-500 disabled:opacity-50"
+                >
+                  Back to Step 1
+                </button>
+                <button
+                  onClick={startUpload}
+                  disabled={isUploading || pendingFiles.length === 0 || !backendAvailable}
+                  className="rounded bg-primary-500 px-4 py-2 text-white hover:bg-primary-600 disabled:opacity-50"
+                >
+                  {isUploading ? 'Uploading...' : uploadError ? 'Retry Upload' : `Upload ${pendingFiles.length} Files`}
+                </button>
+                <button onClick={() => setUploadFiles([])} className="rounded bg-dark-600 px-4 py-2 text-dark-100 hover:bg-dark-500">
+                  Clear files
+                </button>
+              </div>
+
+              {uploadError ? <p className="text-sm text-red-400">{uploadError}</p> : null}
+              {activeTaskForUpload ? (
+                <p className="text-sm text-blue-300">
+                  Upload complete. Processing status: {activeTaskForUpload.status} ({Math.round(activeTaskForUpload.progress)}%).
+                </p>
+              ) : null}
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-lg border border-dark-600 bg-dark-700 p-4">
+                <h4 className="font-medium text-primary-400">Imagery summary</h4>
+                <p className="mt-2 text-sm text-dark-300">{uploadFiles.length} files</p>
+                <p className="text-sm text-dark-300">{formatFileSize(totalUploadSize)}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {pendingFiles.length > 0 ? <span className="rounded-full bg-yellow-500/20 px-2 py-1 text-xs text-yellow-300">{pendingFiles.length} pending</span> : null}
+                  {uploadingFiles.length > 0 ? <span className="rounded-full bg-blue-500/20 px-2 py-1 text-xs text-blue-300">{uploadingFiles.length} uploading</span> : null}
+                  {completedFiles.length > 0 ? <span className="rounded-full bg-green-500/20 px-2 py-1 text-xs text-green-300">{completedFiles.length} completed</span> : null}
+                </div>
+                <div className="mt-3 space-y-1">
+                  {sampleFiles.map((name, index) => (
+                    <p key={index} className="truncate text-xs text-dark-400" title={name}>
+                      {name}
+                    </p>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-dark-600 bg-dark-700 p-4">
+                <h4 className="font-medium text-primary-400">Applied processing settings</h4>
+                {settings ? (
+                  <div className="mt-2 space-y-1 text-xs text-dark-300">
+                    <p>Feature quality: {settings.nodeodm.feature_quality}</p>
+                    <p>Orthophoto resolution: {settings.nodeodm.orthophoto_resolution}</p>
+                    <p>Point cloud quality: {settings.nodeodm.pc_quality}</p>
+                    <p>Orthophoto PNG: required</p>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-dark-400">Loading settings...</p>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {wizardStep === 'step3' ? (
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="space-y-4 lg:col-span-2">
+              <h3 className="text-xl font-semibold text-primary-400">Step 3: Generate and confirm path</h3>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <label className="text-sm text-dark-300">
+                  Heading (degrees)
+                  <input
+                    className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100"
+                    type="number"
+                    value={pathHeading}
+                    onChange={(e) => setPathHeading(parseFloat(e.target.value) || 0)}
+                  />
+                </label>
+                <label className="text-sm text-dark-300">
+                  <span className="flex items-center gap-2">
+                    <input type="checkbox" checked={useDefaultRobotWidth} onChange={(e) => setUseDefaultRobotWidth(e.target.checked)} />
+                    Use default robot width ({settings?.robot_width ?? 2} m)
+                  </span>
+                  <input
+                    className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100 disabled:opacity-50"
+                    type="number"
+                    disabled={useDefaultRobotWidth}
+                    value={robotWidthOverride}
+                    onChange={(e) => setRobotWidthOverride(parseFloat(e.target.value) || 0.1)}
+                  />
+                </label>
+                <label className="text-sm text-dark-300">
+                  <span className="flex items-center gap-2">
+                    <input type="checkbox" checked={useDefaultCoverageWidth} onChange={(e) => setUseDefaultCoverageWidth(e.target.checked)} />
+                    Use default boom width ({settings?.coverage_width ?? 6} m)
+                  </span>
+                  <input
+                    className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100 disabled:opacity-50"
+                    type="number"
+                    disabled={useDefaultCoverageWidth}
+                    value={coverageWidthOverride}
+                    onChange={(e) => setCoverageWidthOverride(parseFloat(e.target.value) || 0.1)}
+                  />
+                </label>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={generatePathPreview}
+                  disabled={isGeneratingPath}
+                  className="rounded bg-primary-500 px-4 py-2 text-white hover:bg-primary-600 disabled:opacity-50"
+                >
+                  {isGeneratingPath ? 'Generating...' : 'Generate Path'}
+                </button>
+                <button
+                  onClick={confirmPath}
+                  disabled={!pathPreview || !pathJobId || isSavingPath}
+                  className="rounded bg-green-600 px-4 py-2 text-white hover:bg-green-700 disabled:opacity-50"
+                >
+                  {isSavingPath ? 'Confirming...' : 'Confirm'}
+                </button>
+              </div>
+
+              {pathError ? <p className="text-sm text-red-400">{pathError}</p> : null}
+
+              <div className="h-[22rem] overflow-hidden rounded-lg border border-dark-600 bg-dark-900">
+                {pathPreview ? (
+                  <MapContainer center={[47.0364, -117.0471]} zoom={16} style={{ height: '100%', width: '100%' }}>
+                    <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    <Polyline positions={pathLatLngs} pathOptions={{ color: '#22c55e', weight: 4 }} />
+                    <FitBoundsToPath points={pathLatLngs} />
+                    {pathLatLngs.length > 0 ? (
+                      <>
+                        <StartMarker position={pathLatLngs[0]} />
+                        <EndMarker position={pathLatLngs[pathLatLngs.length - 1]} />
+                      </>
+                    ) : null}
+                  </MapContainer>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-dark-400">Generate a path to preview it here.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-dark-600 bg-dark-700 p-4">
+              <h4 className="font-medium text-primary-400">RTK base station</h4>
+              <label className="mt-3 block text-sm text-dark-300">
+                Longitude
+                <input
+                  className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
+                  type="number"
+                  value={rtkBaseLongitude}
+                  onChange={(e) => setRtkBaseLongitude(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                />
+              </label>
+              <label className="mt-3 block text-sm text-dark-300">
+                Latitude
+                <input
+                  className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
+                  type="number"
+                  value={rtkBaseLatitude}
+                  onChange={(e) => setRtkBaseLatitude(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                />
+              </label>
+              <button
+                className="mt-3 w-full rounded bg-dark-600 px-3 py-2 text-sm text-dark-100 hover:bg-dark-500"
+                onClick={async () => {
+                  const lon = typeof rtkBaseLongitude === 'number' ? rtkBaseLongitude : 0;
+                  const lat = typeof rtkBaseLatitude === 'number' ? rtkBaseLatitude : 0;
+                  await apiService.setRtkBase(lon, lat);
+                }}
+              >
+                Save RTK base
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {wizardStep === 'done' ? (
+          <div className="mt-6 rounded-lg border border-green-500/20 bg-green-500/10 p-4">
+            <h3 className="text-lg font-semibold text-green-300">Workflow complete</h3>
+            <p className="mt-2 text-sm text-green-200">{completionMessage}</p>
+            <button
+              className="mt-4 rounded bg-primary-500 px-4 py-2 text-white hover:bg-primary-600"
+              onClick={() => {
+                setWizardStep('entry');
+                setFieldName('');
+                setBoundaryFiles([]);
+                setBoundaryUploadStatus('idle');
+                setBoundaryError(null);
+                setUploadFiles([]);
+                setUploadError(null);
+                setUploadResponse(null);
+                setPathPreview(null);
+                setPathJobId(null);
+                setPathError(null);
+                setCompletionMessage(null);
+              }}
+            >
+              Create another field
+            </button>
+          </div>
+        ) : null}
+
+        <div className="mt-6">
+          <UploadQueueBoard
+            queuedTasks={queuedTasks}
+            runningTasks={runningTasks}
+            recentCompletedResults={recentCompletedResults}
+            isPolling={isPolling}
+          />
         </div>
       </div>
     </div>

@@ -2,8 +2,9 @@
 
 import json as _json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import aiofiles
 from fastapi import UploadFile
@@ -18,6 +19,22 @@ from app.schemas.upload import (
 from app.services.file_storage import FileStorageService
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class UploadFinalizeRequest:
+    task_id: str
+    files_json: str
+    task_name: Optional[str]
+
+
+@dataclass(frozen=True)
+class UploadFinalizeConfig:
+    allowed_image_extensions: List[str]
+    allowed_auxiliary_extensions: List[str]
+    nodeodm_host: str
+    nodeodm_port: int
+    nodeodm_options: Optional[Dict[str, Any]] = None
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -77,28 +94,26 @@ async def upload_chunk(
 
 
 def upload_finalize(
+    *,
     background_tasks,
     upload_dir: Path,
     storage: FileStorageService,
-    task_id: str,
-    files_json: str,
-    task_name: Optional[str],
-    allowed_image_extensions: List[str],
-    allowed_auxiliary_extensions: List[str],
-    nodeodm_host: str,
-    nodeodm_port: int,
+    request: UploadFinalizeRequest,
+    config: UploadFinalizeConfig,
 ) -> UploadFinalizeResponse:
     """Verify files and start NodeODM processing."""
     from datetime import datetime
 
+    task_id = request.task_id
+    task_name = request.task_name
     dir_path = upload_dir / task_id
     if not dir_path.exists():
         raise FileNotFoundError("Upload session not found")
     try:
-        file_list = _json.loads(files_json)
+        file_list = _json.loads(request.files_json)
     except (TypeError, ValueError) as exc:
         raise ValueError("Invalid files JSON") from exc
-    allowed_ext = set(allowed_image_extensions) | set(allowed_auxiliary_extensions)
+    allowed_ext = set(config.allowed_image_extensions) | set(config.allowed_auxiliary_extensions)
     saved_files = []
     for entry in file_list:
         fn = entry.get("filename")
@@ -109,7 +124,7 @@ def upload_finalize(
         ext = Path(safe_name).suffix.lower()
         if ext not in allowed_ext:
             raise ValueError(
-                f"File {safe_name} has unsupported extension (allowed: images {allowed_image_extensions}; auxiliary {allowed_auxiliary_extensions})"
+                f"File {safe_name} has unsupported extension (allowed: images {config.allowed_image_extensions}; auxiliary {config.allowed_auxiliary_extensions})"
             )
         file_path = dir_path / safe_name
         if not file_path.is_file():
@@ -120,8 +135,8 @@ def upload_finalize(
     if not saved_files:
         raise ValueError("No valid files to process")
 
-    n = Node(nodeodm_host, nodeodm_port)
-    orthophoto_options = {
+    n = Node(config.nodeodm_host, config.nodeodm_port)
+    orthophoto_options = config.nodeodm_options or {
         "radiometric-calibration": "camera",
         "feature-quality": "high",
         "matcher-type": "flann",
@@ -134,6 +149,7 @@ def upload_finalize(
         "pc-quality": "high",
         "orthophoto-png": True,
     }
+    orthophoto_options["orthophoto-png"] = True
     name = (task_name or "").strip()
     if name:
         task = n.create_task(saved_files, options=orthophoto_options, name=name)

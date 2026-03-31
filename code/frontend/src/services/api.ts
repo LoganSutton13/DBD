@@ -7,7 +7,8 @@ import {
   UploadInitResponse,
   ChunkedFileInfo,
   TaskStatusResponse,
-  ProcessingTask,
+  UploadSystemSettings,
+  UploadSystemSettingsUpdate,
 } from '../types/upload';
 import {
   PrescriptionListResponse,
@@ -138,6 +139,39 @@ class ApiService {
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`Upload finalize failed: ${response.status} ${errorText}`);
+    }
+    return response.json();
+  }
+
+  async getUploadSettings(): Promise<UploadSystemSettings> {
+    const response = await fetch(`${this.baseUrl}/api/v1/upload/settings`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to get upload settings: ${response.status} ${errorText}`);
+    }
+    return response.json();
+  }
+
+  async updateUploadSettings(body: UploadSystemSettingsUpdate): Promise<UploadSystemSettings> {
+    const response = await fetch(`${this.baseUrl}/api/v1/upload/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to update upload settings: ${response.status} ${errorText}`);
+    }
+    return response.json();
+  }
+
+  async resetUploadSettings(): Promise<UploadSystemSettings> {
+    const response = await fetch(`${this.baseUrl}/api/v1/upload/settings/reset`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to reset upload settings: ${response.status} ${errorText}`);
     }
     return response.json();
   }
