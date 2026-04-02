@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -9,7 +9,9 @@ import type {
   SprayLevel,
   PrescriptionGeoJSON,
   PrescriptionFeature,
+  PrescriptionConfig,
 } from '../types/prescription';
+import { computePrescriptionTotalGallons } from '../utils/prescriptionGallons';
 
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: string })._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -41,6 +43,12 @@ const PesticidePrescriptionsView: React.FC = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [sprayUpdates, setSprayUpdates] = useState<Record<string, SprayLevel>>({});
   const [savingSpray, setSavingSpray] = useState(false);
+  const [detailConfig, setDetailConfig] = useState<PrescriptionConfig | null>(null);
+  const [thresholdsModalOpen, setThresholdsModalOpen] = useState(false);
+  const [savingThresholds, setSavingThresholds] = useState(false);
+  const [draftGpaNone, setDraftGpaNone] = useState('');
+  const [draftGpaLow, setDraftGpaLow] = useState('');
+  const [draftGpaHigh, setDraftGpaHigh] = useState('');
 
   // Deterministic palette for visually distinguishing cluster polygons.
   // (Only used when `properties.spray` is not set for a feature.)
@@ -81,14 +89,18 @@ const PesticidePrescriptionsView: React.FC = () => {
     setDetailGeojson(null);
     setDetailStatus(null);
     setSprayUpdates({});
+    setDetailConfig(null);
+    setThresholdsModalOpen(false);
     setDetailLoading(true);
     try {
-      const [geojson, status] = await Promise.all([
+      const [geojson, status, cfg] = await Promise.all([
         apiService.getPrescription(taskId),
         apiService.getPrescriptionStatus(taskId),
+        apiService.getPrescriptionConfig(taskId).catch(() => ({} as PrescriptionConfig)),
       ]);
       setDetailGeojson(geojson?.features ? geojson : null);
       setDetailStatus({ status: status.status, message: status.message });
+      setDetailConfig(cfg);
       const initial: Record<string, SprayLevel> = {};
       if (geojson?.features) {
         for (const f of geojson.features) {
@@ -117,6 +129,8 @@ const PesticidePrescriptionsView: React.FC = () => {
     setDetailGeojson(null);
     setDetailStatus(null);
     setSprayUpdates({});
+    setDetailConfig(null);
+    setThresholdsModalOpen(false);
   }, []);
 
   const getFeatureId = (feature: PrescriptionFeature): string | null => {
@@ -126,17 +140,75 @@ const PesticidePrescriptionsView: React.FC = () => {
     return null;
   };
 
-  const getSprayForFeature = (feature: PrescriptionFeature): SprayLevel => {
+  const getSprayForFeature = useCallback((feature: PrescriptionFeature): SprayLevel => {
     const id = getFeatureId(feature);
     if (id && sprayUpdates[id] !== undefined) return sprayUpdates[id];
     const p = feature.properties?.spray as string | undefined;
     if (p === 'none' || p === 'low' || p === 'high') return p as SprayLevel;
     return 'none';
+  }, [sprayUpdates]);
+
+  const getDisplayGpa = (f: PrescriptionFeature): string => {
+    const spray = getSprayForFeature(f);
+    const direct = f.properties?.spray_rate_gpa;
+    if (direct != null && !Number.isNaN(Number(direct))) return Number(direct).toFixed(2);
+    const c = detailConfig;
+    if (c) {
+      if (spray === 'none' && c.spray_rate_gpa_none != null) return c.spray_rate_gpa_none.toFixed(2);
+      if (spray === 'low' && c.spray_rate_gpa_low != null) return c.spray_rate_gpa_low.toFixed(2);
+      if (spray === 'high' && c.spray_rate_gpa_high != null) return c.spray_rate_gpa_high.toFixed(2);
+    }
+    return '—';
   };
 
   const setSprayForFeature = (featureId: string, level: SprayLevel) => {
     setSprayUpdates((prev) => ({ ...prev, [featureId]: level }));
   };
+
+  const openThresholdsModal = useCallback(() => {
+    const c = detailConfig ?? {};
+    setDraftGpaNone(c.spray_rate_gpa_none != null ? String(c.spray_rate_gpa_none) : '');
+    setDraftGpaLow(c.spray_rate_gpa_low != null ? String(c.spray_rate_gpa_low) : '');
+    setDraftGpaHigh(c.spray_rate_gpa_high != null ? String(c.spray_rate_gpa_high) : '');
+    setThresholdsModalOpen(true);
+  }, [detailConfig]);
+
+  const saveThresholds = useCallback(async () => {
+    if (!selectedTaskId) return;
+    setSavingThresholds(true);
+    try {
+      const current = await apiService.getPrescriptionConfig(selectedTaskId);
+      const merged: PrescriptionConfig = { ...current };
+      if (draftGpaNone.trim() !== '') merged.spray_rate_gpa_none = parseFloat(draftGpaNone);
+      if (draftGpaLow.trim() !== '') merged.spray_rate_gpa_low = parseFloat(draftGpaLow);
+      if (draftGpaHigh.trim() !== '') merged.spray_rate_gpa_high = parseFloat(draftGpaHigh);
+      const saved = await apiService.setPrescriptionConfig(selectedTaskId, merged);
+      setDetailConfig(saved);
+      const geo = await apiService.getPrescription(selectedTaskId);
+      setDetailGeojson(geo?.features ? geo : null);
+      setThresholdsModalOpen(false);
+    } catch (e) {
+      console.error('Failed to save spray thresholds', e);
+    } finally {
+      setSavingThresholds(false);
+    }
+  }, [selectedTaskId, draftGpaNone, draftGpaLow, draftGpaHigh]);
+
+  const totalGallons = useMemo(() => {
+    if (!detailGeojson?.features?.length) return null;
+    return computePrescriptionTotalGallons(detailGeojson, getSprayForFeature, detailConfig);
+  }, [detailGeojson, getSprayForFeature, detailConfig]);
+
+  const previewGallonsInModal = useMemo(() => {
+    if (!detailGeojson?.features?.length) return null;
+    const override: PrescriptionConfig = {
+      ...(detailConfig ?? {}),
+    };
+    if (draftGpaNone.trim() !== '') override.spray_rate_gpa_none = parseFloat(draftGpaNone);
+    if (draftGpaLow.trim() !== '') override.spray_rate_gpa_low = parseFloat(draftGpaLow);
+    if (draftGpaHigh.trim() !== '') override.spray_rate_gpa_high = parseFloat(draftGpaHigh);
+    return computePrescriptionTotalGallons(detailGeojson, getSprayForFeature, override);
+  }, [detailGeojson, getSprayForFeature, detailConfig, draftGpaNone, draftGpaLow, draftGpaHigh]);
 
   const saveSprayUpdates = useCallback(async () => {
     if (!selectedTaskId) return;
@@ -163,19 +235,6 @@ const PesticidePrescriptionsView: React.FC = () => {
         return 'bg-red-500/20 text-red-400';
       default:
         return 'bg-dark-500/20 text-dark-400';
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />;
-      case 'processing':
-        return <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />;
-      case 'failed':
-        return <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />;
-      default:
-        return null;
     }
   };
 
@@ -372,6 +431,7 @@ const PesticidePrescriptionsView: React.FC = () => {
                             const userSpray = fid && sprayUpdates[fid] !== undefined ? sprayUpdates[fid] : undefined;
                             const hasSpray = rawSpray != null || userSpray != null;
                             const sprayText = hasSpray ? getSprayForFeature(f) : 'Not set';
+                            const gpaText = hasSpray ? getDisplayGpa(f) : '—';
 
                             if (fid || cluster != null) {
                               layer.bindPopup(
@@ -380,7 +440,8 @@ const PesticidePrescriptionsView: React.FC = () => {
                                   <strong>Max NDVI (mean):</strong> ${
                                     ndviMaxMean !== undefined && ndviMaxMean !== null ? ndviMaxMean.toFixed(3) : 'N/A'
                                   }<br/>
-                                  <strong>Spray:</strong> ${sprayText}
+                                  <strong>Spray:</strong> ${sprayText}<br/>
+                                  <strong>Rate (gal/ac):</strong> ${gpaText}
                                 </div>`
                               );
                             }
@@ -393,8 +454,15 @@ const PesticidePrescriptionsView: React.FC = () => {
                   <div>
                     <h4 className="text-lg font-medium text-primary-400 mb-2">Spray by cluster</h4>
                     <p className="text-dark-400 text-sm mb-4">
-                      Set spray level per feature and click Save to update the prescription.
+                      Set spray level per feature and click Save spray updates. Configure gallons-per-acre rates for each
+                      level under Configure spray thresholds.
                     </p>
+                    {totalGallons != null && (
+                      <p className="text-dark-200 text-sm mb-3">
+                        <span className="font-medium text-primary-400">Estimated total spray:</span>{' '}
+                        {totalGallons.toFixed(1)} gal
+                      </p>
+                    )}
                     <div className="space-y-2 max-h-64 overflow-y-auto">
                       {detailGeojson.features.map((f, idx) => {
                         const fid = getFeatureId(f) ?? `feature-${idx}`;
@@ -402,16 +470,17 @@ const PesticidePrescriptionsView: React.FC = () => {
                         const cluster = f.properties?.cluster;
                         const ndviMaxMean = f.properties?.NDVI_max_mean;
                         return (
-                          <div key={fid} className="flex items-center justify-between bg-dark-700 rounded px-3 py-2">
+                          <div key={fid} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-dark-700 rounded px-3 py-2">
                             <span className="text-dark-200 text-sm">
                               {cluster != null ? `Cluster ${cluster}` : fid}
                               {' '}
                               Max NDVI: {ndviMaxMean != null && ndviMaxMean !== undefined ? ndviMaxMean.toFixed(3) : 'N/A'}
+                              <span className="text-dark-400"> · Rate: {getDisplayGpa(f)} gal/ac</span>
                             </span>
                             <select
                               value={spray}
                               onChange={(e) => setSprayForFeature(fid, e.target.value as SprayLevel)}
-                              className="bg-dark-600 text-dark-100 border border-dark-500 rounded px-2 py-1 text-sm"
+                              className="bg-dark-600 text-dark-100 border border-dark-500 rounded px-2 py-1 text-sm shrink-0"
                             >
                               <option value="none">None</option>
                               <option value="low">Low</option>
@@ -421,19 +490,113 @@ const PesticidePrescriptionsView: React.FC = () => {
                         );
                       })}
                     </div>
-                    <button
-                      onClick={saveSprayUpdates}
-                      disabled={savingSpray || Object.keys(sprayUpdates).length === 0}
-                      className="mt-4 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {savingSpray ? 'Saving…' : 'Save spray updates'}
-                    </button>
+                    <div className="mt-4 flex flex-wrap gap-2 items-center">
+                      <button
+                        type="button"
+                        onClick={openThresholdsModal}
+                        className="px-4 py-2 bg-dark-600 text-dark-100 border border-dark-500 rounded-lg hover:bg-dark-500"
+                      >
+                        Configure spray thresholds
+                      </button>
+                      <button
+                        type="button"
+                        onClick={saveSprayUpdates}
+                        disabled={savingSpray || Object.keys(sprayUpdates).length === 0}
+                        className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {savingSpray ? 'Saving…' : 'Save spray updates'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (
                 <p className="text-dark-400">No GeoJSON features to display.</p>
               )}
             </div>
+
+            {thresholdsModalOpen && (
+              <div
+                className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4"
+                onClick={() => setThresholdsModalOpen(false)}
+                role="presentation"
+              >
+                <div
+                  className="bg-dark-800 rounded-lg border border-dark-600 max-w-md w-full p-6 shadow-xl"
+                  onClick={(e) => e.stopPropagation()}
+                  role="dialog"
+                  aria-labelledby="spray-thresholds-title"
+                >
+                  <h4 id="spray-thresholds-title" className="text-lg font-semibold text-primary-400 mb-2">
+                    Spray thresholds (gal/ac)
+                  </h4>
+                  <p className="text-dark-400 text-sm mb-4">
+                    Gallons per acre for each spray level. These are stored in the field config and applied to each cluster
+                    as <span className="text-dark-200">spray_rate_gpa</span> when you save.
+                  </p>
+                  <div className="space-y-3">
+                    <label className="block text-sm text-dark-200">
+                      None
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        value={draftGpaNone}
+                        onChange={(e) => setDraftGpaNone(e.target.value)}
+                        className="mt-1 w-full bg-dark-700 border border-dark-600 rounded px-3 py-2 text-dark-100"
+                        placeholder="e.g. 0"
+                      />
+                    </label>
+                    <label className="block text-sm text-dark-200">
+                      Low
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        value={draftGpaLow}
+                        onChange={(e) => setDraftGpaLow(e.target.value)}
+                        className="mt-1 w-full bg-dark-700 border border-dark-600 rounded px-3 py-2 text-dark-100"
+                        placeholder="e.g. 5"
+                      />
+                    </label>
+                    <label className="block text-sm text-dark-200">
+                      High
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        value={draftGpaHigh}
+                        onChange={(e) => setDraftGpaHigh(e.target.value)}
+                        className="mt-1 w-full bg-dark-700 border border-dark-600 rounded px-3 py-2 text-dark-100"
+                        placeholder="e.g. 12"
+                      />
+                    </label>
+                  </div>
+                  {previewGallonsInModal != null && (
+                    <p className="text-dark-200 text-sm mt-4">
+                      <span className="font-medium text-primary-400">Preview total spray:</span>{' '}
+                      {previewGallonsInModal.toFixed(1)} gal (uses draft rates above with current cluster areas)
+                    </p>
+                  )}
+                  <div className="mt-6 flex gap-2 justify-end flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setThresholdsModalOpen(false)}
+                      className="px-4 py-2 bg-dark-600 text-dark-100 border border-dark-500 rounded-lg hover:bg-dark-500"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveThresholds}
+                      disabled={savingThresholds}
+                      className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
+                    >
+                      {savingThresholds ? 'Saving…' : 'Save thresholds'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

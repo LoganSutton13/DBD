@@ -11,7 +11,7 @@ const GalleryView: React.FC = () => {
   const [previewUrl, setPreviewUrl] = useState<string>('');
   const [previewTitle, setPreviewTitle] = useState<string>('');
   const [blobObjectUrl, setBlobObjectUrl] = useState<string | null>(null);
-  const [numPages, setNumPages] = useState<number | null>(null);
+  const [, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState<number>(1);
 
   pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;

@@ -46,6 +46,69 @@ def _normalize_fid(value: Any) -> Optional[str]:
     return str(value)
 
 
+def _gpa_for_spray_level(config: Dict[str, Any], spray: str) -> Optional[float]:
+    key = {
+        "none": "spray_rate_gpa_none",
+        "low": "spray_rate_gpa_low",
+        "high": "spray_rate_gpa_high",
+    }.get(spray)
+    if key is None:
+        return None
+    val = config.get(key)
+    if val is None:
+        return None
+    return float(val)
+
+
+def apply_spray_rate_gpa_to_geojson(geojson: Dict[str, Any], config: Dict[str, Any]) -> None:
+    """
+    Set properties.spray_rate_gpa on each feature from properties.spray and config thresholds.
+    Removes spray_rate_gpa when the level has no threshold.
+    """
+    features = geojson.get("features")
+    if not isinstance(features, list):
+        return
+
+    for feature in features:
+        if not isinstance(feature, dict):
+            continue
+        props = feature.get("properties")
+        if not isinstance(props, dict):
+            continue
+        spray = props.get("spray")
+        if spray not in ("none", "low", "high"):
+            props.pop("spray_rate_gpa", None)
+            continue
+        gpa = _gpa_for_spray_level(config, spray)
+        if gpa is None:
+            props.pop("spray_rate_gpa", None)
+        else:
+            props["spray_rate_gpa"] = gpa
+
+
+def _write_prescription_geojson(path: Path, geojson: Dict[str, Any]) -> None:
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(geojson, f, ensure_ascii=False, indent=2)
+        tmp_path.replace(path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
+
+
+def refresh_prescription_spray_rates(task_id: str, storage: FileStorageService) -> None:
+    """Recompute spray_rate_gpa on all features from config; no-op if no prescription file."""
+    path = storage.get_prescription_path(task_id)
+    if not path:
+        return
+    config = storage.read_prescription_config(task_id) or {}
+    with open(path, "r", encoding="utf-8") as f:
+        geojson: Dict[str, Any] = json.load(f)
+    apply_spray_rate_gpa_to_geojson(geojson, config)
+    _write_prescription_geojson(Path(path), geojson)
+
+
 def update_prescription(
     task_id: str,
     body: PrescriptionUpdateRequest,
@@ -89,15 +152,11 @@ def update_prescription(
                 feature["properties"]["spray"] = updates_by_id[fid_str]
                 break
 
+    config = storage.read_prescription_config(task_id) or {}
+    apply_spray_rate_gpa_to_geojson(geojson, config)
+
     path = Path(path)
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    try:
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(geojson, f, ensure_ascii=False, indent=2)
-        tmp_path.replace(path)
-    finally:
-        if tmp_path.exists():
-            tmp_path.unlink(missing_ok=True)
+    _write_prescription_geojson(path, geojson)
 
     return geojson
 
@@ -148,16 +207,28 @@ def get_prescription_status(
     return PrescriptionStatusResponse(taskId=task_id, status=status, message=message)
 
 
+def get_prescription_config(task_id: str, storage: FileStorageService) -> PrescriptionConfig:
+    """Return merged prescription config for a task, or empty defaults if none exists."""
+    raw = storage.read_prescription_config(task_id)
+    if not raw:
+        return PrescriptionConfig()
+    return PrescriptionConfig.model_validate(raw)
+
+
 def set_prescription_config(
     task_id: str,
     config: PrescriptionConfig,
     storage: FileStorageService,
 ) -> PrescriptionConfig:
     """
-    Store per-task configuration for the prescription job.
+    Merge and store per-task configuration for the prescription job.
 
-    This does not immediately trigger a re-run; it only persists configuration
-    that will be used the next time the prescription module is invoked.
+    Incoming fields overlay existing JSON so partial updates preserve other keys.
+    After saving, refreshes spray_rate_gpa on the prescription GeoJSON when present.
     """
-    storage.write_prescription_config(task_id, config.model_dump(exclude_none=True))
-    return config
+    existing = storage.read_prescription_config(task_id) or {}
+    incoming = config.model_dump(exclude_none=True)
+    merged: Dict[str, Any] = {**existing, **incoming}
+    storage.write_prescription_config(task_id, merged)
+    refresh_prescription_spray_rates(task_id, storage)
+    return PrescriptionConfig.model_validate(merged)
