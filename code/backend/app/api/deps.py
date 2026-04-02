@@ -24,6 +24,10 @@ def get_rtk_base_config_path(path_jobs_dir: Path = Depends(get_path_jobs_dir)) -
     return path_jobs_dir / "rtk_base_config.json"
 
 
+def get_upload_settings_config_path(path_jobs_dir: Path = Depends(get_path_jobs_dir)) -> Path:
+    return path_jobs_dir / "upload_settings.json"
+
+
 def get_path_jobs_store_dep():
     """Dependency that returns the path jobs in-memory store."""
     return get_path_jobs_store()

@@ -7,14 +7,17 @@ import {
   UploadInitResponse,
   ChunkedFileInfo,
   TaskStatusResponse,
-  ProcessingTask,
+  UploadSystemSettings,
+  UploadSystemSettingsUpdate,
 } from '../types/upload';
 import {
+  DisplayPathResponse,
   PrescriptionListResponse,
   PrescriptionStatusResponse,
   PrescriptionGeoJSON,
   PrescriptionUpdateRequest,
   PrescriptionConfig,
+  RobotPathRawResponse,
 } from '../types/prescription';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001';
@@ -138,6 +141,53 @@ class ApiService {
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`Upload finalize failed: ${response.status} ${errorText}`);
+    }
+    return response.json();
+  }
+
+  async uploadBoundaryFiles(taskId: string, files: File[]): Promise<{ message: string; task_id: string; file_count: number; files: string[] }> {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file));
+    const response = await fetch(`${this.baseUrl}/api/v1/upload/${taskId}/boundary`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Boundary upload failed: ${response.status} ${errorText}`);
+    }
+    return response.json();
+  }
+
+  async getUploadSettings(): Promise<UploadSystemSettings> {
+    const response = await fetch(`${this.baseUrl}/api/v1/upload/settings`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to get upload settings: ${response.status} ${errorText}`);
+    }
+    return response.json();
+  }
+
+  async updateUploadSettings(body: UploadSystemSettingsUpdate): Promise<UploadSystemSettings> {
+    const response = await fetch(`${this.baseUrl}/api/v1/upload/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to update upload settings: ${response.status} ${errorText}`);
+    }
+    return response.json();
+  }
+
+  async resetUploadSettings(): Promise<UploadSystemSettings> {
+    const response = await fetch(`${this.baseUrl}/api/v1/upload/settings/reset`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to reset upload settings: ${response.status} ${errorText}`);
     }
     return response.json();
   }
@@ -279,6 +329,61 @@ class ApiService {
     return response.json();
   }
 
+  async submitPathJobFromTask(
+    taskId: string,
+    heading: number,
+    robotWidth: number,
+    coverageWidth: number,
+    boundaryName?: string,
+    rtkBase?: { longitude: number; latitude: number }
+  ): Promise<{
+    path_job_id: string;
+    status: string;
+    heading: number;
+    robot_width: number;
+    coverage_width: number;
+    files: string[];
+    boundary_name?: string;
+  }> {
+    const buildFormData = () => {
+      const formData = new FormData();
+      formData.append('task_id', taskId);
+      formData.append('heading', heading.toString());
+      formData.append('robot_width', robotWidth.toString());
+      formData.append('coverage_width', coverageWidth.toString());
+      if (boundaryName !== undefined && boundaryName !== '') {
+        formData.append('boundary_name', boundaryName);
+      }
+      if (rtkBase !== undefined) {
+        formData.append('base_lon', rtkBase.longitude.toString());
+        formData.append('base_lat', rtkBase.latitude.toString());
+      }
+      return formData;
+    };
+
+    const attempt = async (path: string) => {
+      const response = await fetch(`${this.baseUrl}${path}`, {
+        method: 'POST',
+        body: buildFormData(),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Path job failed: ${response.status} ${text}`);
+      }
+      return response.json();
+    };
+
+    try {
+      return await attempt('/api/v1/pathing/jobs/from-task');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      if (!message.includes('404') && !message.includes('405')) {
+        throw error;
+      }
+      return attempt('/api/v1/pathing/from-task');
+    }
+  }
+
   /**
    * Save the current path to a NodeODM task (stitched field). Call after linking; persists robot_path.json.
    */
@@ -363,6 +468,30 @@ class ApiService {
     if (!response.ok) {
       const text = await response.text();
       throw new Error(`Get prescription failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Get robot-native saved path for a task.
+   */
+  async getTaskRobotPath(taskId: string): Promise<RobotPathRawResponse> {
+    const response = await fetch(`${this.baseUrl}/api/v1/results/${taskId}/robot-path`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Get robot path failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Get display-safe path coordinates (EPSG:4326) for frontend map overlays.
+   */
+  async getTaskDisplayPath(taskId: string): Promise<DisplayPathResponse> {
+    const response = await fetch(`${this.baseUrl}/api/v1/results/${taskId}/display-path`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Get display path failed: ${response.status} ${text}`);
     }
     return response.json();
   }

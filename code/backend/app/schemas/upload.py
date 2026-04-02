@@ -28,3 +28,10 @@ class TaskStatusResponse(BaseModel):
     """NodeODM task status (GET /{task_id}/status)."""
     status: str
     progress: str
+
+
+class BoundaryUploadResponse(BaseModel):
+    message: str
+    task_id: str
+    file_count: int
+    files: List[str]

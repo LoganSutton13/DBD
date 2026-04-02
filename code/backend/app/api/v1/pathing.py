@@ -96,6 +96,46 @@ async def upload_shape_files(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/from-task", response_model=PathJobAcceptedResponse, status_code=202)
+@router.post("/jobs/from-task", response_model=PathJobAcceptedResponse, status_code=202)
+async def upload_shape_files_from_task(
+    background_tasks: BackgroundTasks,
+    path_jobs_dir=Depends(get_path_jobs_dir),
+    rtk_base_config_path=Depends(get_rtk_base_config_path),
+    path_jobs_store=Depends(get_path_jobs_store_dep),
+    shapefile_extensions=Depends(get_shapefile_extensions),
+    storage=Depends(get_file_storage_service),
+    task_id: str = Form(...),
+    heading: float = Form(0.0),
+    robot_width: float = Form(0.0),
+    coverage_width: float = Form(0.0),
+    boundary_name: Optional[str] = Form(None),
+    base_lon: Optional[float] = Form(None),
+    base_lat: Optional[float] = Form(None),
+):
+    """Generate a path from boundary files already stored on the specified task."""
+    try:
+        return await pathing_handlers.upload_shape_files_from_task(
+            background_tasks=background_tasks,
+            path_jobs_dir=path_jobs_dir,
+            rtk_base_config_path=rtk_base_config_path,
+            path_jobs_store=path_jobs_store,
+            shapefile_extensions=shapefile_extensions,
+            task_results_dir=storage.results_dir,
+            task_id=task_id,
+            heading=heading,
+            robot_width=robot_width,
+            coverage_width=coverage_width,
+            boundary_name=boundary_name,
+            base_lon=base_lon,
+            base_lat=base_lat,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.get("/{path_job_id}/status", response_model=PathJobStatusResponse)
 def get_path_job_status(
     path_job_id: str,

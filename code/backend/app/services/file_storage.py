@@ -34,6 +34,9 @@ REPORT_FILE = "report.pdf"
 PRESCRIPTION_FILE = "prescription.geojson"
 PRESCRIPTION_STATUS_FILE = "prescription_status.json"
 PRESCRIPTION_CONFIG_FILE = "prescription_config.json"
+ROBOT_PATH_FILE = "robot_path.json"
+DISPLAY_PATH_FILE = "display_path.geojson"
+ROBOT_PATH_METADATA_FILE = "path_metadata.json"
 
 # Local API base paths
 PRESCRIPTION_BASE_PATH = "/api/v1/prescription"
@@ -369,6 +372,21 @@ class FileStorageService:
     def get_prescription_path(self, task_id: str) -> Optional[Path]:
         """Get local path for a prescription GeoJSON file, or None if not found."""
         file_path = self.results_dir / task_id / PRESCRIPTION_FILE
+        return file_path if file_path.exists() else None
+
+    def get_robot_path_path(self, task_id: str) -> Optional[Path]:
+        """Get local path for the saved robot path file, or None if missing."""
+        file_path = self.results_dir / task_id / ROBOT_PATH_FILE
+        return file_path if file_path.exists() else None
+
+    def get_display_path_path(self, task_id: str) -> Optional[Path]:
+        """Get local path for display path GeoJSON, or None if missing."""
+        file_path = self.results_dir / task_id / DISPLAY_PATH_FILE
+        return file_path if file_path.exists() else None
+
+    def get_robot_path_metadata_path(self, task_id: str) -> Optional[Path]:
+        """Get local path for robot/display path metadata JSON, or None if missing."""
+        file_path = self.results_dir / task_id / ROBOT_PATH_METADATA_FILE
         return file_path if file_path.exists() else None
 
     def list_tasks_with_prescription(self) -> List[Dict[str, str]]:

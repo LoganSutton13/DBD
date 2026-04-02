@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 # Only the most recent path job is kept in memory (single entry for preview).
 _path_jobs: Dict[str, Dict[str, Any]] = {}
 
+DISPLAY_PATH_FILENAME = "display_path.geojson"
+PATH_METADATA_FILENAME = "path_metadata.json"
+
 
 def get_path_jobs_store() -> Dict[str, Dict[str, Any]]:
     """Return the in-memory path jobs store (for DI)."""
@@ -51,6 +54,18 @@ def _write_rtk_base_config(rtk_base_config_path: Path, longitude: float, latitud
     rtk_base_config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(rtk_base_config_path, "w", encoding="utf-8") as f:
         json.dump({"longitude": longitude, "latitude": latitude}, f, indent=2)
+
+
+def _resolve_base_station_coords(
+    rtk_base_config_path: Path,
+    base_lon: Optional[float],
+    base_lat: Optional[float],
+) -> Tuple[float, float]:
+    if base_lon is not None and base_lat is not None and (base_lon != 0 or base_lat != 0):
+        base_station_coords = (float(base_lon), float(base_lat))
+        _write_rtk_base_config(rtk_base_config_path, base_station_coords[0], base_station_coords[1])
+        return base_station_coords
+    return _read_rtk_base_config(rtk_base_config_path)
 
 
 def _run_path_generation_sync(
@@ -194,11 +209,11 @@ async def upload_shape_files(
         job_dir.rmdir()
         raise ValueError("At least one .shp file is required")
 
-    if base_lon is not None and base_lat is not None and (base_lon != 0 or base_lat != 0):
-        base_station_coords = (float(base_lon), float(base_lat))
-        _write_rtk_base_config(rtk_base_config_path, base_station_coords[0], base_station_coords[1])
-    else:
-        base_station_coords = _read_rtk_base_config(rtk_base_config_path)
+    base_station_coords = _resolve_base_station_coords(
+        rtk_base_config_path=rtk_base_config_path,
+        base_lon=base_lon,
+        base_lat=base_lat,
+    )
 
     path_jobs_store.clear()
     path_jobs_store[path_job_id] = {
@@ -211,6 +226,90 @@ async def upload_shape_files(
         "generated_at": None,
         "boundary_name": boundary_name,
         "files": saved_names,
+        "base_station_coords": base_station_coords,
+    }
+
+    background_tasks.add_task(
+        _run_path_generation_task,
+        path_job_id,
+        job_dir,
+        heading,
+        robot_width,
+        coverage_width,
+        base_station_coords,
+        path_jobs_store,
+    )
+
+    return PathJobAcceptedResponse(
+        message="Path generation started",
+        path_job_id=path_job_id,
+        status="processing",
+        heading=heading,
+        robot_width=robot_width,
+        coverage_width=coverage_width,
+        files=saved_names,
+        boundary_name=boundary_name,
+    )
+
+
+async def upload_shape_files_from_task(
+    background_tasks: Any,
+    path_jobs_dir: Path,
+    rtk_base_config_path: Path,
+    path_jobs_store: Dict[str, Dict[str, Any]],
+    shapefile_extensions: Tuple[str, ...],
+    task_results_dir: Path,
+    task_id: str,
+    heading: float,
+    robot_width: float,
+    coverage_width: float,
+    boundary_name: Optional[str],
+    base_lon: Optional[float],
+    base_lat: Optional[float],
+) -> PathJobAcceptedResponse:
+    """Start path generation by reading boundary files already stored for a task."""
+    source_task_dir = task_results_dir / task_id.strip()
+    if not source_task_dir.exists():
+        raise FileNotFoundError("Task not found")
+
+    path_job_id = str(uuid.uuid4())
+    job_dir = path_jobs_dir / path_job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+
+    saved_names: List[str] = []
+    extension_set = set(shapefile_extensions)
+    for path in source_task_dir.iterdir():
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in extension_set:
+            continue
+        target_path = job_dir / path.name
+        shutil.copy2(path, target_path)
+        saved_names.append(path.name)
+
+    if not saved_names:
+        raise ValueError("No stored boundary files found for task")
+    if not any(name.lower().endswith(".shp") for name in saved_names):
+        raise ValueError("Stored boundary is missing required .shp file")
+
+    base_station_coords = _resolve_base_station_coords(
+        rtk_base_config_path=rtk_base_config_path,
+        base_lon=base_lon,
+        base_lat=base_lat,
+    )
+
+    path_jobs_store.clear()
+    path_jobs_store[path_job_id] = {
+        "status": "processing",
+        "error": None,
+        "waypoints": None,
+        "heading": heading,
+        "robot_width": robot_width,
+        "coverage_width": coverage_width,
+        "generated_at": None,
+        "boundary_name": boundary_name,
+        "files": saved_names,
+        "base_station_coords": base_station_coords,
     }
 
     background_tasks.add_task(
@@ -280,7 +379,7 @@ def save_path_to_task(
     path_jobs_store: Dict[str, Dict[str, Any]],
     results_dir: Path,
 ) -> PathSaveResponse:
-    """Persist generated path to task folder (robot_path.json)."""
+    """Persist generated path to task folder (robot + display artifacts)."""
     if path_job_id not in path_jobs_store:
         raise KeyError("Path job not found")
     store = path_jobs_store[path_job_id]
@@ -302,6 +401,55 @@ def save_path_to_task(
     dest = task_dir / "robot_path.json"
     shutil.copy2(track_src, dest)
     logger.info("Saved robot_path.json to task folder %s", task_dir)
+
+    # Persist display path in explicit geographic CRS for frontend map overlays.
+    display_geojson_path = task_dir / DISPLAY_PATH_FILENAME
+    waypoints = store.get("waypoints") or []
+    display_coordinates = []
+    for waypoint in waypoints:
+        if not isinstance(waypoint, dict):
+            continue
+        lon = waypoint.get("lon")
+        lat = waypoint.get("lat")
+        if isinstance(lon, (int, float)) and isinstance(lat, (int, float)):
+            display_coordinates.append([float(lon), float(lat)])
+    if display_coordinates:
+        display_geojson_payload = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {"source": "path_job_preview"},
+                    "geometry": {
+                        "type": "LineString",
+                        "coordinates": display_coordinates,
+                    },
+                }
+            ],
+        }
+        with open(display_geojson_path, "w", encoding="utf-8") as f:
+            json.dump(display_geojson_payload, f, indent=2)
+
+    base_station_coords = store.get("base_station_coords") or (0.0, 0.0)
+    is_relative = bool(
+        isinstance(base_station_coords, (list, tuple))
+        and len(base_station_coords) == 2
+        and (float(base_station_coords[0]) != 0.0 or float(base_station_coords[1]) != 0.0)
+    )
+    metadata_payload = {
+        "robot_frame": "robot_relative" if is_relative else "map_geographic",
+        "robot_crs": "UTM-relative-from-rtk-base" if is_relative else "EPSG:4326",
+        "robot_units": "meters" if is_relative else "degrees",
+        "display_frame": "map_display",
+        "display_crs": "EPSG:4326",
+        "display_units": "degrees",
+        "rtk_base": {
+            "longitude": float(base_station_coords[0]),
+            "latitude": float(base_station_coords[1]),
+        },
+    }
+    with open(task_dir / PATH_METADATA_FILENAME, "w", encoding="utf-8") as f:
+        json.dump(metadata_payload, f, indent=2)
 
     # Copy boundary shapefile components into task dir so prescription module can find them
     job_path = Path(job_dir)

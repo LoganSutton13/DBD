@@ -1,4 +1,4 @@
-"""Results API request/response schemas. Field names match current API contract."""
+"""Results API request/response schemas."""
 
 from typing import Optional
 
@@ -9,6 +9,8 @@ class TaskSummaryResponse(BaseModel):
     taskId: str
     orthophotoPngUrl: Optional[str] = None
     reportPdfUrl: Optional[str] = None
+    robotPathUrl: Optional[str] = None
+    displayPathUrl: Optional[str] = None
 
 
 class TaskResultItem(BaseModel):
@@ -17,3 +19,31 @@ class TaskResultItem(BaseModel):
     orthophotoPngUrl: str
     reportPdfUrl: str
     taskName: Optional[str] = None
+    robotPathUrl: Optional[str] = None
+    displayPathUrl: Optional[str] = None
+
+
+class DisplayPathPoint(BaseModel):
+    lat: float
+    lon: float
+
+
+class DisplayPathResponse(BaseModel):
+    taskId: str
+    frame: str
+    crs: str
+    units: str
+    waypoints: list[DisplayPathPoint]
+
+
+class RobotPathRawPoint(BaseModel):
+    x: float
+    y: float
+
+
+class RobotPathRawResponse(BaseModel):
+    taskId: str
+    frame: str
+    crs: str
+    units: str
+    waypoints: list[RobotPathRawPoint]
