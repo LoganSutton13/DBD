@@ -11,7 +11,9 @@ from app.services.file_storage import FileStorageService
 
 
 def get_upload_dir() -> Path:
-    return Path(settings.UPLOAD_DIR)
+    path = Path(settings.UPLOAD_DIR)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def get_path_jobs_dir() -> Path:
@@ -20,12 +22,12 @@ def get_path_jobs_dir() -> Path:
     return path
 
 
-def get_rtk_base_config_path(path_jobs_dir: Path = Depends(get_path_jobs_dir)) -> Path:
-    return path_jobs_dir / "rtk_base_config.json"
+def get_rtk_base_config_path(upload_dir: Path = Depends(get_upload_dir)) -> Path:
+    return upload_dir / "rtk_base_config.json"
 
 
-def get_upload_settings_config_path(path_jobs_dir: Path = Depends(get_path_jobs_dir)) -> Path:
-    return path_jobs_dir / "upload_settings.json"
+def get_upload_settings_config_path(upload_dir: Path = Depends(get_upload_dir)) -> Path:
+    return upload_dir / "upload_settings.json"
 
 
 def get_path_jobs_store_dep():

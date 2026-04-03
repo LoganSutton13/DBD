@@ -18,6 +18,7 @@ import logging
 import pyodm
 
 from ..core.config import settings
+from ..handlers import upload_settings as upload_settings_handlers
 
 LOGGER = logging.getLogger(__name__)
 
@@ -213,8 +214,12 @@ class FileStorageService:
             self.write_prescription_status(task_id, "failed", msg)
             return
 
-        # Load optional per-task configuration, if any.
-        config = self.read_prescription_config(task_id) or {}
+        # Global prescription defaults (upload_settings.json) merged with per-task overrides.
+        upload_settings_path = Path(settings.UPLOAD_DIR) / "upload_settings.json"
+        config = upload_settings_handlers.merge_prescription_config_for_r(
+            upload_settings_path,
+            self.read_prescription_config(task_id),
+        )
 
         # Allow overriding the Rscript binary path via environment variable.
         rscript_binary = os.getenv("PRESCRIPTION_RSCRIPT_PATH", "Rscript")

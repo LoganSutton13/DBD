@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { UploadSystemSettings, UploadSystemSettingsUpdate } from '../types/upload';
+import {
+  DEFAULT_PRESCRIPTION_MODULE,
+  UploadSystemSettings,
+  UploadSystemSettingsUpdate,
+} from '../types/upload';
 
 interface UploadSettingsModalProps {
   isOpen: boolean;
@@ -13,6 +17,8 @@ interface UploadSettingsModalProps {
     rtkBase: { longitude: number; latitude: number }
   ) => Promise<void>;
   onReset: () => Promise<void>;
+  onResetNodeOdm: () => Promise<void>;
+  onResetPrescription: () => Promise<void>;
 }
 
 const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
@@ -24,6 +30,8 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
   onClose,
   onSave,
   onReset,
+  onResetNodeOdm,
+  onResetPrescription,
 }) => {
   const [local, setLocal] = useState<UploadSystemSettings | null>(null);
   const [localRtkBase, setLocalRtkBase] = useState<{ longitude: number; latitude: number }>({
@@ -33,7 +41,13 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
 
   useEffect(() => {
     if (isOpen && settings) {
-      setLocal(settings);
+      setLocal({
+        ...settings,
+        prescription: {
+          ...DEFAULT_PRESCRIPTION_MODULE,
+          ...(settings.prescription ?? {}),
+        },
+      });
     }
     if (isOpen && rtkBase) {
       setLocalRtkBase(rtkBase);
@@ -52,6 +66,23 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
             ...prev,
             nodeodm: {
               ...prev.nodeodm,
+              [key]: value,
+            },
+          }
+        : prev
+    );
+  };
+
+  const updatePrescription = <K extends keyof UploadSystemSettings['prescription']>(
+    key: K,
+    value: UploadSystemSettings['prescription'][K]
+  ) => {
+    setLocal((prev) =>
+      prev
+        ? {
+            ...prev,
+            prescription: {
+              ...prev.prescription,
               [key]: value,
             },
           }
@@ -103,7 +134,17 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
           </section>
 
           <section className="rounded-lg border border-dark-600 bg-dark-700 p-4">
-            <h4 className="mb-3 text-sm font-semibold text-primary-400">NodeODM Processing</h4>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold text-primary-400">NodeODM Processing</h4>
+              <button
+                type="button"
+                className="rounded bg-dark-600 px-3 py-1.5 text-xs text-dark-100 hover:bg-dark-500 disabled:opacity-50"
+                disabled={isSaving}
+                onClick={() => onResetNodeOdm()}
+              >
+                Reset NodeODM defaults
+              </button>
+            </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <label className="text-sm text-dark-300">
                 Radiometric calibration
@@ -200,6 +241,102 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
               </label>
             </div>
           </section>
+          <section className="rounded-lg border border-dark-600 bg-dark-700 p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold text-primary-400">Prescription module</h4>
+              <button
+                type="button"
+                className="rounded bg-dark-600 px-3 py-1.5 text-xs text-dark-100 hover:bg-dark-500 disabled:opacity-50"
+                disabled={isSaving}
+                onClick={() => onResetPrescription()}
+              >
+                Reset prescription defaults
+              </button>
+            </div>
+            <p className="mb-3 text-xs text-dark-400">
+              Defaults match the R script. Per-field overrides may still apply when set for a task. Output paths are always set by the system.
+            </p>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label className="text-sm text-dark-300">
+                Cell size (m), empty = automatic
+                <input
+                  className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Automatic"
+                  value={local.prescription.cell_size == null ? '' : String(local.prescription.cell_size)}
+                  onChange={(e) => {
+                    const v = e.target.value.trim();
+                    if (v === '') updatePrescription('cell_size', null);
+                    else {
+                      const n = parseFloat(v);
+                      if (!Number.isNaN(n)) updatePrescription('cell_size', n);
+                    }
+                  }}
+                />
+              </label>
+              <label className="text-sm text-dark-300">
+                Cluster count
+                <input
+                  className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={local.prescription.cluster_count}
+                  onChange={(e) => updatePrescription('cluster_count', parseInt(e.target.value, 10) || 1)}
+                />
+              </label>
+              <label className="text-sm text-dark-300">
+                Smoothing rounds
+                <input
+                  className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={local.prescription.smoothing_rounds}
+                  onChange={(e) => updatePrescription('smoothing_rounds', parseInt(e.target.value, 10) || 0)}
+                />
+              </label>
+              <label className="text-sm text-dark-300">
+                Smoothing sigma
+                <input
+                  className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={local.prescription.smoothing_sigma}
+                  onChange={(e) => updatePrescription('smoothing_sigma', parseInt(e.target.value, 10) || 1)}
+                />
+              </label>
+              <label className="text-sm text-dark-300">
+                Maximum vertices
+                <input
+                  className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={local.prescription.maximum_vertices}
+                  onChange={(e) => updatePrescription('maximum_vertices', parseInt(e.target.value, 10) || 1)}
+                />
+              </label>
+              <label className="text-sm text-dark-300">
+                NDVI threshold (healthy classification)
+                <input
+                  className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
+                  type="number"
+                  min={-1}
+                  max={1}
+                  step="0.01"
+                  value={local.prescription.ndvi_threshold}
+                  onChange={(e) => {
+                    const n = parseFloat(e.target.value);
+                    if (!Number.isNaN(n)) updatePrescription('ndvi_threshold', Math.min(1, Math.max(-1, n)));
+                  }}
+                />
+              </label>
+            </div>
+          </section>
+
 
           <section className="rounded-lg border border-dark-600 bg-dark-700 p-4">
             <h4 className="mb-3 text-sm font-semibold text-primary-400">RTK Base Station</h4>
@@ -265,6 +402,14 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
                     texturing_skip_global_seam_leveling: local.nodeodm.texturing_skip_global_seam_leveling,
                     pc_quality: local.nodeodm.pc_quality,
                   },
+                  prescription: {
+                    cell_size: local.prescription.cell_size,
+                    cluster_count: local.prescription.cluster_count,
+                    smoothing_rounds: local.prescription.smoothing_rounds,
+                    smoothing_sigma: local.prescription.smoothing_sigma,
+                    maximum_vertices: local.prescription.maximum_vertices,
+                    ndvi_threshold: local.prescription.ndvi_threshold,
+                  },
                 },
                 localRtkBase
               )
@@ -277,7 +422,7 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
             disabled={isSaving}
             onClick={onReset}
           >
-            Reset NodeODM Settings To Defaults
+            Reset all settings to defaults
           </button>
         </div>
       </div>

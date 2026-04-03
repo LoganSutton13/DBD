@@ -142,7 +142,7 @@ async def upload_boundary_files(
 def get_upload_settings(
     upload_settings_config_path=Depends(get_upload_settings_config_path),
 ):
-    """Get global upload defaults (robot/path + NodeODM options)."""
+    """Get global upload defaults (robot/path, NodeODM, prescription module)."""
     return upload_settings_handlers.get_upload_settings(upload_settings_config_path)
 
 
@@ -161,6 +161,22 @@ def reset_upload_settings(
 ):
     """Reset global upload defaults to built-in values."""
     return upload_settings_handlers.reset_upload_settings(upload_settings_config_path)
+
+
+@router.post("/settings/reset/prescription", response_model=UploadSettingsResponse)
+def reset_prescription_module_settings(
+    upload_settings_config_path=Depends(get_upload_settings_config_path),
+):
+    """Reset only prescription module defaults; robot, NodeODM, and RTK unchanged."""
+    return upload_settings_handlers.reset_prescription_module_settings(upload_settings_config_path)
+
+
+@router.post("/settings/reset/nodeodm", response_model=UploadSettingsResponse)
+def reset_nodeodm_settings(
+    upload_settings_config_path=Depends(get_upload_settings_config_path),
+):
+    """Reset only NodeODM processing defaults; robot, prescription, and RTK unchanged."""
+    return upload_settings_handlers.reset_nodeodm_settings(upload_settings_config_path)
 
 
 @router.get("/{task_id}/status", response_model=TaskStatusResponse)

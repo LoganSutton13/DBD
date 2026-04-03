@@ -452,6 +452,32 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
     }
   };
 
+  const resetPrescriptionSettings = async () => {
+    setIsSavingSettings(true);
+    setSettingsError(null);
+    try {
+      const updated = await apiService.resetPrescriptionModuleSettings();
+      setSettings(updated);
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : 'Failed to reset prescription settings');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  const resetNodeOdmSettings = async () => {
+    setIsSavingSettings(true);
+    setSettingsError(null);
+    try {
+      const updated = await apiService.resetNodeOdmSettings();
+      setSettings(updated);
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : 'Failed to reset NodeODM settings');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <UploadSettingsModal
@@ -467,6 +493,8 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
         onClose={() => setIsSettingsOpen(false)}
         onSave={saveSettings}
         onReset={resetSettings}
+        onResetNodeOdm={resetNodeOdmSettings}
+        onResetPrescription={resetPrescriptionSettings}
       />
 
       <div className="rounded-lg border border-dark-700 bg-dark-800 p-8">
