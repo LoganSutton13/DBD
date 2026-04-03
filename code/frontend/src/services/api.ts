@@ -459,6 +459,18 @@ class ApiService {
   }
 
   /**
+   * Get per-task prescription module configuration (merged JSON on disk).
+   */
+  async getPrescriptionConfig(taskId: string): Promise<PrescriptionConfig> {
+    const response = await fetch(`${this.baseUrl}/api/v1/prescription/${taskId}/config`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Get prescription config failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
    * Get prescription GeoJSON for a task.
    */
   async getPrescription(taskId: string): Promise<PrescriptionGeoJSON> {

@@ -293,6 +293,8 @@ def test_prescription_put_valid_body_cluster_only_float_cluster_returns_200_and_
     assert data["features"][0]["properties"]["spray"] == "low"
     get_r = client.get(f"/api/v1/prescription/{task_id}")
     assert get_r.json()["features"][0]["properties"]["spray"] == "low"
+
+
 def test_prescription_put_invalid_body_returns_422(client, results_dir: Path):
     """PUT /api/v1/prescription/{task_id} with invalid body (e.g. invalid spray) returns 422."""
     task_id = "task-rx-422"
@@ -301,3 +303,67 @@ def test_prescription_put_invalid_body_returns_422(client, results_dir: Path):
     (task_dir / "prescription.geojson").write_text('{"type":"FeatureCollection","features":[]}')
     r = client.put(f"/api/v1/prescription/{task_id}", json={"updates": [{"featureId": "1", "spray": "invalid"}]})
     assert r.status_code == 422
+
+
+def test_prescription_get_config_returns_defaults_when_missing(client, results_dir: Path):
+    """GET /api/v1/prescription/{task_id}/config returns 200 with null fields when no config file."""
+    task_id = "task-rx-cfg-get"
+    (results_dir / task_id).mkdir(parents=True)
+    r = client.get(f"/api/v1/prescription/{task_id}/config")
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("heading") is None
+    assert data.get("spray_rate_gpa_low") is None
+
+
+def test_prescription_get_config_returns_merged_json(client, results_dir: Path):
+    """GET /api/v1/prescription/{task_id}/config returns saved prescription_config.json."""
+    task_id = "task-rx-cfg-get2"
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True)
+    (task_dir / "prescription_config.json").write_text(
+        json.dumps({"heading": 45.0, "spray_rate_gpa_high": 10.0})
+    )
+    r = client.get(f"/api/v1/prescription/{task_id}/config")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["heading"] == 45.0
+    assert data["spray_rate_gpa_high"] == 10.0
+
+
+def test_prescription_put_config_merges_and_sets_spray_rate_gpa_on_geojson(client, results_dir: Path):
+    """PUT config merges with existing file and refreshes spray_rate_gpa on prescription.geojson."""
+    task_id = "task-rx-cfg-put"
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True)
+    (task_dir / "prescription_config.json").write_text(json.dumps({"cluster_count": 3}))
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [{"type": "Feature", "id": "1", "properties": {"spray": "high"}, "geometry": None}],
+    }
+    (task_dir / "prescription.geojson").write_text(json.dumps(geojson))
+    r = client.put(
+        f"/api/v1/prescription/{task_id}/config",
+        json={"spray_rate_gpa_high": 8.5},
+    )
+    assert r.status_code == 200
+    assert r.json()["cluster_count"] == 3
+    assert r.json()["spray_rate_gpa_high"] == 8.5
+    get_rx = client.get(f"/api/v1/prescription/{task_id}")
+    assert get_rx.json()["features"][0]["properties"]["spray_rate_gpa"] == 8.5
+
+
+def test_prescription_put_with_config_sets_spray_rate_gpa(client, results_dir: Path):
+    """PUT prescription updates spray_rate_gpa when thresholds exist in config."""
+    task_id = "task-rx-put-gpa"
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True)
+    (task_dir / "prescription_config.json").write_text(json.dumps({"spray_rate_gpa_low": 4.0}))
+    geojson = {"type": "FeatureCollection", "features": [{"type": "Feature", "id": "1", "properties": {}, "geometry": None}]}
+    (task_dir / "prescription.geojson").write_text(json.dumps(geojson))
+    r = client.put(
+        f"/api/v1/prescription/{task_id}",
+        json={"updates": [{"featureId": "1", "spray": "low"}]},
+    )
+    assert r.status_code == 200
+    assert r.json()["features"][0]["properties"]["spray_rate_gpa"] == 4.0

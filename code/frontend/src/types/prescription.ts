@@ -37,7 +37,7 @@ export interface PrescriptionUpdateRequest {
   updates: PrescriptionUpdateItem[];
 }
 
-/** Per-task config for PUT /api/v1/prescription/{taskId}/config */
+/** Per-task config for GET/PUT /api/v1/prescription/{taskId}/config */
 export interface PrescriptionConfig {
   heading?: number;
   cell_size?: number;
@@ -46,6 +46,9 @@ export interface PrescriptionConfig {
   smoothing_sigma?: number;
   maximum_vertices?: number;
   ndvi_threshold?: number;
+  spray_rate_gpa_none?: number;
+  spray_rate_gpa_low?: number;
+  spray_rate_gpa_high?: number;
 }
 
 /** Properties on prescription GeoJSON features (R module output). */
@@ -58,6 +61,8 @@ export interface PrescriptionFeatureProperties {
   NDVI_max_mean?: number;
   NDVI_max_max?: number;
   spray?: SprayLevel;
+  /** Gallons per acre for the current spray level (from thresholds). */
+  spray_rate_gpa?: number;
   [key: string]: unknown;
 }
 
