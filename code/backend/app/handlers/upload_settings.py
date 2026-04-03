@@ -2,10 +2,11 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from app.schemas.upload_settings import (
     NodeOdmSettings,
+    PrescriptionModuleSettings,
     UploadSettingsResponse,
     UploadSettingsUpdate,
 )
@@ -25,6 +26,14 @@ DEFAULT_UPLOAD_SETTINGS: Dict[str, Any] = {
         "texturing_skip_global_seam_leveling": True,
         "pc_quality": "high",
         "orthophoto_png": True,
+    },
+    "prescription": {
+        "cell_size": None,
+        "cluster_count": 3,
+        "smoothing_rounds": 3,
+        "smoothing_sigma": 10,
+        "maximum_vertices": 80000,
+        "ndvi_threshold": 1.0,
     },
 }
 
@@ -60,6 +69,7 @@ def get_upload_settings(upload_settings_config_path: Path) -> UploadSettingsResp
     stored = _read_settings_file(upload_settings_config_path)
     merged = _deep_merge(DEFAULT_UPLOAD_SETTINGS, stored)
     merged.setdefault("nodeodm", {})
+    merged.setdefault("prescription", {})
     # Always enforce required PNG output for current system assumptions.
     merged["nodeodm"]["orthophoto_png"] = True
     return UploadSettingsResponse.model_validate(merged)
@@ -72,6 +82,7 @@ def update_upload_settings(
     incoming = body.model_dump(exclude_unset=True)
     merged = _deep_merge(current, incoming)
     merged.setdefault("nodeodm", {})
+    merged.setdefault("prescription", {})
     merged["nodeodm"]["orthophoto_png"] = True
     validated = UploadSettingsResponse.model_validate(merged)
     _write_settings_file(upload_settings_config_path, validated.model_dump())
@@ -82,6 +93,25 @@ def reset_upload_settings(upload_settings_config_path: Path) -> UploadSettingsRe
     defaults = UploadSettingsResponse.model_validate(DEFAULT_UPLOAD_SETTINGS)
     _write_settings_file(upload_settings_config_path, defaults.model_dump())
     return defaults
+
+
+def reset_prescription_module_settings(upload_settings_config_path: Path) -> UploadSettingsResponse:
+    current = get_upload_settings(upload_settings_config_path).model_dump()
+    current["prescription"] = PrescriptionModuleSettings.model_validate(
+        DEFAULT_UPLOAD_SETTINGS["prescription"]
+    ).model_dump()
+    validated = UploadSettingsResponse.model_validate(current)
+    _write_settings_file(upload_settings_config_path, validated.model_dump())
+    return validated
+
+
+def reset_nodeodm_settings(upload_settings_config_path: Path) -> UploadSettingsResponse:
+    current = get_upload_settings(upload_settings_config_path).model_dump()
+    current["nodeodm"] = NodeOdmSettings.model_validate(DEFAULT_UPLOAD_SETTINGS["nodeodm"]).model_dump()
+    current["nodeodm"]["orthophoto_png"] = True
+    validated = UploadSettingsResponse.model_validate(current)
+    _write_settings_file(upload_settings_config_path, validated.model_dump())
+    return validated
 
 
 def get_nodeodm_task_options(upload_settings_config_path: Path) -> Dict[str, Any]:
@@ -100,3 +130,37 @@ def get_nodeodm_task_options(upload_settings_config_path: Path) -> Dict[str, Any
         "pc-quality": nodeodm.pc_quality,
         "orthophoto-png": True,
     }
+
+
+# Keys passed to prescription_module.R from global defaults + per-task overrides (excludes paths).
+# Heading is not in global upload settings; only passed through when set in per-task prescription_config.
+PRESCRIPTION_R_FLAG_KEYS = (
+    "cell_size",
+    "cluster_count",
+    "smoothing_rounds",
+    "smoothing_sigma",
+    "maximum_vertices",
+    "ndvi_threshold",
+)
+
+
+def merge_prescription_config_for_r(
+    upload_settings_config_path: Path,
+    task_prescription_config: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Merge global prescription defaults with per-task overrides; per-task wins."""
+    global_resp = get_upload_settings(upload_settings_config_path)
+    gp = global_resp.prescription.model_dump()
+    task_raw = task_prescription_config or {}
+    out: Dict[str, Any] = {}
+    # Heading only from per-task config (not exposed in upload settings UI).
+    tv_heading = task_raw.get("heading")
+    if tv_heading is not None:
+        out["heading"] = tv_heading
+    for k in PRESCRIPTION_R_FLAG_KEYS:
+        tv = task_raw.get(k)
+        if tv is not None:
+            out[k] = tv
+        elif gp.get(k) is not None:
+            out[k] = gp[k]
+    return out

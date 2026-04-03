@@ -192,6 +192,28 @@ class ApiService {
     return response.json();
   }
 
+  async resetPrescriptionModuleSettings(): Promise<UploadSystemSettings> {
+    const response = await fetch(`${this.baseUrl}/api/v1/upload/settings/reset/prescription`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to reset prescription settings: ${response.status} ${errorText}`);
+    }
+    return response.json();
+  }
+
+  async resetNodeOdmSettings(): Promise<UploadSystemSettings> {
+    const response = await fetch(`${this.baseUrl}/api/v1/upload/settings/reset/nodeodm`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to reset NodeODM settings: ${response.status} ${errorText}`);
+    }
+    return response.json();
+  }
+
   async getProcessedFile(taskId: string, fileName: string): Promise<Blob> {
     const response = await fetch(`${this.baseUrl}/api/v1/results/${taskId}/${fileName}`);
     if (!response.ok) {

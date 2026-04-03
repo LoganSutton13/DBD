@@ -367,3 +367,54 @@ def test_prescription_put_with_config_sets_spray_rate_gpa(client, results_dir: P
     )
     assert r.status_code == 200
     assert r.json()["features"][0]["properties"]["spray_rate_gpa"] == 4.0
+
+
+def test_upload_get_settings_includes_prescription_defaults(client):
+    """GET /api/v1/upload/settings returns merged prescription block."""
+    r = client.get("/api/v1/upload/settings")
+    assert r.status_code == 200
+    data = r.json()
+    assert "prescription" in data
+    rx = data["prescription"]
+    assert rx["ndvi_threshold"] == 1.0
+    assert rx["cluster_count"] == 3
+    assert rx["cell_size"] is None
+
+
+def test_upload_reset_prescription_restores_defaults_and_keeps_robot(client):
+    """POST /settings/reset/prescription resets only prescription; robot width unchanged."""
+    r = client.put(
+        "/api/v1/upload/settings",
+        json={"robot_width": 3.0, "prescription": {"ndvi_threshold": 0.25}},
+    )
+    assert r.status_code == 200
+    assert r.json()["robot_width"] == 3.0
+    assert r.json()["prescription"]["ndvi_threshold"] == 0.25
+    r2 = client.post("/api/v1/upload/settings/reset/prescription")
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["robot_width"] == 3.0
+    assert body["prescription"]["ndvi_threshold"] == 1.0
+
+
+def test_upload_reset_nodeodm_restores_defaults_and_keeps_robot_and_prescription(client):
+    """POST /settings/reset/nodeodm resets only NodeODM; robot and prescription unchanged."""
+    r = client.put(
+        "/api/v1/upload/settings",
+        json={
+            "robot_width": 4.0,
+            "nodeodm": {"min_num_features": 100},
+            "prescription": {"ndvi_threshold": 0.5},
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["robot_width"] == 4.0
+    assert r.json()["nodeodm"]["min_num_features"] == 100
+    assert r.json()["prescription"]["ndvi_threshold"] == 0.5
+    r2 = client.post("/api/v1/upload/settings/reset/nodeodm")
+    assert r2.status_code == 200
+    body = r2.json()
+    assert body["robot_width"] == 4.0
+    assert body["nodeodm"]["min_num_features"] == 8000
+    assert body["prescription"]["ndvi_threshold"] == 0.5
+

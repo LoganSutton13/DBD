@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class NodeOdmSettings(BaseModel):
@@ -33,13 +33,39 @@ class NodeOdmSettingsUpdate(BaseModel):
     pc_quality: Optional[str] = None
 
 
+class PrescriptionModuleSettings(BaseModel):
+    """Defaults aligned with prescription_module.R option_list (heading is per-task only, not global)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    cell_size: Optional[float] = None
+    cluster_count: int = Field(3, ge=1)
+    smoothing_rounds: int = Field(3, ge=0)
+    smoothing_sigma: int = Field(10, ge=1)
+    maximum_vertices: int = Field(80000, ge=1)
+    ndvi_threshold: float = Field(1.0, ge=-1, le=1)
+
+
+class PrescriptionModuleSettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    cell_size: Optional[float] = None
+    cluster_count: Optional[int] = Field(None, ge=1)
+    smoothing_rounds: Optional[int] = Field(None, ge=0)
+    smoothing_sigma: Optional[int] = Field(None, ge=1)
+    maximum_vertices: Optional[int] = Field(None, ge=1)
+    ndvi_threshold: Optional[float] = Field(None, ge=-1, le=1)
+
+
 class UploadSettingsResponse(BaseModel):
     robot_width: float = Field(2.0, gt=0)
     coverage_width: float = Field(6.0, gt=0)
     nodeodm: NodeOdmSettings
+    prescription: PrescriptionModuleSettings
 
 
 class UploadSettingsUpdate(BaseModel):
     robot_width: Optional[float] = Field(None, gt=0)
     coverage_width: Optional[float] = Field(None, gt=0)
     nodeodm: Optional[NodeOdmSettingsUpdate] = None
+    prescription: Optional[PrescriptionModuleSettingsUpdate] = None
