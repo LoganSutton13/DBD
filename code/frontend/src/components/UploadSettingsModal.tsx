@@ -319,7 +319,7 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
                   onChange={(e) => updatePrescription('maximum_vertices', parseInt(e.target.value, 10) || 1)}
                 />
               </label>
-              <label className="text-sm text-dark-300 md:col-span-2">
+              <label className="text-sm text-dark-300">
                 NDVI threshold (healthy classification)
                 <input
                   className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
