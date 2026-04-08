@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
 from app.api.deps import get_file_storage_service
@@ -57,6 +57,22 @@ def get_prescription_status(
         return prescription_handlers.get_prescription_status(task_id, storage)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{task_id}/generate", status_code=202)
+async def run_prescription_job(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+    storage=Depends(get_file_storage_service),
+):
+    """
+    Queue prescription GeoJSON generation for a task.
+
+    Returns immediately; the job runs after the response is sent. Poll
+    GET /{task_id}/status for progress.
+    """
+    background_tasks.add_task(prescription_handlers.run_prescription_job, task_id, storage)
+    return {"taskId": task_id, "message": "Prescription generation started."}
 
 
 @router.get("/{task_id}")

@@ -26,6 +26,12 @@ export interface PrescriptionStatusResponse {
   message?: string;
 }
 
+/** Response for POST /api/v1/prescription/{taskId}/generate (202 Accepted) */
+export interface PrescriptionGenerateResponse {
+  taskId: string;
+  message: string;
+}
+
 /** Single spray assignment for PUT /api/v1/prescription/{taskId} */
 export interface PrescriptionUpdateItem {
   featureId: string;
