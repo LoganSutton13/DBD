@@ -20,6 +20,74 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
 
+/** String fields for the regenerate form (empty = leave existing config unchanged on save). */
+interface RegenerateFormDraft {
+  heading: string;
+  cell_size: string;
+  cluster_count: string;
+  smoothing_rounds: string;
+  smoothing_sigma: string;
+  maximum_vertices: string;
+  ndvi_threshold: string;
+  spray_rate_gpa_none: string;
+  spray_rate_gpa_low: string;
+  spray_rate_gpa_high: string;
+}
+
+function configToRegenerateDraft(c: PrescriptionConfig | null): RegenerateFormDraft {
+  const z = (v: number | undefined | null) => (v != null && !Number.isNaN(v) ? String(v) : '');
+  const cfg = c ?? {};
+  return {
+    heading: z(cfg.heading),
+    cell_size: z(cfg.cell_size),
+    cluster_count: z(cfg.cluster_count),
+    smoothing_rounds: z(cfg.smoothing_rounds),
+    smoothing_sigma: z(cfg.smoothing_sigma),
+    maximum_vertices: z(cfg.maximum_vertices),
+    ndvi_threshold: z(cfg.ndvi_threshold),
+    spray_rate_gpa_none: z(cfg.spray_rate_gpa_none),
+    spray_rate_gpa_low: z(cfg.spray_rate_gpa_low),
+    spray_rate_gpa_high: z(cfg.spray_rate_gpa_high),
+  };
+}
+
+function mergeDraftIntoConfig(base: PrescriptionConfig, d: RegenerateFormDraft): PrescriptionConfig {
+  const merged: PrescriptionConfig = { ...base };
+
+  const parseFloatField = (raw: string): number | undefined => {
+    const t = raw.trim();
+    if (t === '') return undefined;
+    const n = Number.parseFloat(t);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  const parseIntField = (raw: string): number | undefined => {
+    const t = raw.trim();
+    if (t === '') return undefined;
+    const n = Number.parseInt(t, 10);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  const setNum = (key: keyof PrescriptionConfig, v: number | undefined) => {
+    if (v !== undefined) {
+      (merged as Record<string, number>)[key] = v;
+    }
+  };
+
+  setNum('heading', parseFloatField(d.heading));
+  setNum('cell_size', parseFloatField(d.cell_size));
+  setNum('cluster_count', parseIntField(d.cluster_count));
+  setNum('smoothing_rounds', parseIntField(d.smoothing_rounds));
+  setNum('smoothing_sigma', parseIntField(d.smoothing_sigma));
+  setNum('maximum_vertices', parseIntField(d.maximum_vertices));
+  setNum('ndvi_threshold', parseFloatField(d.ndvi_threshold));
+  setNum('spray_rate_gpa_none', parseFloatField(d.spray_rate_gpa_none));
+  setNum('spray_rate_gpa_low', parseFloatField(d.spray_rate_gpa_low));
+  setNum('spray_rate_gpa_high', parseFloatField(d.spray_rate_gpa_high));
+
+  return merged;
+}
+
 function FitBounds({ geojsonData }: { geojsonData: PrescriptionGeoJSON | null }) {
   const map = useMap();
   useEffect(() => {
@@ -49,6 +117,10 @@ const PesticidePrescriptionsView: React.FC = () => {
   const [draftGpaNone, setDraftGpaNone] = useState('');
   const [draftGpaLow, setDraftGpaLow] = useState('');
   const [draftGpaHigh, setDraftGpaHigh] = useState('');
+  const [regenerateModalOpen, setRegenerateModalOpen] = useState(false);
+  const [regenerateSubmitting, setRegenerateSubmitting] = useState(false);
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
+  const [regenerateDraft, setRegenerateDraft] = useState<RegenerateFormDraft>(() => configToRegenerateDraft(null));
 
   // Deterministic palette for visually distinguishing cluster polygons.
   // (Only used when `properties.spray` is not set for a feature.)
@@ -131,6 +203,8 @@ const PesticidePrescriptionsView: React.FC = () => {
     setSprayUpdates({});
     setDetailConfig(null);
     setThresholdsModalOpen(false);
+    setRegenerateModalOpen(false);
+    setRegenerateError(null);
   }, []);
 
   const getFeatureId = (feature: PrescriptionFeature): string | null => {
@@ -224,6 +298,82 @@ const PesticidePrescriptionsView: React.FC = () => {
       setSavingSpray(false);
     }
   }, [selectedTaskId, sprayUpdates, detailGeojson]);
+
+  const openRegenerateModal = useCallback(async () => {
+    if (!selectedTaskId) return;
+    setRegenerateError(null);
+    try {
+      const cfg = await apiService.getPrescriptionConfig(selectedTaskId);
+      setDetailConfig(cfg);
+      setRegenerateDraft(configToRegenerateDraft(cfg));
+    } catch {
+      setRegenerateDraft(configToRegenerateDraft(detailConfig));
+    }
+    setRegenerateModalOpen(true);
+  }, [selectedTaskId, detailConfig]);
+
+  const submitRegenerate = useCallback(async () => {
+    if (!selectedTaskId) return;
+    setRegenerateSubmitting(true);
+    setRegenerateError(null);
+    try {
+      const current = await apiService.getPrescriptionConfig(selectedTaskId);
+      const merged = mergeDraftIntoConfig(current, regenerateDraft);
+      const saved = await apiService.setPrescriptionConfig(selectedTaskId, merged);
+      setDetailConfig(saved);
+      await apiService.triggerPrescriptionGeneration(selectedTaskId);
+      setDetailStatus({ status: 'processing', message: 'Regenerating prescription…' });
+      setRegenerateModalOpen(false);
+    } catch (e) {
+      setRegenerateError(e instanceof Error ? e.message : 'Regeneration request failed');
+    } finally {
+      setRegenerateSubmitting(false);
+    }
+  }, [selectedTaskId, regenerateDraft]);
+
+  useEffect(() => {
+    if (!selectedTaskId) return;
+    if (detailStatus?.status !== 'processing') return;
+
+    const tick = async () => {
+      try {
+        const s = await apiService.getPrescriptionStatus(selectedTaskId);
+        setDetailStatus({ status: s.status, message: s.message });
+        if (s.status === 'completed') {
+          try {
+            const geo = await apiService.getPrescription(selectedTaskId);
+            setDetailGeojson(geo?.features ? geo : null);
+            const cfg = await apiService.getPrescriptionConfig(selectedTaskId);
+            setDetailConfig(cfg);
+            const initial: Record<string, SprayLevel> = {};
+            if (geo?.features) {
+              for (const f of geo.features) {
+                const id =
+                  f.id != null
+                    ? String(f.id)
+                    : f.properties?.id != null
+                      ? String(f.properties.id)
+                      : f.properties?.cluster != null
+                        ? String(f.properties.cluster)
+                        : undefined;
+                const spray = f.properties?.spray;
+                if (id && spray) initial[id] = spray;
+              }
+            }
+            setSprayUpdates(initial);
+          } catch {
+            /* keep prior map until user refreshes */
+          }
+        }
+      } catch {
+        /* transient poll errors */
+      }
+    };
+
+    void tick();
+    const pollId = window.setInterval(() => void tick(), 2000);
+    return () => window.clearInterval(pollId);
+  }, [selectedTaskId, detailStatus?.status]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -350,7 +500,7 @@ const PesticidePrescriptionsView: React.FC = () => {
             className="bg-dark-800 rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-6 border-b border-dark-700 flex justify-between items-center">
+            <div className="p-6 border-b border-dark-700 flex justify-between items-center gap-4 flex-wrap">
               <div>
                 <h3 className="text-xl font-semibold text-primary-400">
                   {selectedItem?.taskName || `Task ${selectedTaskId}`}
@@ -362,12 +512,33 @@ const PesticidePrescriptionsView: React.FC = () => {
                   </span>
                 )}
               </div>
-              <button onClick={closeDetail} className="text-dark-400 hover:text-dark-100 p-2">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => void openRegenerateModal()}
+                  disabled={detailLoading || detailStatus?.status === 'processing'}
+                  className="px-3 py-2 text-sm bg-dark-600 text-dark-100 border border-dark-500 rounded-lg hover:bg-dark-500 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  Regenerate prescription
+                </button>
+                <button type="button" onClick={closeDetail} className="text-dark-400 hover:text-dark-100 p-2" aria-label="Close">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
+            {detailStatus?.status === 'processing' && (
+              <div className="px-6 py-3 bg-yellow-500/10 border-b border-yellow-500/30 text-yellow-100 text-sm flex items-start gap-3">
+                <div
+                  className="mt-0.5 h-4 w-4 shrink-0 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"
+                  aria-hidden
+                />
+                <p>
+                  <span className="font-medium text-yellow-200">Regenerating…</span> The updated map will appear when the job finishes. You can close this dialog; reopen the task from the list to check status.
+                </p>
+              </div>
+            )}
             <div className="p-6 flex-1 overflow-y-auto">
               {detailLoading ? (
                 <div className="flex justify-center py-12">
@@ -513,6 +684,185 @@ const PesticidePrescriptionsView: React.FC = () => {
                 <p className="text-dark-400">No GeoJSON features to display.</p>
               )}
             </div>
+
+            {regenerateModalOpen && (
+              <div
+                className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4 overflow-y-auto"
+                onClick={() => setRegenerateModalOpen(false)}
+                role="presentation"
+              >
+                <div
+                  className="bg-dark-800 rounded-lg border border-dark-600 max-w-2xl w-full p-6 shadow-xl my-8"
+                  onClick={(e) => e.stopPropagation()}
+                  role="dialog"
+                  aria-labelledby="regenerate-rx-title"
+                >
+                  <h4 id="regenerate-rx-title" className="text-lg font-semibold text-primary-400 mb-2">
+                    Regenerate prescription
+                  </h4>
+                  <p className="text-dark-400 text-sm mb-4">
+                    These values are merged with global defaults for this task. Empty fields keep the current saved value.
+                    After you confirm, the server starts generation in the background; this dialog can close while the job runs.
+                  </p>
+                  {regenerateError && (
+                    <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded text-red-400 text-sm">
+                      {regenerateError}
+                    </div>
+                  )}
+                  <div className="space-y-4 max-h-[55vh] overflow-y-auto pr-1">
+                    <div>
+                      <h5 className="text-sm font-semibold text-primary-400 mb-2">Prescription module (R)</h5>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <label className="text-sm text-dark-300">
+                          Heading (°)
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={regenerateDraft.heading}
+                            onChange={(e) =>
+                              setRegenerateDraft((p) => ({ ...p, heading: e.target.value }))
+                            }
+                            className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100"
+                            placeholder="Leave blank to keep current"
+                          />
+                        </label>
+                        <label className="text-sm text-dark-300">
+                          Cell size (m), empty = automatic
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={regenerateDraft.cell_size}
+                            onChange={(e) =>
+                              setRegenerateDraft((p) => ({ ...p, cell_size: e.target.value }))
+                            }
+                            className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100"
+                            placeholder="Automatic"
+                          />
+                        </label>
+                        <label className="text-sm text-dark-300">
+                          Cluster count
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={regenerateDraft.cluster_count}
+                            onChange={(e) =>
+                              setRegenerateDraft((p) => ({ ...p, cluster_count: e.target.value }))
+                            }
+                            className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100"
+                          />
+                        </label>
+                        <label className="text-sm text-dark-300">
+                          Smoothing rounds
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={regenerateDraft.smoothing_rounds}
+                            onChange={(e) =>
+                              setRegenerateDraft((p) => ({ ...p, smoothing_rounds: e.target.value }))
+                            }
+                            className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100"
+                          />
+                        </label>
+                        <label className="text-sm text-dark-300">
+                          Smoothing sigma
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={regenerateDraft.smoothing_sigma}
+                            onChange={(e) =>
+                              setRegenerateDraft((p) => ({ ...p, smoothing_sigma: e.target.value }))
+                            }
+                            className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100"
+                          />
+                        </label>
+                        <label className="text-sm text-dark-300">
+                          Maximum vertices
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={regenerateDraft.maximum_vertices}
+                            onChange={(e) =>
+                              setRegenerateDraft((p) => ({ ...p, maximum_vertices: e.target.value }))
+                            }
+                            className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100"
+                          />
+                        </label>
+                        <label className="text-sm text-dark-300 md:col-span-2">
+                          NDVI threshold (healthy classification, −1–1)
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={regenerateDraft.ndvi_threshold}
+                            onChange={(e) =>
+                              setRegenerateDraft((p) => ({ ...p, ndvi_threshold: e.target.value }))
+                            }
+                            className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    <div>
+                      <h5 className="text-sm font-semibold text-primary-400 mb-2">Spray rate thresholds (gal/ac)</h5>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <label className="text-sm text-dark-300">
+                          None
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={regenerateDraft.spray_rate_gpa_none}
+                            onChange={(e) =>
+                              setRegenerateDraft((p) => ({ ...p, spray_rate_gpa_none: e.target.value }))
+                            }
+                            className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100"
+                          />
+                        </label>
+                        <label className="text-sm text-dark-300">
+                          Low
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={regenerateDraft.spray_rate_gpa_low}
+                            onChange={(e) =>
+                              setRegenerateDraft((p) => ({ ...p, spray_rate_gpa_low: e.target.value }))
+                            }
+                            className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100"
+                          />
+                        </label>
+                        <label className="text-sm text-dark-300">
+                          High
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={regenerateDraft.spray_rate_gpa_high}
+                            onChange={(e) =>
+                              setRegenerateDraft((p) => ({ ...p, spray_rate_gpa_high: e.target.value }))
+                            }
+                            className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-6 flex gap-2 justify-end flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setRegenerateModalOpen(false)}
+                      className="px-4 py-2 bg-dark-600 text-dark-100 border border-dark-500 rounded-lg hover:bg-dark-500"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void submitRegenerate()}
+                      disabled={regenerateSubmitting}
+                      className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
+                    >
+                      {regenerateSubmitting ? 'Saving & starting…' : 'Save settings & regenerate'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {thresholdsModalOpen && (
               <div

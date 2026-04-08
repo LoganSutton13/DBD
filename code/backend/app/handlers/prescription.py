@@ -1,4 +1,4 @@
-"""Prescription business logic: get, update, list prescription GeoJSON."""
+"""Prescription business logic: get, update, list, and generate prescription GeoJSON."""
 
 import json
 from pathlib import Path
@@ -173,6 +173,11 @@ def list_prescriptions(storage: FileStorageService) -> PrescriptionListResponse:
         for item in raw
     ]
     return PrescriptionListResponse(items=items)
+
+
+async def run_prescription_job(task_id: str, storage: FileStorageService) -> None:
+    """Run the R-based prescription generation job for a task (updates per-task status)."""
+    await storage.run_prescription_job(task_id)
 
 
 def get_prescription_status(

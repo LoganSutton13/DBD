@@ -17,6 +17,7 @@ import {
   PrescriptionGeoJSON,
   PrescriptionUpdateRequest,
   PrescriptionConfig,
+  PrescriptionGenerateResponse,
   RobotPathRawResponse,
 } from '../types/prescription';
 
@@ -558,6 +559,20 @@ class ApiService {
     if (!response.ok) {
       const text = await response.text();
       throw new Error(`Set prescription config failed: ${response.status} ${text}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Queue prescription regeneration (runs in the background). Poll GET .../status until completed or failed.
+   */
+  async triggerPrescriptionGeneration(taskId: string): Promise<PrescriptionGenerateResponse> {
+    const response = await fetch(`${this.baseUrl}/api/v1/prescription/${taskId}/generate`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Prescription generation failed: ${response.status} ${text}`);
     }
     return response.json();
   }
