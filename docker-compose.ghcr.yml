@@ -1,0 +1,48 @@
+# Same stack as docker-compose.yml, but uses pre-built images from GitHub Container
+# Registry instead of building from ./code. No backend/frontend source required on disk.
+#
+# 1. Copy env.ghcr.example to .env and set DBD_IMAGE_REGISTRY to your published
+#    namespace (see Actions log or Packages on GitHub), e.g. ghcr.io/my-org
+# 2. docker compose -f docker-compose.ghcr.yml --env-file .env pull
+# 3. docker compose -f docker-compose.ghcr.yml --env-file .env up -d
+#
+# Public packages: pull works without login. Private packages: docker login ghcr.io
+
+services:
+  nodeodm:
+    image: opendronemap/nodeodm:stable
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+
+  backend:
+    image: ${DBD_IMAGE_REGISTRY}/dbd-backend:${DBD_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      PORT: "8001"
+      HOST: "0.0.0.0"
+      DEBUG: "True"
+      NODEODM_HOST: nodeodm
+      NODEODM_PORT: "3000"
+      NODEODM_URL: http://nodeodm:3000
+      NODEODM_TIMEOUT: "3600"
+      UPLOAD_DIR: /data/uploads
+      RESULTS_DIR: /data/results
+      PATH_JOBS_DIR: /data/path_jobs
+    volumes:
+      - dbd_app_data:/data
+    depends_on:
+      - nodeodm
+
+  frontend:
+    image: ${DBD_IMAGE_REGISTRY}/dbd-frontend:${DBD_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    depends_on:
+      - backend
+
+volumes:
+  dbd_app_data:
