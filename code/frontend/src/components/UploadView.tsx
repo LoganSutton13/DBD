@@ -6,6 +6,7 @@ import 'leaflet/dist/leaflet.css';
 import apiService, { ApiService } from '../services/api';
 import {
   ChunkedFileInfo,
+  normalizeUploadSettingsNodeOdm,
   ProcessingTask,
   UploadFile,
   UploadResponse,
@@ -143,7 +144,7 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
           apiService.getRtkBase(),
         ]);
         setRecentCompletedResults(resultList.slice(0, 3).map((item) => ({ taskId: item.taskId, taskName: item.taskName })));
-        setSettings(loadedSettings);
+        setSettings(normalizeUploadSettingsNodeOdm(loadedSettings));
         setRobotWidthOverride(loadedSettings.robot_width);
         setCoverageWidthOverride(loadedSettings.coverage_width);
         setRtkBaseLongitude(rtkBase.longitude);
@@ -424,7 +425,7 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
         apiService.updateUploadSettings(payload),
         apiService.setRtkBase(nextRtkBase.longitude, nextRtkBase.latitude),
       ]);
-      setSettings(updated);
+      setSettings(normalizeUploadSettingsNodeOdm(updated));
       setRobotWidthOverride(updated.robot_width);
       setCoverageWidthOverride(updated.coverage_width);
       setRtkBaseLongitude(nextRtkBase.longitude);
@@ -442,7 +443,7 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
     setSettingsError(null);
     try {
       const updated = await apiService.resetUploadSettings();
-      setSettings(updated);
+      setSettings(normalizeUploadSettingsNodeOdm(updated));
       setRobotWidthOverride(updated.robot_width);
       setCoverageWidthOverride(updated.coverage_width);
     } catch (error) {
@@ -457,7 +458,7 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
     setSettingsError(null);
     try {
       const updated = await apiService.resetPrescriptionModuleSettings();
-      setSettings(updated);
+      setSettings(normalizeUploadSettingsNodeOdm(updated));
     } catch (error) {
       setSettingsError(error instanceof Error ? error.message : 'Failed to reset prescription settings');
     } finally {
@@ -470,7 +471,7 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
     setSettingsError(null);
     try {
       const updated = await apiService.resetNodeOdmSettings();
-      setSettings(updated);
+      setSettings(normalizeUploadSettingsNodeOdm(updated));
     } catch (error) {
       setSettingsError(error instanceof Error ? error.message : 'Failed to reset NodeODM settings');
     } finally {

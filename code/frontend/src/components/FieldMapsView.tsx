@@ -5,7 +5,7 @@ import area from '@turf/area';
 import 'leaflet/dist/leaflet.css';
 import apiService from '../services/api';
 import type { PrescriptionGeoJSON } from '../types/prescription';
-import type { UploadSystemSettings } from '../types/upload';
+import { normalizeUploadSettingsNodeOdm, type UploadSystemSettings } from '../types/upload';
 import PathGenerationOptions from './PathGenerationOptions';
 
 // Fix for default marker icons in Leaflet with webpack
@@ -196,7 +196,7 @@ const FieldMapsView: React.FC = () => {
           apiService.getUploadSettings(),
           apiService.getRtkBase(),
         ]);
-        setSettings(loadedSettings);
+        setSettings(normalizeUploadSettingsNodeOdm(loadedSettings));
         setRobotWidthOverride(loadedSettings.robot_width);
         setCoverageWidthOverride(loadedSettings.coverage_width);
         setRtkBaseLongitude(rtkBase.longitude);

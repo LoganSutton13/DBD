@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import {
+  DEFAULT_NODEODM_OPTIONS,
+  NODEODM_FEATURE_QUALITY_VALUES,
+  NODEODM_MATCHER_TYPE_VALUES,
+  NODEODM_PC_QUALITY_VALUES,
+  NODEODM_RADIOMETRIC_CALIBRATION_VALUES,
+} from '../types/nodeodm';
+import {
   DEFAULT_PRESCRIPTION_MODULE,
   UploadSystemSettings,
   UploadSystemSettingsUpdate,
@@ -148,37 +155,70 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <label className="text-sm text-dark-300">
                 Radiometric calibration
-                <input
+                <select
                   className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
                   value={local.nodeodm.radiometric_calibration}
-                  onChange={(e) => updateNodeOdm('radiometric_calibration', e.target.value)}
-                />
+                  onChange={(e) =>
+                    updateNodeOdm(
+                      'radiometric_calibration',
+                      e.target.value as (typeof NODEODM_RADIOMETRIC_CALIBRATION_VALUES)[number]
+                    )
+                  }
+                >
+                  {NODEODM_RADIOMETRIC_CALIBRATION_VALUES.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                      {v === DEFAULT_NODEODM_OPTIONS.radiometric_calibration ? ' (Recommended)' : ''}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="text-sm text-dark-300">
                 Feature quality
-                <input
+                <select
                   className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
                   value={local.nodeodm.feature_quality}
-                  onChange={(e) => updateNodeOdm('feature_quality', e.target.value)}
-                />
+                  onChange={(e) =>
+                    updateNodeOdm('feature_quality', e.target.value as (typeof NODEODM_FEATURE_QUALITY_VALUES)[number])
+                  }
+                >
+                  {NODEODM_FEATURE_QUALITY_VALUES.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                      {v === DEFAULT_NODEODM_OPTIONS.feature_quality ? ' (Recommended)' : ''}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="text-sm text-dark-300">
                 Matcher type
-                <input
+                <select
                   className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
                   value={local.nodeodm.matcher_type}
-                  onChange={(e) => updateNodeOdm('matcher_type', e.target.value)}
-                />
+                  onChange={(e) =>
+                    updateNodeOdm('matcher_type', e.target.value as (typeof NODEODM_MATCHER_TYPE_VALUES)[number])
+                  }
+                >
+                  {NODEODM_MATCHER_TYPE_VALUES.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                      {v === DEFAULT_NODEODM_OPTIONS.matcher_type ? ' (Recommended)' : ''}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="text-sm text-dark-300">
                 Min features
                 <input
                   className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
                   type="number"
-                  min="1"
-                  step="1"
+                  min={1}
+                  step={1}
                   value={local.nodeodm.min_num_features}
-                  onChange={(e) => updateNodeOdm('min_num_features', parseInt(e.target.value, 10) || 1)}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value, 10);
+                    updateNodeOdm('min_num_features', Number.isFinite(n) && n >= 1 ? n : 1);
+                  }}
                 />
               </label>
               <label className="text-sm text-dark-300">
@@ -186,19 +226,34 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
                 <input
                   className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
                   type="number"
-                  min="0.1"
-                  step="0.1"
+                  min={0.1}
+                  step={0.1}
                   value={local.nodeodm.orthophoto_resolution}
-                  onChange={(e) => updateNodeOdm('orthophoto_resolution', parseFloat(e.target.value) || 0.1)}
+                  onChange={(e) => {
+                    const n = parseFloat(e.target.value);
+                    updateNodeOdm(
+                      'orthophoto_resolution',
+                      Number.isFinite(n) && n > 0 ? n : DEFAULT_NODEODM_OPTIONS.orthophoto_resolution
+                    );
+                  }}
                 />
               </label>
               <label className="text-sm text-dark-300">
                 Point cloud quality
-                <input
+                <select
                   className="mt-1 w-full rounded border border-dark-600 bg-dark-800 px-3 py-2 text-dark-100"
                   value={local.nodeodm.pc_quality}
-                  onChange={(e) => updateNodeOdm('pc_quality', e.target.value)}
-                />
+                  onChange={(e) =>
+                    updateNodeOdm('pc_quality', e.target.value as (typeof NODEODM_PC_QUALITY_VALUES)[number])
+                  }
+                >
+                  {NODEODM_PC_QUALITY_VALUES.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                      {v === DEFAULT_NODEODM_OPTIONS.pc_quality ? ' (Recommended)' : ''}
+                    </option>
+                  ))}
+                </select>
               </label>
             </div>
 
