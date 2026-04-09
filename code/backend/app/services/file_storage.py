@@ -466,5 +466,17 @@ class FileStorageService:
             LOGGER.info(f"task appended to list: {item}")
         return tasks
 
+    def delete_task_results(self, task_id: str) -> None:
+        """Delete all results for a task."""
+        task_dir = (self.results_dir / task_id).resolve()
+        base_dir = self.results_dir.resolve()
+        # Guard against path traversal (e.g., task_id="../../somewhere").
+        if task_dir != base_dir and base_dir not in task_dir.parents:
+            raise ValueError("Invalid task_id")
+        if not task_dir.exists():
+            raise FileNotFoundError("Task results not found")
+        shutil.rmtree(task_dir)
+
+
 # Create service instance
 file_storage_service = FileStorageService()

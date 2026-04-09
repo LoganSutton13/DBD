@@ -146,3 +146,36 @@ def test_list_tasks_with_prescription_includes_task_name_from_manifest(results_d
     tasks = storage.list_tasks_with_prescription()
     assert len(tasks) == 1
     assert tasks[0].get("taskName") == "My Prescription"
+
+
+def test_delete_task_results_removes_task_directory(results_dir: Path):
+    """delete_task_results removes the task directory and its contents."""
+    storage = FileStorageService(results_dir=results_dir)
+    task_id = "task-delete-ok"
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True)
+    (task_dir / "manifest.json").write_text('{"task_id":"task-delete-ok"}')
+
+    storage.delete_task_results(task_id)
+
+    assert not task_dir.exists()
+
+
+def test_delete_task_results_missing_task_raises_file_not_found(results_dir: Path):
+    """delete_task_results raises FileNotFoundError when task is missing."""
+    storage = FileStorageService(results_dir=results_dir)
+    try:
+        storage.delete_task_results("does-not-exist")
+        assert False, "Expected FileNotFoundError"
+    except FileNotFoundError:
+        pass
+
+
+def test_delete_task_results_rejects_path_traversal(results_dir: Path):
+    """delete_task_results rejects task IDs that traverse outside results_dir."""
+    storage = FileStorageService(results_dir=results_dir)
+    try:
+        storage.delete_task_results("../outside")
+        assert False, "Expected ValueError"
+    except ValueError:
+        pass
