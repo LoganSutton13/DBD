@@ -159,6 +159,10 @@ const FieldMapsView: React.FC = () => {
   const [pathError, setPathError] = useState<string | null>(null);
   const [isGeneratingPath, setIsGeneratingPath] = useState(false);
   const [isSavingPath, setIsSavingPath] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeletingTask, setIsDeletingTask] = useState(false);
 
   // Check internet connectivity
   useEffect(() => {
@@ -207,6 +211,12 @@ const FieldMapsView: React.FC = () => {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      if (isDeleteConfirmOpen) {
+        setIsDeleteConfirmOpen(false);
+        setDeleteConfirmText('');
+        setDeleteError(null);
+        return;
+      }
       if (isPathEditorOpen) {
         setIsPathEditorOpen(false);
         return;
@@ -217,7 +227,7 @@ const FieldMapsView: React.FC = () => {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isPathEditorOpen, selectedMap]);
+  }, [isDeleteConfirmOpen, isPathEditorOpen, selectedMap]);
 
   const loadFromApi = useCallback(async () => {
     setLoading(true);
@@ -288,6 +298,37 @@ const FieldMapsView: React.FC = () => {
     setPathError(null);
     setIsPathEditorOpen(false);
   }, [selectedMap?.id]);
+
+  const closeDeleteConfirm = () => {
+    if (isDeletingTask) return;
+    setIsDeleteConfirmOpen(false);
+    setDeleteConfirmText('');
+    setDeleteError(null);
+  };
+
+  const openDeleteConfirm = () => {
+    setDeleteConfirmText('');
+    setDeleteError(null);
+    setIsDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteTask = async () => {
+    if (!selectedMap || deleteConfirmText !== 'confirm') return;
+    const taskIdToDelete = selectedMap.id;
+    setIsDeletingTask(true);
+    setDeleteError(null);
+    try {
+      await apiService.deleteTaskResults(taskIdToDelete);
+      setIsDeleteConfirmOpen(false);
+      setDeleteConfirmText('');
+      setSelectedMap(null);
+      await loadFromApi();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete task');
+    } finally {
+      setIsDeletingTask(false);
+    }
+  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -736,6 +777,13 @@ const FieldMapsView: React.FC = () => {
                     </svg>
                     <span>Download</span>
                   </button>
+                  <button
+                    onClick={openDeleteConfirm}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors duration-200 text-sm"
+                    title="Delete task and all associated metadata"
+                  >
+                    Delete Task
+                  </button>
                 </div>
               </div>
             </div>
@@ -958,6 +1006,53 @@ const FieldMapsView: React.FC = () => {
                   <p className="text-xs text-dark-400">
                     This uses the same heading, robot width, and boom width controls as Upload Step 3.
                   </p>
+                </div>
+              </div>
+            </div>
+          )}
+          {isDeleteConfirmOpen && (
+            <div
+              className="fixed inset-0 z-[70] bg-black/70 flex items-center justify-center p-4"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) closeDeleteConfirm();
+              }}
+            >
+              <div className="w-full max-w-lg rounded-lg border border-red-500/40 bg-dark-800 shadow-2xl">
+                <div className="border-b border-dark-700 px-5 py-4">
+                  <h4 className="text-lg font-semibold text-red-400">Delete Task</h4>
+                </div>
+                <div className="space-y-4 px-5 py-4">
+                  <p className="text-sm text-red-300">
+                    This action is not reversible. Deleting this task will permanently remove the task and all associated metadata/artifacts.
+                  </p>
+                  <p className="text-sm text-dark-300">
+                    Type <span className="font-semibold text-dark-100">confirm</span> to continue.
+                  </p>
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    placeholder="Type confirm"
+                    className="w-full rounded-lg border border-dark-600 bg-dark-900 px-3 py-2 text-dark-100 focus:border-red-500 focus:outline-none"
+                    disabled={isDeletingTask}
+                  />
+                  {deleteError ? <p className="text-sm text-red-400">{deleteError}</p> : null}
+                </div>
+                <div className="flex justify-end gap-2 border-t border-dark-700 px-5 py-4">
+                  <button
+                    onClick={closeDeleteConfirm}
+                    disabled={isDeletingTask}
+                    className="rounded-lg bg-dark-700 px-4 py-2 text-dark-100 hover:bg-dark-600 disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDeleteTask}
+                    disabled={isDeletingTask || deleteConfirmText !== 'confirm'}
+                    className="rounded-lg bg-red-600 px-4 py-2 text-white hover:bg-red-700 disabled:opacity-60"
+                  >
+                    {isDeletingTask ? 'Deleting...' : 'Delete Task'}
+                  </button>
                 </div>
               </div>
             </div>
