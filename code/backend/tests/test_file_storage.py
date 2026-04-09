@@ -146,3 +146,68 @@ def test_list_tasks_with_prescription_includes_task_name_from_manifest(results_d
     tasks = storage.list_tasks_with_prescription()
     assert len(tasks) == 1
     assert tasks[0].get("taskName") == "My Prescription"
+
+
+def test_delete_task_results_removes_task_directory(results_dir: Path):
+    """delete_task_results removes the task directory and its contents."""
+    storage = FileStorageService(results_dir=results_dir)
+    task_id = "task-delete-ok"
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True)
+    (task_dir / "manifest.json").write_text('{"task_id":"task-delete-ok"}')
+
+    storage.delete_task_results(task_id)
+
+    assert not task_dir.exists()
+
+
+def test_delete_task_results_missing_task_raises_file_not_found(results_dir: Path):
+    """delete_task_results raises FileNotFoundError when task is missing."""
+    storage = FileStorageService(results_dir=results_dir)
+    try:
+        storage.delete_task_results("does-not-exist")
+        assert False, "Expected FileNotFoundError"
+    except FileNotFoundError:
+        pass
+
+
+def test_delete_task_results_rejects_path_traversal(results_dir: Path):
+    """delete_task_results rejects task IDs that traverse outside results_dir."""
+    storage = FileStorageService(results_dir=results_dir)
+    try:
+        storage.delete_task_results("../outside")
+        assert False, "Expected ValueError"
+    except ValueError:
+        pass
+
+
+def test_delete_temp_drone_imagery_removes_staging_tree(tmp_path: Path):
+    """delete_temp_drone_imagery removes files and nested dirs under upload_dir/task_id."""
+    upload_root = tmp_path / "uploads"
+    task_id = "staging-task"
+    task_dir = upload_root / task_id
+    task_dir.mkdir(parents=True)
+    (task_dir / "image.jpg").write_bytes(b"x")
+    nested = task_dir / "nested"
+    nested.mkdir()
+    (nested / "extra.txt").write_text("a")
+
+    assert FileStorageService.delete_temp_drone_imagery(task_id, upload_root) is True
+    assert not task_dir.exists()
+
+
+def test_delete_temp_drone_imagery_missing_dir_is_noop(tmp_path: Path):
+    """delete_temp_drone_imagery returns True when staging dir already absent."""
+    upload_root = tmp_path / "uploads"
+    assert FileStorageService.delete_temp_drone_imagery("never-created", upload_root) is True
+
+
+def test_delete_temp_drone_imagery_rejects_path_traversal(tmp_path: Path):
+    """delete_temp_drone_imagery rejects task_id that escapes upload_dir."""
+    upload_root = tmp_path / "uploads"
+    upload_root.mkdir()
+    try:
+        FileStorageService.delete_temp_drone_imagery("../outside", upload_root)
+        assert False, "Expected ValueError"
+    except ValueError:
+        pass

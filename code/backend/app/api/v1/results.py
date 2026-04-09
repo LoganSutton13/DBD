@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from app.api.deps import get_file_storage_service
 from app.handlers import results as results_handlers
 from app.schemas.results import (
+    DeleteTaskResultsResponse,
     DisplayPathResponse,
     RobotPathRawResponse,
     TaskResultItem,
@@ -106,3 +107,16 @@ def get_display_path(
         raise HTTPException(status_code=404, detail="Display path not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get display path: {str(e)}")
+
+@router.delete("/{task_id}", response_model=DeleteTaskResultsResponse)
+def delete_task_results(
+    task_id: str,
+    storage=Depends(get_file_storage_service),
+):
+    """Delete all results for a task."""
+    try:
+        return results_handlers.delete_task_results(task_id, storage)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete task results: {str(e)}")

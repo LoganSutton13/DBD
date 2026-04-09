@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import HTTPException
 
 from app.handlers import results as results_handlers
 from app.schemas.results import TaskResultItem, TaskSummaryResponse
@@ -95,3 +96,33 @@ def test_get_report_path_delegates_to_storage():
     assert results_handlers.get_report_path("t1", storage) == path
     storage.get_report_path.return_value = None
     assert results_handlers.get_report_path("t1", storage) is None
+
+
+def test_delete_task_results_success_returns_response():
+    """delete_task_results returns success response for existing task."""
+    storage = MagicMock()
+    result = results_handlers.delete_task_results("task-1", storage)
+    assert result.deleted is True
+    assert result.taskId == "task-1"
+    assert "deleted successfully" in result.message
+    storage.delete_task_results.assert_called_once_with("task-1")
+
+
+def test_delete_task_results_missing_task_maps_to_404():
+    """delete_task_results maps missing task to HTTP 404."""
+    storage = MagicMock()
+    storage.delete_task_results.side_effect = FileNotFoundError("Task results not found")
+    with pytest.raises(HTTPException) as exc:
+        results_handlers.delete_task_results("missing-task", storage)
+    assert exc.value.status_code == 404
+    assert exc.value.detail == "Task results not found"
+
+
+def test_delete_task_results_invalid_task_id_maps_to_400():
+    """delete_task_results maps invalid task_id to HTTP 400."""
+    storage = MagicMock()
+    storage.delete_task_results.side_effect = ValueError("Invalid task_id")
+    with pytest.raises(HTTPException) as exc:
+        results_handlers.delete_task_results("../bad", storage)
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Invalid task_id"

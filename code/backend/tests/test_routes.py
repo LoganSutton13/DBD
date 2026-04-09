@@ -183,6 +183,36 @@ def test_results_get_orthophoto_not_found_returns_404(client):
     assert r.status_code == 404
 
 
+def test_results_delete_task_results_not_found_returns_404(client):
+    """DELETE /api/v1/results/{task_id} when task is missing returns 404."""
+    r = client.delete("/api/v1/results/nonexistent-task")
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Task results not found"
+
+
+def test_results_delete_task_results_success_returns_200(client, results_dir: Path):
+    """DELETE /api/v1/results/{task_id} removes task directory and returns response."""
+    task_id = "task-delete-route"
+    task_dir = results_dir / task_id
+    task_dir.mkdir(parents=True)
+    (task_dir / "manifest.json").write_text(json.dumps({"task_id": task_id}))
+
+    r = client.delete(f"/api/v1/results/{task_id}")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["taskId"] == task_id
+    assert data["deleted"] is True
+    assert not task_dir.exists()
+
+
+def test_results_delete_task_results_path_traversal_returns_400(client):
+    """DELETE /api/v1/results/{task_id} rejects traversal-like task IDs."""
+    # Use an encoded single path segment so the route matches and validation runs.
+    r = client.delete("/api/v1/results/%2e%2e")
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Invalid task_id"
+
+
 def test_prescription_get_list_returns_200_empty_list(client):
     """GET /api/v1/prescription/ returns 200 with items (empty when no prescriptions)."""
     r = client.get("/api/v1/prescription/")

@@ -4,7 +4,10 @@ import json
 from pathlib import Path
 from typing import Any, List, Optional
 
+from fastapi import HTTPException
+
 from app.schemas.results import (
+    DeleteTaskResultsResponse,
     DisplayPathPoint,
     DisplayPathResponse,
     RobotPathRawPoint,
@@ -160,4 +163,20 @@ def get_display_path(task_id: str, storage: FileStorageService) -> DisplayPathRe
         crs=str(metadata.get("display_crs", DISPLAY_CRS)),
         units=str(metadata.get("display_units", DISPLAY_UNITS)),
         waypoints=waypoints,
+    )
+
+def delete_task_results(task_id: str, storage: FileStorageService) -> DeleteTaskResultsResponse:
+    """Delete all results for a task."""
+    try:
+        storage.delete_task_results(task_id)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete task results: {str(e)}")
+    return DeleteTaskResultsResponse(
+        message=f"Task {task_id} results deleted successfully",
+        taskId=task_id,
+        deleted=True,
     )

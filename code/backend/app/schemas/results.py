@@ -47,3 +47,8 @@ class RobotPathRawResponse(BaseModel):
     crs: str
     units: str
     waypoints: list[RobotPathRawPoint]
+
+class DeleteTaskResultsResponse(BaseModel):
+    message: str
+    taskId: str
+    deleted: bool

@@ -21,6 +21,13 @@ import {
   RobotPathRawResponse,
 } from '../types/prescription';
 
+/** Response from DELETE /api/v1/results/{taskId} (matches backend DeleteTaskResultsResponse). */
+export interface DeleteTaskResultsResponse {
+  message: string;
+  taskId: string;
+  deleted: boolean;
+}
+
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001';
 
 class ApiService {
@@ -229,6 +236,20 @@ class ApiService {
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`Failed to list results: ${response.status} ${errorText}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Delete all stored results/artifacts for a task.
+   */
+  async deleteTaskResults(taskId: string): Promise<DeleteTaskResultsResponse> {
+    const response = await fetch(`${this.baseUrl}/api/v1/results/${taskId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Delete task results failed: ${response.status} ${text}`);
     }
     return response.json();
   }
