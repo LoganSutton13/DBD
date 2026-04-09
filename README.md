@@ -112,6 +112,8 @@ This starts **NodeODM**, the **FastAPI backend**, and a **production build of th
 
 **Access from another device on the LAN:** the UI is built with `REACT_APP_API_BASE_URL=http://localhost:8001` by default. To use the app from a phone or second PC, change that URL in `docker-compose.yml` under `frontend.build.args` to `http://<this-computer-LAN-IP>:8001`, then run `docker compose up -d --build frontend`.
 
+**Publishing pre-built images (maintainers):** The workflow [`.github/workflows/publish-docker.yml`](.github/workflows/publish-docker.yml) builds and pushes **`dbd-backend`** and **`dbd-frontend`** to [**GitHub Container Registry**](https://docs.github.com/packages/working-with-a-github-packages-registry/working-with-the-container-registry) (`ghcr.io`). Image names are `ghcr.io/<github-owner-lowercase>/dbd-backend` and `ghcr.io/<github-owner-lowercase>/dbd-frontend` (owner = user or organization). Pushes to **`main`** tag **`latest`** (and **`main`**); Git tags **`v1.2.3`** tag **`1.2.3`** and **`latest`**. After the first successful run, open each package under the repository’s **Packages** on GitHub and set visibility to **Public** if you want **`docker pull`** to work without logging in. For a **thin offline bundle**, ship `docker-compose.ghcr.yml`, `env.ghcr.example` (as a template for `.env`), and install scripts—installers set `DBD_IMAGE_REGISTRY` (for example `ghcr.io/myorg`) and run `docker compose -f docker-compose.ghcr.yml --env-file .env pull` then `up -d`. They do not need the `code/` directory.
+
 #### 6. Access the Application (native dev installs from steps 2–4)
 - **Frontend**: http://localhost:8000
 - **Backend API**: http://localhost:8001
