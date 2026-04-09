@@ -58,6 +58,32 @@ class FileStorageService:
                 self.results_dir = (backend_root / configured_results_dir).resolve()
         self.results_dir.mkdir(parents=True, exist_ok=True)
 
+    @staticmethod
+    def delete_temp_drone_imagery(task_id: str, upload_dir: Optional[Path] = None) -> bool:
+        """
+        Remove per-task staging imagery under upload_dir/task_id after NodeODM completes or fails.
+
+        Safe against path traversal (task_id must resolve under upload_dir). Idempotent if the
+        directory is already gone. Uses rmtree so nested directories are removed.
+
+        If upload_dir is omitted, uses settings.UPLOAD_DIR.
+        """
+        base_dir = Path(settings.UPLOAD_DIR if upload_dir is None else upload_dir).resolve()
+        task_dir = (base_dir / task_id).resolve()
+        if task_dir != base_dir and base_dir not in task_dir.parents:
+            raise ValueError("Invalid task_id")
+        if not task_dir.exists():
+            return True
+        if not task_dir.is_dir():
+            LOGGER.warning("Staging path is not a directory, skipping: %s", task_dir)
+            return False
+        try:
+            shutil.rmtree(task_dir)
+            return True
+        except OSError as exc:
+            LOGGER.warning("Failed to remove staging upload directory %s: %s", task_dir, exc)
+            return False
+
     def _result_url(self, task_id: str, artifact_name: str) -> str:
         """Build a relative API URL for a task artifact."""
         return f"/api/v1/results/{task_id}/{artifact_name}"
@@ -303,26 +329,30 @@ class FileStorageService:
             LOGGER.info(f"Polling for task {task_id} status: {status}")
             
             if status == COMPLETED_STATUS:
-                LOGGER.info(f"Downloading assets for task {task_id}")
                 try:
-                    task_dir = Path(task.download_assets(destination=self.results_dir / task_id))
-                except PermissionError as e:
-                    LOGGER.warning(f"[Benign] Permission error downloading assets (Windows file lock): {e}")
-                    # Files were likely downloaded but couldn't be cleaned up, which is okay
-                    # Return the directory path anyway
-                    task_dir = self.results_dir / task_id
-                    if task_dir.exists():
-                        # Run prescription job in the background context and then return.
-                        await self.run_prescription_job(task_id)
-                        return task_dir
-                    raise
+                    LOGGER.info(f"Downloading assets for task {task_id}")
+                    try:
+                        task_dir = Path(task.download_assets(destination=self.results_dir / task_id))
+                    except PermissionError as e:
+                        LOGGER.warning(f"[Benign] Permission error downloading assets (Windows file lock): {e}")
+                        # Files were likely downloaded but couldn't be cleaned up, which is okay
+                        # Return the directory path anyway
+                        task_dir = self.results_dir / task_id
+                        if task_dir.exists():
+                            # Run prescription job in the background context and then return.
+                            await self.run_prescription_job(task_id)
+                            return task_dir
+                        raise
 
-                # At this point assets were downloaded successfully; kick off prescription generation.
-                await self.run_prescription_job(task_id)
-                return task_dir
+                    # At this point assets were downloaded successfully; kick off prescription generation.
+                    await self.run_prescription_job(task_id)
+                    return task_dir
+                finally:
+                    self.delete_temp_drone_imagery(task_id)
 
             if status == FAILED_STATUS:
                 LOGGER.error(f"Task {task_id} failed. Error: {task.info().last_error}")
+                self.delete_temp_drone_imagery(task_id)
                 return None
                 
             await asyncio.sleep(5)
