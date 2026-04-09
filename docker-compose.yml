@@ -1,0 +1,58 @@
+# Full stack for local / air-gapped installs: NodeODM + FastAPI backend + static UI.
+# Prerequisite: Docker Engine + Docker Compose v2.
+#
+# Usage (from repo root):
+#   ./scripts/install-dbd.sh
+# Or:
+#   docker compose up -d --build
+#
+# Browser: http://localhost:8000  |  API docs: http://localhost:8001/docs
+#
+# Data persists in the named Docker volume `dbd_app_data`. To back up farmer data,
+# use: docker run --rm -v dbd_app_data:/data -v $(pwd):/backup alpine tar czf /backup/dbd-data.tgz -C /data .
+
+services:
+  nodeodm:
+    image: opendronemap/nodeodm:stable
+    restart: unless-stopped
+    # Farmer machine only — no need to publish unless you debug NodeODM directly.
+    ports:
+      - "3000:3000"
+
+  backend:
+    build:
+      context: ./code/backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      PORT: "8001"
+      HOST: "0.0.0.0"
+      DEBUG: "True"
+      NODEODM_HOST: nodeodm
+      NODEODM_PORT: "3000"
+      NODEODM_URL: http://nodeodm:3000
+      NODEODM_TIMEOUT: "3600"
+      UPLOAD_DIR: /data/uploads
+      RESULTS_DIR: /data/results
+      PATH_JOBS_DIR: /data/path_jobs
+    volumes:
+      - dbd_app_data:/data
+    depends_on:
+      - nodeodm
+
+  frontend:
+    build:
+      context: ./code/frontend
+      dockerfile: Dockerfile.prod
+      args:
+        REACT_APP_API_BASE_URL: http://localhost:8001
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    depends_on:
+      - backend
+
+volumes:
+  dbd_app_data:
