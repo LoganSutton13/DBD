@@ -1,3 +1,6 @@
+import type { NodeODMOptions } from './nodeodm';
+import { normalizeNodeOdmOptions } from './nodeodm';
+
 export interface UploadFile {
   id: string;
   file: File;
@@ -59,19 +62,7 @@ export interface ProcessingTask {
   task_name?: string;
 }
 
-export interface NodeOdmSettings {
-  radiometric_calibration: string;
-  feature_quality: string;
-  matcher_type: string;
-  min_num_features: number;
-  ignore_gsd: boolean;
-  skip_3dmodel: boolean;
-  orthophoto_resolution: number;
-  orthophoto_no_tiled: boolean;
-  texturing_skip_global_seam_leveling: boolean;
-  pc_quality: string;
-  orthophoto_png: boolean;
-}
+export type NodeOdmSettings = NodeODMOptions;
 
 /** Global defaults for the R prescription module (aligned with prescription_module.R). Heading is per-task only. */
 export interface PrescriptionModuleSettings {
@@ -98,6 +89,13 @@ export interface UploadSystemSettings {
   coverage_width: number;
   nodeodm: NodeOdmSettings;
   prescription: PrescriptionModuleSettings;
+}
+
+export function normalizeUploadSettingsNodeOdm(settings: UploadSystemSettings): UploadSystemSettings {
+  return {
+    ...settings,
+    nodeodm: normalizeNodeOdmOptions(settings.nodeodm),
+  };
 }
 
 export interface UploadSystemSettingsUpdate {
