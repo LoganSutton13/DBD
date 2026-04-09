@@ -89,7 +89,30 @@ npm start
 docker run -p 3000:3000 opendronemap/nodeodm:stable
 ```
 
-#### 5. Access the Application
+#### 5. Docker Compose (full stack — farmer / offline-capable)
+
+You **do not need Git**, and you **do not need to clone** the source repository. Install **Docker Engine** and **Docker Compose v2** on the target computer first (for example by installing **Docker Desktop**, which provides both). Use the **application package** supplied with your installation—typically a ZIP archive or the contents of a USB drive—and verify that it includes `docker-compose.yml`, the `code/` directory, and the `scripts/` directory. Extract or copy the package so that those items sit together in one folder on the machine that will run the stack.
+
+Open a terminal in that **top-level** folder (the directory that contains `docker-compose.yml`):
+
+```bash
+./scripts/install-dbd.sh
+# same as: docker compose up -d --build
+```
+
+This starts **NodeODM**, the **FastAPI backend**, and a **production build of the UI** (nginx). Uploads, results, and path jobs persist in the Docker volume **`dbd_app_data`**.
+
+**URLs (same machine as Docker):**
+
+- **Web app**: http://localhost:8000
+- **API / docs**: http://localhost:8001/docs
+- **NodeODM** (optional): http://localhost:3000
+
+**Working fully offline:** images must already exist on the machine. While online, run `docker compose build` and `docker compose pull`, then save images with [`docker save`](https://docs.docker.com/reference/cli/docker/image/save/) and transfer the tarball (for example on USB). On the air-gapped PC, run [`docker load`](https://docs.docker.com/reference/cli/docker/image/load/), then `./scripts/install-dbd.sh` (use `docker compose up -d` without `--build` if you are not rebuilding).
+
+**Access from another device on the LAN:** the UI is built with `REACT_APP_API_BASE_URL=http://localhost:8001` by default. To use the app from a phone or second PC, change that URL in `docker-compose.yml` under `frontend.build.args` to `http://<this-computer-LAN-IP>:8001`, then run `docker compose up -d --build frontend`.
+
+#### 6. Access the Application (native dev installs from steps 2–4)
 - **Frontend**: http://localhost:8000
 - **Backend API**: http://localhost:8001
 - **API Documentation**: http://localhost:8001/docs
