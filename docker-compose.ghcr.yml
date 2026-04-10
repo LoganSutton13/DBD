@@ -1,10 +1,9 @@
 # Same stack as docker-compose.yml, but uses pre-built images from GitHub Container
-# Registry instead of building from ./code. No backend/frontend source required on disk.
+# Registry instead of building from ./code. No backend/frontend source or .env required.
 #
-# 1. Copy env.ghcr.example to .env and set DBD_IMAGE_REGISTRY to your published
-#    namespace (see Actions log or Packages on GitHub), e.g. ghcr.io/my-org
-# 2. docker compose -f docker-compose.ghcr.yml --env-file .env pull
-# 3. docker compose -f docker-compose.ghcr.yml --env-file .env up -d
+# Defaults: ghcr.io/logansutton13/dbd-{backend,frontend}:main (overridable via env).
+# Quick start: ./scripts/install-dbd-ghcr.sh
+# Or: docker compose -f docker-compose.ghcr.yml pull && docker compose -f docker-compose.ghcr.yml up -d
 #
 # Public packages: pull works without login. Private packages: docker login ghcr.io
 
@@ -16,7 +15,7 @@ services:
       - "3000:3000"
 
   backend:
-    image: ${DBD_IMAGE_REGISTRY}/dbd-backend:${DBD_VERSION:-latest}
+    image: ${DBD_IMAGE_REGISTRY:-ghcr.io/logansutton13}/dbd-backend:${DBD_VERSION:-main}
     restart: unless-stopped
     ports:
       - "8001:8001"
@@ -37,7 +36,7 @@ services:
       - nodeodm
 
   frontend:
-    image: ${DBD_IMAGE_REGISTRY}/dbd-frontend:${DBD_VERSION:-latest}
+    image: ${DBD_IMAGE_REGISTRY:-ghcr.io/logansutton13}/dbd-frontend:${DBD_VERSION:-main}
     restart: unless-stopped
     ports:
       - "8000:80"

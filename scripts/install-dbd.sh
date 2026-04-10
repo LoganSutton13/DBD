@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Install and start DBD (NodeODM + backend + frontend) with Docker Compose.
+# Builds from ./code (see docker-compose.yml). For pre-built images from GHCR, use:
+#   ./scripts/install-dbd-ghcr.sh
 # Farmers do not need Git if they receive this folder or a release archive.
 #
 # Prerequisites: Docker Engine + Docker Compose v2 (`docker compose`).
