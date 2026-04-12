@@ -29,7 +29,7 @@ require(dplyr)
 require(oce)
 
 # Automatically finds the bounds of the field and outputs a grid from there. Modified code from FIELDimageR.Extra::fieldShape_render
-fieldShapeAuto <- function (mosaic, fieldData = NULL, fieldMap = NULL, heading = 0, cell_size = 4.571,
+fieldShapeAuto <- function (mosaic, fieldData = NULL, fieldMap = NULL, heading = 0, cell_size = 4.571, zone=11,
           PlotID = NULL, buffer = NULL, plot_size = NULL, r = 1, g = 2, 
           b = 3, color_options = viridisLite::viridis, max_pixels = 1e+08, 
           downsample = 5) 
@@ -67,10 +67,10 @@ fieldShapeAuto <- function (mosaic, fieldData = NULL, fieldMap = NULL, heading =
   centerpoint_x = (xmin(mosaic) + xmax(mosaic)) / 2
   centerpoint_y = (ymin(mosaic) + ymax(mosaic)) / 2
 
-  corner_nw <- utm2lonlat(easting = centerpoint_x - length_from_centerpoint, northing = centerpoint_y + length_from_centerpoint, zone = 11, hemisphere = "N")
-  corner_ne <- utm2lonlat(easting = centerpoint_x + length_from_centerpoint, northing = centerpoint_y + length_from_centerpoint, zone = 11, hemisphere = "N")
-  corner_sw <- utm2lonlat(easting = centerpoint_x - length_from_centerpoint, northing = centerpoint_y - length_from_centerpoint, zone = 11, hemisphere = "N")
-  corner_se <- utm2lonlat(easting = centerpoint_x + length_from_centerpoint, northing = centerpoint_y - length_from_centerpoint, zone = 11, hemisphere = "N")
+  corner_nw <- utm2lonlat(easting = centerpoint_x - length_from_centerpoint, northing = centerpoint_y + length_from_centerpoint, zone = zone, hemisphere = "N")
+  corner_ne <- utm2lonlat(easting = centerpoint_x + length_from_centerpoint, northing = centerpoint_y + length_from_centerpoint, zone = zone, hemisphere = "N")
+  corner_sw <- utm2lonlat(easting = centerpoint_x - length_from_centerpoint, northing = centerpoint_y - length_from_centerpoint, zone = zone, hemisphere = "N")
+  corner_se <- utm2lonlat(easting = centerpoint_x + length_from_centerpoint, northing = centerpoint_y - length_from_centerpoint, zone = zone, hemisphere = "N")
   
   nrows = ceiling((length_from_centerpoint * 2) / cell_size)
   ncols <- nrows
