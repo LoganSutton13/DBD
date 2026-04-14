@@ -204,7 +204,7 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
         </div>
 
         <p className="mb-4 text-sm text-dark-300">
-          We strongly recommend using the defaults unless you have a specific agronomy or processing reason to change them.
+          We recommend using the default NodeODM settings. Varying these settings may result in a poor quality orthophoto.
         </p>
 
         <div className="space-y-4">
