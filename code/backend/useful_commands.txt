@@ -1,20 +1,3 @@
-For running the docker image: docker run --rm -p 8001:8001   -e RESULTS_DIR=/app/results   -v "/home/logan/repos/DBD/code/backend/results:/app/results"   dbd-backend:local
-For building the docker image: docker build -t dbd-backend:local ./code/backend
-
-For running the frontend: docker run --rm -p 8000:8000 dbd-frontend:local
-For building the frontend: docker build -t dbd-frontend:local ./code/frontend
-
-Backend test, no file mount: 
-For running the docker image: docker run --rm -p 8001:8001 dbd-backend:local
-
-
-Backend run
-docker run --rm --network="host" dbd-backend:local
-
-Frontend run:
-docker run --rm --network="host" dbd-frontend:local
-
-
 ####################### START HERE ######################################
 Build frontend using: 
     docker build -t dbd-frontend:local ./code/frontend

@@ -45,23 +45,119 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
     longitude: 0,
     latitude: 0,
   });
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  const setDraft = (key: string, value: string) => {
+    setDrafts((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const parseFloatDraft = (key: string): number | null => {
+    const raw = drafts[key];
+    if (raw == null || raw.trim() === '') return null;
+    const parsed = Number.parseFloat(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const parseIntDraft = (key: string): number | null => {
+    const raw = drafts[key];
+    if (raw == null || raw.trim() === '') return null;
+    if (!/^-?\d+$/.test(raw.trim())) return null;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
 
   useEffect(() => {
     if (isOpen && settings) {
-      setLocal({
+      const nextLocal = {
         ...settings,
         prescription: {
           ...DEFAULT_PRESCRIPTION_MODULE,
           ...(settings.prescription ?? {}),
         },
+      };
+      setLocal(nextLocal);
+      setDrafts({
+        robot_width: String(nextLocal.robot_width),
+        coverage_width: String(nextLocal.coverage_width),
+        nodeodm_min_num_features: String(nextLocal.nodeodm.min_num_features),
+        nodeodm_orthophoto_resolution: String(nextLocal.nodeodm.orthophoto_resolution),
+        prescription_cluster_count: String(nextLocal.prescription.cluster_count),
+        prescription_smoothing_rounds: String(nextLocal.prescription.smoothing_rounds),
+        prescription_smoothing_sigma: String(nextLocal.prescription.smoothing_sigma),
+        prescription_maximum_vertices: String(nextLocal.prescription.maximum_vertices),
+        prescription_ndvi_threshold: String(nextLocal.prescription.ndvi_threshold),
       });
     }
     if (isOpen && rtkBase) {
       setLocalRtkBase(rtkBase);
+      setDrafts((prev) => ({
+        ...prev,
+        rtk_longitude: String(rtkBase.longitude),
+        rtk_latitude: String(rtkBase.latitude),
+      }));
     }
   }, [isOpen, settings, rtkBase]);
 
   if (!isOpen || !local) return null;
+
+  const validationErrors: string[] = [];
+
+  const robotWidth = parseFloatDraft('robot_width');
+  if (robotWidth == null || robotWidth < 0.1) {
+    validationErrors.push('Robot width must be at least 0.1 m.');
+  }
+
+  const coverageWidth = parseFloatDraft('coverage_width');
+  if (coverageWidth == null || coverageWidth < 0.1) {
+    validationErrors.push('Boom/Swath width must be at least 0.1 m.');
+  }
+
+  const minFeatures = parseIntDraft('nodeodm_min_num_features');
+  if (minFeatures == null || minFeatures < 1) {
+    validationErrors.push('Min features must be an integer of at least 1.');
+  }
+
+  const orthophotoResolution = parseFloatDraft('nodeodm_orthophoto_resolution');
+  if (orthophotoResolution == null || orthophotoResolution <= 0) {
+    validationErrors.push('Orthophoto resolution must be greater than 0.');
+  }
+
+  const clusterCount = parseIntDraft('prescription_cluster_count');
+  if (clusterCount == null || clusterCount < 1) {
+    validationErrors.push('Cluster count must be an integer of at least 1.');
+  }
+
+  const smoothingRounds = parseIntDraft('prescription_smoothing_rounds');
+  if (smoothingRounds == null || smoothingRounds < 0) {
+    validationErrors.push('Smoothing rounds must be an integer of at least 0.');
+  }
+
+  const smoothingSigma = parseIntDraft('prescription_smoothing_sigma');
+  if (smoothingSigma == null || smoothingSigma < 1) {
+    validationErrors.push('Smoothing sigma must be an integer of at least 1.');
+  }
+
+  const maximumVertices = parseIntDraft('prescription_maximum_vertices');
+  if (maximumVertices == null || maximumVertices < 1) {
+    validationErrors.push('Maximum vertices must be an integer of at least 1.');
+  }
+
+  const ndviThreshold = parseFloatDraft('prescription_ndvi_threshold');
+  if (ndviThreshold == null || ndviThreshold < -1 || ndviThreshold > 1) {
+    validationErrors.push('NDVI threshold must be between -1 and 1.');
+  }
+
+  const longitude = parseFloatDraft('rtk_longitude');
+  if (longitude == null || longitude < -180 || longitude > 180) {
+    validationErrors.push('Longitude must be between -180 and 180.');
+  }
+
+  const latitude = parseFloatDraft('rtk_latitude');
+  if (latitude == null || latitude < -90 || latitude > 90) {
+    validationErrors.push('Latitude must be between -90 and 90.');
+  }
+
+  const isFormValid = validationErrors.length === 0;
 
   const updateNodeOdm = <K extends keyof UploadSystemSettings['nodeodm']>(
     key: K,
@@ -108,7 +204,7 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
         </div>
 
         <p className="mb-4 text-sm text-dark-300">
-          We strongly recommend using the defaults unless you have a specific agronomy or processing reason to change them.
+          We recommend using the default NodeODM settings. Varying these settings may result in a poor quality orthophoto.
         </p>
 
         <div className="space-y-4">
@@ -122,8 +218,15 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
                   type="number"
                   min="0.1"
                   step="0.1"
-                  value={local.robot_width}
-                  onChange={(e) => setLocal({ ...local, robot_width: parseFloat(e.target.value) || 0.1 })}
+                  value={drafts.robot_width ?? ''}
+                  onChange={(e) => {
+                    const { value } = e.target;
+                    setDraft('robot_width', value);
+                    const parsed = Number.parseFloat(value);
+                    if (Number.isFinite(parsed)) {
+                      setLocal((prev) => (prev ? { ...prev, robot_width: parsed } : prev));
+                    }
+                  }}
                 />
               </label>
               <label className="text-sm text-dark-300">
@@ -133,8 +236,15 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
                   type="number"
                   min="0.1"
                   step="0.1"
-                  value={local.coverage_width}
-                  onChange={(e) => setLocal({ ...local, coverage_width: parseFloat(e.target.value) || 0.1 })}
+                  value={drafts.coverage_width ?? ''}
+                  onChange={(e) => {
+                    const { value } = e.target;
+                    setDraft('coverage_width', value);
+                    const parsed = Number.parseFloat(value);
+                    if (Number.isFinite(parsed)) {
+                      setLocal((prev) => (prev ? { ...prev, coverage_width: parsed } : prev));
+                    }
+                  }}
                 />
               </label>
             </div>
@@ -214,10 +324,16 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
                   type="number"
                   min={1}
                   step={1}
-                  value={local.nodeodm.min_num_features}
+                  value={drafts.nodeodm_min_num_features ?? ''}
                   onChange={(e) => {
-                    const n = parseInt(e.target.value, 10);
-                    updateNodeOdm('min_num_features', Number.isFinite(n) && n >= 1 ? n : 1);
+                    const { value } = e.target;
+                    setDraft('nodeodm_min_num_features', value);
+                    if (/^-?\d+$/.test(value.trim())) {
+                      const parsed = Number.parseInt(value, 10);
+                      if (Number.isFinite(parsed)) {
+                        updateNodeOdm('min_num_features', parsed);
+                      }
+                    }
                   }}
                 />
               </label>
@@ -228,13 +344,14 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
                   type="number"
                   min={0.1}
                   step={0.1}
-                  value={local.nodeodm.orthophoto_resolution}
+                  value={drafts.nodeodm_orthophoto_resolution ?? ''}
                   onChange={(e) => {
-                    const n = parseFloat(e.target.value);
-                    updateNodeOdm(
-                      'orthophoto_resolution',
-                      Number.isFinite(n) && n > 0 ? n : DEFAULT_NODEODM_OPTIONS.orthophoto_resolution
-                    );
+                    const { value } = e.target;
+                    setDraft('nodeodm_orthophoto_resolution', value);
+                    const parsed = Number.parseFloat(value);
+                    if (Number.isFinite(parsed)) {
+                      updateNodeOdm('orthophoto_resolution', parsed);
+                    }
                   }}
                 />
               </label>
@@ -337,8 +454,17 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
                   type="number"
                   min="1"
                   step="1"
-                  value={local.prescription.cluster_count}
-                  onChange={(e) => updatePrescription('cluster_count', parseInt(e.target.value, 10) || 1)}
+                  value={drafts.prescription_cluster_count ?? ''}
+                  onChange={(e) => {
+                    const { value } = e.target;
+                    setDraft('prescription_cluster_count', value);
+                    if (/^-?\d+$/.test(value.trim())) {
+                      const parsed = Number.parseInt(value, 10);
+                      if (Number.isFinite(parsed)) {
+                        updatePrescription('cluster_count', parsed);
+                      }
+                    }
+                  }}
                 />
               </label>
               <label className="text-sm text-dark-300">
@@ -348,8 +474,17 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
                   type="number"
                   min="0"
                   step="1"
-                  value={local.prescription.smoothing_rounds}
-                  onChange={(e) => updatePrescription('smoothing_rounds', parseInt(e.target.value, 10) || 0)}
+                  value={drafts.prescription_smoothing_rounds ?? ''}
+                  onChange={(e) => {
+                    const { value } = e.target;
+                    setDraft('prescription_smoothing_rounds', value);
+                    if (/^-?\d+$/.test(value.trim())) {
+                      const parsed = Number.parseInt(value, 10);
+                      if (Number.isFinite(parsed)) {
+                        updatePrescription('smoothing_rounds', parsed);
+                      }
+                    }
+                  }}
                 />
               </label>
               <label className="text-sm text-dark-300">
@@ -359,8 +494,17 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
                   type="number"
                   min="1"
                   step="1"
-                  value={local.prescription.smoothing_sigma}
-                  onChange={(e) => updatePrescription('smoothing_sigma', parseInt(e.target.value, 10) || 1)}
+                  value={drafts.prescription_smoothing_sigma ?? ''}
+                  onChange={(e) => {
+                    const { value } = e.target;
+                    setDraft('prescription_smoothing_sigma', value);
+                    if (/^-?\d+$/.test(value.trim())) {
+                      const parsed = Number.parseInt(value, 10);
+                      if (Number.isFinite(parsed)) {
+                        updatePrescription('smoothing_sigma', parsed);
+                      }
+                    }
+                  }}
                 />
               </label>
               <label className="text-sm text-dark-300">
@@ -370,8 +514,17 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
                   type="number"
                   min="1"
                   step="1"
-                  value={local.prescription.maximum_vertices}
-                  onChange={(e) => updatePrescription('maximum_vertices', parseInt(e.target.value, 10) || 1)}
+                  value={drafts.prescription_maximum_vertices ?? ''}
+                  onChange={(e) => {
+                    const { value } = e.target;
+                    setDraft('prescription_maximum_vertices', value);
+                    if (/^-?\d+$/.test(value.trim())) {
+                      const parsed = Number.parseInt(value, 10);
+                      if (Number.isFinite(parsed)) {
+                        updatePrescription('maximum_vertices', parsed);
+                      }
+                    }
+                  }}
                 />
               </label>
               <label className="text-sm text-dark-300">
@@ -382,10 +535,14 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
                   min={-1}
                   max={1}
                   step="0.01"
-                  value={local.prescription.ndvi_threshold}
+                  value={drafts.prescription_ndvi_threshold ?? ''}
                   onChange={(e) => {
-                    const n = parseFloat(e.target.value);
-                    if (!Number.isNaN(n)) updatePrescription('ndvi_threshold', Math.min(1, Math.max(-1, n)));
+                    const { value } = e.target;
+                    setDraft('prescription_ndvi_threshold', value);
+                    const parsed = Number.parseFloat(value);
+                    if (Number.isFinite(parsed)) {
+                      updatePrescription('ndvi_threshold', parsed);
+                    }
                   }}
                 />
               </label>
@@ -404,12 +561,19 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
                   min="-180"
                   max="180"
                   step="any"
-                  value={localRtkBase.longitude}
+                  value={drafts.rtk_longitude ?? ''}
                   onChange={(e) =>
-                    setLocalRtkBase((prev) => ({
-                      ...prev,
-                      longitude: parseFloat(e.target.value) || 0,
-                    }))
+                    {
+                      const { value } = e.target;
+                      setDraft('rtk_longitude', value);
+                      const parsed = Number.parseFloat(value);
+                      if (Number.isFinite(parsed)) {
+                        setLocalRtkBase((prev) => ({
+                          ...prev,
+                          longitude: parsed,
+                        }));
+                      }
+                    }
                   }
                 />
               </label>
@@ -421,12 +585,19 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
                   min="-90"
                   max="90"
                   step="any"
-                  value={localRtkBase.latitude}
+                  value={drafts.rtk_latitude ?? ''}
                   onChange={(e) =>
-                    setLocalRtkBase((prev) => ({
-                      ...prev,
-                      latitude: parseFloat(e.target.value) || 0,
-                    }))
+                    {
+                      const { value } = e.target;
+                      setDraft('rtk_latitude', value);
+                      const parsed = Number.parseFloat(value);
+                      if (Number.isFinite(parsed)) {
+                        setLocalRtkBase((prev) => ({
+                          ...prev,
+                          latitude: parsed,
+                        }));
+                      }
+                    }
                   }
                 />
               </label>
@@ -435,11 +606,14 @@ const UploadSettingsModal: React.FC<UploadSettingsModalProps> = ({
         </div>
 
         {error ? <p className="mt-4 text-sm text-red-400">{error}</p> : null}
+        {!isFormValid ? (
+          <p className="mt-2 text-sm text-red-400">{validationErrors[0]}</p>
+        ) : null}
 
         <div className="mt-6 flex flex-wrap gap-2">
           <button
             className="rounded bg-primary-500 px-4 py-2 text-sm text-white hover:bg-primary-600 disabled:opacity-50"
-            disabled={isSaving}
+            disabled={isSaving || !isFormValid}
             onClick={() =>
               onSave(
                 {
