@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import type { UploadSystemSettings } from '../types/upload';
 
 interface PathGenerationOptionsProps {
@@ -28,6 +28,22 @@ const PathGenerationOptions: React.FC<PathGenerationOptionsProps> = ({
   onCoverageWidthOverrideChange,
   settings,
 }) => {
+  const [headingDraft, setHeadingDraft] = useState(String(pathHeading));
+  const [robotWidthDraft, setRobotWidthDraft] = useState(String(robotWidthOverride));
+  const [coverageWidthDraft, setCoverageWidthDraft] = useState(String(coverageWidthOverride));
+
+  useEffect(() => {
+    setHeadingDraft(String(pathHeading));
+  }, [pathHeading]);
+
+  useEffect(() => {
+    setRobotWidthDraft(String(robotWidthOverride));
+  }, [robotWidthOverride]);
+
+  useEffect(() => {
+    setCoverageWidthDraft(String(coverageWidthOverride));
+  }, [coverageWidthOverride]);
+
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
       <label className="text-sm text-dark-300">
@@ -35,8 +51,13 @@ const PathGenerationOptions: React.FC<PathGenerationOptionsProps> = ({
         <input
           className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100"
           type="number"
-          value={pathHeading}
-          onChange={(e) => onPathHeadingChange(parseFloat(e.target.value) || 0)}
+          value={headingDraft}
+          onChange={(e) => {
+            const { value } = e.target;
+            setHeadingDraft(value);
+            const parsed = Number.parseFloat(value);
+            if (Number.isFinite(parsed)) onPathHeadingChange(parsed);
+          }}
         />
       </label>
       <label className="text-sm text-dark-300">
@@ -52,8 +73,13 @@ const PathGenerationOptions: React.FC<PathGenerationOptionsProps> = ({
           className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100 disabled:opacity-50"
           type="number"
           disabled={useDefaultRobotWidth}
-          value={robotWidthOverride}
-          onChange={(e) => onRobotWidthOverrideChange(parseFloat(e.target.value) || 0.1)}
+          value={robotWidthDraft}
+          onChange={(e) => {
+            const { value } = e.target;
+            setRobotWidthDraft(value);
+            const parsed = Number.parseFloat(value);
+            if (Number.isFinite(parsed)) onRobotWidthOverrideChange(parsed);
+          }}
         />
       </label>
       <label className="text-sm text-dark-300">
@@ -69,8 +95,13 @@ const PathGenerationOptions: React.FC<PathGenerationOptionsProps> = ({
           className="mt-1 w-full rounded border border-dark-600 bg-dark-700 px-3 py-2 text-dark-100 disabled:opacity-50"
           type="number"
           disabled={useDefaultCoverageWidth}
-          value={coverageWidthOverride}
-          onChange={(e) => onCoverageWidthOverrideChange(parseFloat(e.target.value) || 0.1)}
+          value={coverageWidthDraft}
+          onChange={(e) => {
+            const { value } = e.target;
+            setCoverageWidthDraft(value);
+            const parsed = Number.parseFloat(value);
+            if (Number.isFinite(parsed)) onCoverageWidthOverrideChange(parsed);
+          }}
         />
       </label>
     </div>

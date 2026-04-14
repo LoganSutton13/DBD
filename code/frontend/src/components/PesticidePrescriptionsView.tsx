@@ -284,6 +284,17 @@ const PesticidePrescriptionsView: React.FC = () => {
     return computePrescriptionTotalGallons(detailGeojson, getSprayForFeature, override);
   }, [detailGeojson, getSprayForFeature, detailConfig, draftGpaNone, draftGpaLow, draftGpaHigh]);
 
+  const parsedDraftGpaNone = draftGpaNone.trim() === '' ? Number.NaN : Number.parseFloat(draftGpaNone);
+  const parsedDraftGpaLow = draftGpaLow.trim() === '' ? Number.NaN : Number.parseFloat(draftGpaLow);
+  const parsedDraftGpaHigh = draftGpaHigh.trim() === '' ? Number.NaN : Number.parseFloat(draftGpaHigh);
+  const thresholdsAreValid =
+    Number.isFinite(parsedDraftGpaNone) &&
+    parsedDraftGpaNone >= 0 &&
+    Number.isFinite(parsedDraftGpaLow) &&
+    parsedDraftGpaLow >= 0 &&
+    Number.isFinite(parsedDraftGpaHigh) &&
+    parsedDraftGpaHigh >= 0;
+
   const saveSprayUpdates = useCallback(async () => {
     if (!selectedTaskId) return;
     const updates = Object.entries(sprayUpdates).map(([featureId, spray]) => ({ featureId, spray }));
@@ -921,6 +932,9 @@ const PesticidePrescriptionsView: React.FC = () => {
                       />
                     </label>
                   </div>
+                  {!thresholdsAreValid && (
+                    <p className="mt-3 text-sm text-red-400">All spray thresholds must be numeric values greater than or equal to 0.</p>
+                  )}
                   {previewGallonsInModal != null && (
                     <p className="text-dark-200 text-sm mt-4">
                       <span className="font-medium text-primary-400">Preview total spray:</span>{' '}
@@ -938,7 +952,7 @@ const PesticidePrescriptionsView: React.FC = () => {
                     <button
                       type="button"
                       onClick={saveThresholds}
-                      disabled={savingThresholds}
+                      disabled={savingThresholds || !thresholdsAreValid}
                       className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
                     >
                       {savingThresholds ? 'Saving…' : 'Save thresholds'}

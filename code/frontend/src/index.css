@@ -71,3 +71,14 @@ code {
   color: #64748b; /* dark-500 */
   background-color: #1e293b; /* dark-800 */
 }
+
+/* Remove native number steppers; users type values directly. */
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
