@@ -1,6 +1,8 @@
 """Results business logic: task summary, list, and task artifact readers."""
 
+import io
 import json
+import zipfile
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -164,6 +166,51 @@ def get_display_path(task_id: str, storage: FileStorageService) -> DisplayPathRe
         units=str(metadata.get("display_units", DISPLAY_UNITS)),
         waypoints=waypoints,
     )
+
+
+def get_robot_files_zip(task_id: str, storage: FileStorageService) -> tuple[bytes, list[str], list[str]]:
+    """
+    Build a zip of task robot artifacts, including whatever files are available.
+
+    Returns:
+        (zip_bytes, included_filenames, missing_filenames)
+    Raises:
+        FileNotFoundError: if none of the target files are available.
+    """
+    expected = ["robot_path.json", "prescription.geojson", "prescription_config.json"]
+    included: list[str] = []
+    missing: list[str] = []
+    buffer = io.BytesIO()
+
+    robot_path = storage.get_robot_path_path(task_id)
+    prescription_path = storage.get_prescription_path(task_id)
+    prescription_config = storage.read_prescription_config(task_id)
+
+    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        if robot_path:
+            zf.write(robot_path, arcname="robot_path.json")
+            included.append("robot_path.json")
+        else:
+            missing.append("robot_path.json")
+
+        if prescription_path:
+            zf.write(prescription_path, arcname="prescription.geojson")
+            included.append("prescription.geojson")
+        else:
+            missing.append("prescription.geojson")
+
+        if prescription_config is not None:
+            zf.writestr("prescription_config.json", json.dumps(prescription_config, ensure_ascii=False, indent=2))
+            included.append("prescription_config.json")
+        else:
+            missing.append("prescription_config.json")
+
+    if not included:
+        raise FileNotFoundError(
+            f"No downloadable robot files found for task {task_id}. Missing: {', '.join(expected)}"
+        )
+
+    return buffer.getvalue(), included, missing
 
 def delete_task_results(task_id: str, storage: FileStorageService) -> DeleteTaskResultsResponse:
     """Delete all results for a task."""

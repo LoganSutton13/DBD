@@ -121,6 +121,9 @@ const PesticidePrescriptionsView: React.FC = () => {
   const [regenerateSubmitting, setRegenerateSubmitting] = useState(false);
   const [regenerateError, setRegenerateError] = useState<string | null>(null);
   const [regenerateDraft, setRegenerateDraft] = useState<RegenerateFormDraft>(() => configToRegenerateDraft(null));
+  const [isDownloadingRobotFiles, setIsDownloadingRobotFiles] = useState(false);
+  const [downloadMissingFiles, setDownloadMissingFiles] = useState<string[]>([]);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   // Deterministic palette for visually distinguishing cluster polygons.
   // (Only used when `properties.spray` is not set for a feature.)
@@ -163,6 +166,8 @@ const PesticidePrescriptionsView: React.FC = () => {
     setSprayUpdates({});
     setDetailConfig(null);
     setThresholdsModalOpen(false);
+    setDownloadMissingFiles([]);
+    setDownloadError(null);
     setDetailLoading(true);
     try {
       const [geojson, status, cfg] = await Promise.all([
@@ -205,7 +210,32 @@ const PesticidePrescriptionsView: React.FC = () => {
     setThresholdsModalOpen(false);
     setRegenerateModalOpen(false);
     setRegenerateError(null);
+    setDownloadMissingFiles([]);
+    setDownloadError(null);
   }, []);
+
+  const handleDownloadRobotFiles = useCallback(async () => {
+    if (!selectedTaskId) return;
+    setIsDownloadingRobotFiles(true);
+    setDownloadError(null);
+    setDownloadMissingFiles([]);
+    try {
+      const { blob, missing } = await apiService.downloadTaskRobotFilesZip(selectedTaskId);
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${selectedTaskId}_robot_files.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(anchor);
+      setDownloadMissingFiles(missing);
+    } catch (e) {
+      setDownloadError(e instanceof Error ? e.message : 'Failed to download robot files');
+    } finally {
+      setIsDownloadingRobotFiles(false);
+    }
+  }, [selectedTaskId]);
 
   const getFeatureId = (feature: PrescriptionFeature): string | null => {
     if (feature.id != null) return String(feature.id);
@@ -526,6 +556,14 @@ const PesticidePrescriptionsView: React.FC = () => {
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
+                  onClick={() => void handleDownloadRobotFiles()}
+                  disabled={isDownloadingRobotFiles}
+                  className="px-3 py-2 text-sm bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {isDownloadingRobotFiles ? 'Downloading robot files…' : 'Download Robot Files'}
+                </button>
+                <button
+                  type="button"
                   onClick={() => void openRegenerateModal()}
                   disabled={detailLoading || detailStatus?.status === 'processing'}
                   className="px-3 py-2 text-sm bg-dark-600 text-dark-100 border border-dark-500 rounded-lg hover:bg-dark-500 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
@@ -548,6 +586,16 @@ const PesticidePrescriptionsView: React.FC = () => {
                 <p>
                   <span className="font-medium text-yellow-200">Regenerating…</span> The updated map will appear when the job finishes. You can close this dialog; reopen the task from the list to check status.
                 </p>
+              </div>
+            )}
+            {downloadError && (
+              <div className="px-6 py-3 bg-red-500/10 border-b border-red-500/30 text-red-300 text-sm">
+                {downloadError}
+              </div>
+            )}
+            {!downloadError && downloadMissingFiles.length > 0 && (
+              <div className="px-6 py-3 bg-yellow-500/10 border-b border-yellow-500/30 text-yellow-100 text-sm">
+                Downloaded available files. Missing: {downloadMissingFiles.join(', ')}.
               </div>
             )}
             <div className="p-6 flex-1 overflow-y-auto">
