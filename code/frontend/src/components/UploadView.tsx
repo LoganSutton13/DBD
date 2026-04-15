@@ -102,6 +102,7 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
   const [isSyncingBoundary, setIsSyncingBoundary] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadResponse, setUploadResponse] = useState<UploadResponse | null>(null);
+  const [fileUploadProgress, setFileUploadProgress] = useState<{ sent: number; total: number }>({ sent: 0, total: 0 });
 
   const [pathHeading, setPathHeading] = useState(0);
   const [useDefaultRobotWidth, setUseDefaultRobotWidth] = useState(true);
@@ -268,6 +269,7 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
       setIsUploading(false);
       return;
     }
+    setFileUploadProgress({ sent: 0, total: targets.length });
 
     setUploadFiles((prev) =>
       prev.map((f) => (f.status === 'pending' || f.status === 'error' ? { ...f, status: 'uploading', progress: 0, error: undefined } : f))
@@ -296,6 +298,7 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
             setUploadFiles((prev) => prev.map((file) => (file.id === uploadFile.id ? { ...file, progress } : file)));
           });
         }
+        setFileUploadProgress({ sent: fileIdx + 1, total: targets.length });
       }
 
       const response = await apiService.uploadFinalize(task_id, fileList, fieldName.trim() || undefined);
@@ -641,6 +644,25 @@ const UploadView: React.FC<UploadViewProps> = ({ openSettingsTick }) => {
                   </button>
                 ) : null}
               </div>
+
+              {(isUploading || (fileUploadProgress.total > 0 && fileUploadProgress.sent > 0)) && (
+                <div className="rounded-lg border border-dark-600 bg-dark-700/60 p-3">
+                  <div className="mb-2 flex items-center justify-between text-xs text-dark-300">
+                    <span>Files sent</span>
+                    <span>
+                      {fileUploadProgress.sent} / {fileUploadProgress.total}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded bg-dark-600">
+                    <div
+                      className="h-full bg-primary-500 transition-all"
+                      style={{
+                        width: `${fileUploadProgress.total > 0 ? Math.round((fileUploadProgress.sent / fileUploadProgress.total) * 100) : 0}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
 
               {uploadError ? <p className="text-sm text-red-400">{uploadError}</p> : null}
               {activeTaskForUpload ? (
