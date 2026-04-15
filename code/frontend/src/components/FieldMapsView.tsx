@@ -163,6 +163,9 @@ const FieldMapsView: React.FC = () => {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeletingTask, setIsDeletingTask] = useState(false);
+  const [isDownloadingRobotFiles, setIsDownloadingRobotFiles] = useState(false);
+  const [downloadMissingFiles, setDownloadMissingFiles] = useState<string[]>([]);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   // Check internet connectivity
   useEffect(() => {
@@ -297,6 +300,8 @@ const FieldMapsView: React.FC = () => {
     setPathJobId(null);
     setPathError(null);
     setIsPathEditorOpen(false);
+    setDownloadMissingFiles([]);
+    setDownloadError(null);
   }, [selectedMap?.id]);
 
   const closeDeleteConfirm = () => {
@@ -445,6 +450,28 @@ const FieldMapsView: React.FC = () => {
       setPathError(err instanceof Error ? err.message : 'Failed to save path');
     } finally {
       setIsSavingPath(false);
+    }
+  };
+
+  const downloadRobotFilesZip = async (taskId: string) => {
+    setIsDownloadingRobotFiles(true);
+    setDownloadMissingFiles([]);
+    setDownloadError(null);
+    try {
+      const { blob, missing } = await apiService.downloadTaskRobotFilesZip(taskId);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${taskId}_robot_files.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setDownloadMissingFiles(missing);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Failed to download robot files');
+    } finally {
+      setIsDownloadingRobotFiles(false);
     }
   };
 
@@ -768,14 +795,15 @@ const FieldMapsView: React.FC = () => {
                     Modify Path
                   </button>
                   <button
-                    onClick={() => downloadGeoJSON(selectedMap)}
-                    className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200 text-sm flex items-center space-x-2"
-                    title="Download GeoJSON"
+                    onClick={() => void downloadRobotFilesZip(selectedMap.id)}
+                    disabled={isDownloadingRobotFiles}
+                    className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors duration-200 text-sm disabled:opacity-60 disabled:cursor-not-allowed flex items-center space-x-2"
+                    title="Download robot files zip"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    <span>Download</span>
+                    <span>{isDownloadingRobotFiles ? 'Downloading robot files...' : 'Download Robot Files'}</span>
                   </button>
                   <button
                     onClick={openDeleteConfirm}
@@ -787,6 +815,16 @@ const FieldMapsView: React.FC = () => {
                 </div>
               </div>
             </div>
+            {downloadError && (
+              <div className="mx-5 mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                {downloadError}
+              </div>
+            )}
+            {!downloadError && downloadMissingFiles.length > 0 && (
+              <div className="mx-5 mt-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-100">
+                Downloaded available files. Missing: {downloadMissingFiles.join(', ')}.
+              </div>
+            )}
 
             {/* Content Area */}
             <div className="flex-1 p-5 overflow-y-auto">

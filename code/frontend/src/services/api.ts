@@ -553,6 +553,29 @@ class ApiService {
   }
 
   /**
+   * Download available robot-related files for a task as a zip bundle.
+   */
+  async downloadTaskRobotFilesZip(taskId: string): Promise<{ blob: Blob; missing: string[]; included: string[] }> {
+    const response = await fetch(`${this.baseUrl}/api/v1/results/${taskId}/robot-files.zip`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Download robot files failed: ${response.status} ${text}`);
+    }
+    const parseHeaderList = (value: string | null): string[] => {
+      if (!value) return [];
+      return value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+    };
+
+    const missing = parseHeaderList(response.headers.get('X-Missing-Files'));
+    const included = parseHeaderList(response.headers.get('X-Included-Files'));
+    const blob = await response.blob();
+    return { blob, missing, included };
+  }
+
+  /**
    * Update prescription spray levels for features.
    */
   async updatePrescription(taskId: string, body: PrescriptionUpdateRequest): Promise<PrescriptionGeoJSON> {

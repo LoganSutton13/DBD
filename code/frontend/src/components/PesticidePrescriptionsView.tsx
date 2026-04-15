@@ -121,6 +121,9 @@ const PesticidePrescriptionsView: React.FC = () => {
   const [regenerateSubmitting, setRegenerateSubmitting] = useState(false);
   const [regenerateError, setRegenerateError] = useState<string | null>(null);
   const [regenerateDraft, setRegenerateDraft] = useState<RegenerateFormDraft>(() => configToRegenerateDraft(null));
+  const [isDownloadingRobotFiles, setIsDownloadingRobotFiles] = useState(false);
+  const [downloadMissingFiles, setDownloadMissingFiles] = useState<string[]>([]);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   // Deterministic palette for visually distinguishing cluster polygons.
   // (Only used when `properties.spray` is not set for a feature.)
@@ -163,6 +166,8 @@ const PesticidePrescriptionsView: React.FC = () => {
     setSprayUpdates({});
     setDetailConfig(null);
     setThresholdsModalOpen(false);
+    setDownloadMissingFiles([]);
+    setDownloadError(null);
     setDetailLoading(true);
     try {
       const [geojson, status, cfg] = await Promise.all([
@@ -205,7 +210,32 @@ const PesticidePrescriptionsView: React.FC = () => {
     setThresholdsModalOpen(false);
     setRegenerateModalOpen(false);
     setRegenerateError(null);
+    setDownloadMissingFiles([]);
+    setDownloadError(null);
   }, []);
+
+  const handleDownloadRobotFiles = useCallback(async () => {
+    if (!selectedTaskId) return;
+    setIsDownloadingRobotFiles(true);
+    setDownloadError(null);
+    setDownloadMissingFiles([]);
+    try {
+      const { blob, missing } = await apiService.downloadTaskRobotFilesZip(selectedTaskId);
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${selectedTaskId}_robot_files.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(anchor);
+      setDownloadMissingFiles(missing);
+    } catch (e) {
+      setDownloadError(e instanceof Error ? e.message : 'Failed to download robot files');
+    } finally {
+      setIsDownloadingRobotFiles(false);
+    }
+  }, [selectedTaskId]);
 
   const getFeatureId = (feature: PrescriptionFeature): string | null => {
     if (feature.id != null) return String(feature.id);
@@ -526,11 +556,19 @@ const PesticidePrescriptionsView: React.FC = () => {
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
+                  onClick={() => void handleDownloadRobotFiles()}
+                  disabled={isDownloadingRobotFiles}
+                  className="px-3 py-2 text-sm bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {isDownloadingRobotFiles ? 'Downloading robot files…' : 'Download Robot Files'}
+                </button>
+                <button
+                  type="button"
                   onClick={() => void openRegenerateModal()}
                   disabled={detailLoading || detailStatus?.status === 'processing'}
                   className="px-3 py-2 text-sm bg-dark-600 text-dark-100 border border-dark-500 rounded-lg hover:bg-dark-500 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                 >
-                  Regenerate prescription
+                  Regenerate Prescription
                 </button>
                 <button type="button" onClick={closeDetail} className="text-dark-400 hover:text-dark-100 p-2" aria-label="Close">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -548,6 +586,16 @@ const PesticidePrescriptionsView: React.FC = () => {
                 <p>
                   <span className="font-medium text-yellow-200">Regenerating…</span> The updated map will appear when the job finishes. You can close this dialog; reopen the task from the list to check status.
                 </p>
+              </div>
+            )}
+            {downloadError && (
+              <div className="px-6 py-3 bg-red-500/10 border-b border-red-500/30 text-red-300 text-sm">
+                {downloadError}
+              </div>
+            )}
+            {!downloadError && downloadMissingFiles.length > 0 && (
+              <div className="px-6 py-3 bg-yellow-500/10 border-b border-yellow-500/30 text-yellow-100 text-sm">
+                Downloaded available files. Missing: {downloadMissingFiles.join(', ')}.
               </div>
             )}
             <div className="p-6 flex-1 overflow-y-auto">
@@ -636,8 +684,8 @@ const PesticidePrescriptionsView: React.FC = () => {
                   <div>
                     <h4 className="text-lg font-medium text-primary-400 mb-2">Spray by cluster</h4>
                     <p className="text-dark-400 text-sm mb-4">
-                      Set spray level per feature and click Save spray updates. Configure gallons-per-acre rates for each
-                      level under Configure spray thresholds.
+                      Set spray level per feature and click Save Spray Updates. Configure gallons-per-acre rates for each
+                      level under Configure Spray Thresholds.
                     </p>
                     {totalGallons != null && (
                       <p className="text-dark-200 text-sm mb-3">
@@ -678,7 +726,7 @@ const PesticidePrescriptionsView: React.FC = () => {
                         onClick={openThresholdsModal}
                         className="px-4 py-2 bg-dark-600 text-dark-100 border border-dark-500 rounded-lg hover:bg-dark-500"
                       >
-                        Configure spray thresholds
+                        Configure Spray Thresholds
                       </button>
                       <button
                         type="button"
@@ -686,7 +734,7 @@ const PesticidePrescriptionsView: React.FC = () => {
                         disabled={savingSpray || Object.keys(sprayUpdates).length === 0}
                         className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {savingSpray ? 'Saving…' : 'Save spray updates'}
+                        {savingSpray ? 'Saving…' : 'Save Spray Updates'}
                       </button>
                     </div>
                   </div>
@@ -709,7 +757,7 @@ const PesticidePrescriptionsView: React.FC = () => {
                   aria-labelledby="regenerate-rx-title"
                 >
                   <h4 id="regenerate-rx-title" className="text-lg font-semibold text-primary-400 mb-2">
-                    Regenerate prescription
+                    Regenerate Prescription
                   </h4>
                   <p className="text-dark-400 text-sm mb-4">
                     These values are merged with global defaults for this task. Empty fields keep the current saved value.

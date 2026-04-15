@@ -7,6 +7,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
+from starlette.responses import Response
 
 from app.api.deps import get_file_storage_service
 from app.handlers import results as results_handlers
@@ -107,6 +108,27 @@ def get_display_path(
         raise HTTPException(status_code=404, detail="Display path not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get display path: {str(e)}")
+
+
+@router.get("/{task_id}/robot-files.zip")
+def get_robot_files_zip(
+    task_id: str,
+    storage=Depends(get_file_storage_service),
+):
+    """Download available robot-related task files as a zip archive."""
+    try:
+        payload, included, missing = results_handlers.get_robot_files_zip(task_id, storage)
+        headers = {
+            "Content-Disposition": f'attachment; filename="{task_id}_robot_files.zip"',
+            "X-Included-Files": ",".join(included),
+            "X-Missing-Files": ",".join(missing),
+            "Access-Control-Expose-Headers": "Content-Disposition, X-Included-Files, X-Missing-Files",
+        }
+        return Response(content=payload, media_type="application/zip", headers=headers)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to build robot files zip: {str(e)}") from e
 
 @router.delete("/{task_id}", response_model=DeleteTaskResultsResponse)
 def delete_task_results(
