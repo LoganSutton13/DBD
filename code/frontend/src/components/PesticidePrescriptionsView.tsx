@@ -568,7 +568,7 @@ const PesticidePrescriptionsView: React.FC = () => {
                   disabled={detailLoading || detailStatus?.status === 'processing'}
                   className="px-3 py-2 text-sm bg-dark-600 text-dark-100 border border-dark-500 rounded-lg hover:bg-dark-500 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                 >
-                  Regenerate prescription
+                  Regenerate Prescription
                 </button>
                 <button type="button" onClick={closeDetail} className="text-dark-400 hover:text-dark-100 p-2" aria-label="Close">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -684,8 +684,8 @@ const PesticidePrescriptionsView: React.FC = () => {
                   <div>
                     <h4 className="text-lg font-medium text-primary-400 mb-2">Spray by cluster</h4>
                     <p className="text-dark-400 text-sm mb-4">
-                      Set spray level per feature and click Save spray updates. Configure gallons-per-acre rates for each
-                      level under Configure spray thresholds.
+                      Set spray level per feature and click Save Spray Updates. Configure gallons-per-acre rates for each
+                      level under Configure Spray Thresholds.
                     </p>
                     {totalGallons != null && (
                       <p className="text-dark-200 text-sm mb-3">
@@ -726,7 +726,7 @@ const PesticidePrescriptionsView: React.FC = () => {
                         onClick={openThresholdsModal}
                         className="px-4 py-2 bg-dark-600 text-dark-100 border border-dark-500 rounded-lg hover:bg-dark-500"
                       >
-                        Configure spray thresholds
+                        Configure Spray Thresholds
                       </button>
                       <button
                         type="button"
@@ -734,7 +734,7 @@ const PesticidePrescriptionsView: React.FC = () => {
                         disabled={savingSpray || Object.keys(sprayUpdates).length === 0}
                         className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {savingSpray ? 'Saving…' : 'Save spray updates'}
+                        {savingSpray ? 'Saving…' : 'Save Spray Updates'}
                       </button>
                     </div>
                   </div>
@@ -757,7 +757,7 @@ const PesticidePrescriptionsView: React.FC = () => {
                   aria-labelledby="regenerate-rx-title"
                 >
                   <h4 id="regenerate-rx-title" className="text-lg font-semibold text-primary-400 mb-2">
-                    Regenerate prescription
+                    Regenerate Prescription
                   </h4>
                   <p className="text-dark-400 text-sm mb-4">
                     These values are merged with global defaults for this task. Empty fields keep the current saved value.
