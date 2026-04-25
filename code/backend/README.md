@@ -80,26 +80,23 @@ A FastAPI-based backend service for processing drone imagery using Node ODM.
 ```
 code/backend/
 ├── app/
-│   ├── __init__.py
-│   ├── main.py                 # FastAPI app entry point
-│   ├── core/                   # Core configuration
-│   │   ├── __init__.py
-│   │   └── config.py          # Settings and configuration
-│   ├── api/                   # API endpoints
-│   │   ├── __init__.py
-│   │   └── v1/                # API version 1
-│   │       ├── __init__.py
-│   │       ├── upload.py      # File upload endpoints
-│   │       └── results.py     # Results retrieval endpoints
-│   └── services/              # Service layer
-│       ├── __init__.py
-│       └── file_storage.py   # File storage and polling service
-├── uploads/                   # Uploaded files storage
-├── results/                   # Processed results storage
-├── requirements.txt           # Python dependencies
-├── env.example               # Environment variables template
-├── run.py                    # Development server runner
-└── README.md                 # This file
+│   ├── main.py                 # FastAPI app; includes upload, results, pathing, prescription routers
+│   ├── core/config.py
+│   ├── api/v1/
+│   │   ├── upload.py          # Chunked upload init/chunk/finalize, settings, boundary
+│   │   ├── results.py         # List assets, orthophoto/PDF, paths, robot zip, delete results
+│   │   ├── pathing.py         # Path jobs, RTK base, from-task generation
+│   │   └── prescription.py    # Prescription list/detail/config/status/generate
+│   ├── handlers/              # Route handlers (upload, results, pathing, prescription)
+│   ├── services/              # File storage, path planning (Fields2Cover), field_map_generator (R)
+│   └── schemas/
+├── uploads/                   # Staging uploads (see UPLOAD_DIR)
+├── results/                   # Processed tasks (see RESULTS_DIR)
+├── path_jobs/                 # Preview path job working dirs (see PATH_JOBS_DIR)
+├── requirements.txt
+├── env.example
+├── run.py
+└── README.md
 ```
 
 ## Configuration
@@ -126,8 +123,9 @@ The application uses environment variables for configuration. Copy `env.example`
 PORT=8001
 HOST=0.0.0.0
 DEBUG=True
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001,http://localhost:8000
 UPLOAD_DIR=./uploads
+RESULTS_DIR=./results
 MAX_FILE_SIZE=104857600
 SUPPORTED_FORMATS=image/jpeg,image/png,image/tiff
 ```
@@ -141,11 +139,11 @@ Once the server is running, visit:
 ## Architecture
 
 ### Data Flow
-1. **Upload**: Files uploaded via `/api/v1/upload` with optional task name and parameters
-2. **Processing**: Task submitted to Node ODM with configurable options
-3. **Polling**: Background polling monitors task completion automatically
-4. **Download**: Assets downloaded automatically upon completion
-5. **Results**: Processed orthophotos and reports retrieved via `/api/v1/results`
+1. **Upload**: Client calls **`init` → `chunk` (repeat) → `finalize`** under `/api/v1/upload` with optional task name and NodeODM parameters; optional boundary multipart upload per task.
+2. **Processing**: Finalize enqueues Node ODM; status is polled via `/api/v1/upload/{task_id}/status`.
+3. **Polling / download**: Backend services poll NodeODM and pull assets into `results/{task_id}/` when complete.
+4. **Results**: Orthophoto, PDF, optional prescription GeoJSON, robot path JSON, and display path JSON are exposed under `/api/v1/results` (and related routes).
+5. **Pathing / prescriptions**: Separate routers cover preview path jobs, saving paths to tasks, prescription CRUD, regeneration, and configuration.
 
 ### Key Components
 - **FastAPI**: Modern, fast web framework with automatic documentation
@@ -156,31 +154,41 @@ Once the server is running, visit:
 ## 🔗 API Endpoints
 
 ### Upload Endpoints
-- `POST /api/v1/upload` - Upload drone imagery files with optional task name and parameters (heading, grid size)
-- `GET /api/v1/upload/{task_id}/status` - Check upload/processing status
-- `DELETE /api/v1/upload/{task_id}` - Delete uploaded files (planned)
-- `GET /api/v1/upload` - List all uploads (debug)
+- `POST /api/v1/upload/init` — Start a session; returns `task_id`
+- `POST /api/v1/upload/chunk` — Upload one file chunk (multipart)
+- `POST /api/v1/upload/finalize` — Commit file manifest and start NodeODM
+- `POST /api/v1/upload/{task_id}/boundary` — Attach boundary shapefile parts to a task
+- `GET/PUT /api/v1/upload/settings` — System defaults (NodeODM + prescription knobs)
+- `POST /api/v1/upload/settings/reset` (+ `/reset/prescription`, `/reset/nodeodm`) — Scoped resets
+- `GET /api/v1/upload/{task_id}/status` — NodeODM-linked status for the task
+- `DELETE /api/v1/upload/{task_id}` — **501** (not implemented)
+- `GET /api/v1/upload/` — **501** (not implemented)
 
 ### Results Endpoints
-- `GET /api/v1/results` - List all processed tasks with orthophotos
-- `GET /api/v1/results/{task_id}` - Get task summary with URLs to assets
-- `GET /api/v1/results/{task_id}/orthophoto.png` - Serve orthophoto PNG image
-- `GET /api/v1/results/{task_id}/report.pdf` - Serve PDF report
+- `GET /api/v1/results` — List processed tasks with orthophotos
+- `GET /api/v1/results/{task_id}` — Task summary with asset URLs
+- `GET /api/v1/results/{task_id}/orthophoto.png` — Orthophoto PNG
+- `GET /api/v1/results/{task_id}/report.pdf` — ODM report PDF
+- `GET /api/v1/results/{task_id}/robot-path` — Robot-frame path JSON
+- `GET /api/v1/results/{task_id}/display-path` — Map (EPSG:4326) waypoints
+- `GET /api/v1/results/{task_id}/robot-files.zip` — Zip of available robot_path / prescription / config files
+- `DELETE /api/v1/results/{task_id}` — Delete on-disk results for the task
 
-### Pathing Endpoints (Sprint 4–5)
-- `POST /api/v1/pathing` - Upload boundary shapefile components and start a preview-only path job (heading, robot_width, coverage_width, optional base station)
-- `GET /api/v1/pathing/{path_job_id}/status` - Poll for path job status
-- `GET /api/v1/pathing/{path_job_id}` - Fetch completed path preview waypoints/metadata
-- `POST /api/v1/pathing/{path_job_id}/save` - Persist generated path to a task; may trigger prescription generation if orthophoto exists
-- `GET /api/v1/pathing/rtk-base` - Get stored RTK base station coordinates
-- `PUT /api/v1/pathing/rtk-base` - Set RTK base station coordinates
+### Pathing Endpoints
+- `POST /api/v1/pathing` — Multipart shapefile upload → preview path job (**202**)
+- `POST /api/v1/pathing/from-task` (and related `.../jobs/from-task` alias) — Path job from stored task boundary
+- `GET /api/v1/pathing/{path_job_id}/status` — Job status
+- `GET /api/v1/pathing/{path_job_id}` — Completed preview coordinates/metadata
+- `POST /api/v1/pathing/{path_job_id}/save` — Persist preview path onto a task
+- `GET/PUT /api/v1/pathing/rtk-base` — RTK base station JSON config
 
-### Prescription Endpoints (Sprint 5)
-- `GET /api/v1/prescription` - List tasks that have a prescription file
-- `GET /api/v1/prescription/{task_id}` - Fetch prescription GeoJSON for a task
-- `PUT /api/v1/prescription/{task_id}` - Update prescription GeoJSON (apply farmer spray choices)
-- `GET /api/v1/prescription/{task_id}/status` - Poll prescription generation status
-- `PUT /api/v1/prescription/{task_id}/config` - Set per-task prescription configuration
+### Prescription Endpoints
+- `GET /api/v1/prescription` — List tasks with prescription artifacts
+- `GET /api/v1/prescription/{task_id}` — Prescription GeoJSON
+- `PUT /api/v1/prescription/{task_id}` — Update GeoJSON (spray levels, etc.)
+- `GET /api/v1/prescription/{task_id}/status` — Generation status
+- `GET/PUT /api/v1/prescription/{task_id}/config` — Read/write merged prescription parameters (including GPA fields)
+- `POST /api/v1/prescription/{task_id}/generate` — Trigger regeneration (**202**)
 
 ### Health Check
 - `GET /` - Root endpoint
@@ -251,29 +259,28 @@ curl -X GET "http://localhost:8001/api/v1/results/{task_id}/report.pdf" -o repor
 - ✅ Enhanced error handling for Node ODM connection issues
 - ✅ Logging and monitoring
 
-### Added Since Sprint 2 (Sprint 4–5 highlights)
-- ✅ Pathing API for boundary shapefile upload and previewable waypoint generation (Fields2Cover-based)
-- ✅ RTK base station configuration endpoints to support relative/robot-friendly coordinates
-- ✅ Prescription API endpoints (status/config/update) and backend invocation surface for prescription generation
-- ✅ Expanded backend unit test coverage and CI workflow for automated tests
+### Added Since Sprint 2 (highlights through Sprint 6)
+- ✅ Chunked upload API (`init` / `chunk` / `finalize`) with upload settings and boundary attach
+- ✅ Pathing API (preview jobs, from-task, save-to-task) and RTK base endpoints
+- ✅ Prescription API (list, GeoJSON, PUT updates, config, status, **generate**)
+- ✅ Results extensions: **robot-path**, **display-path**, **robot-files.zip**, **DELETE** results
+- ✅ Expanded `pytest` coverage and GitHub Actions **backend-tests** workflow
+- ✅ Dockerized backend with FIELDimageR / geospatial dependencies (see repository `Dockerfile`s)
 
-### Planned Features
-- [ ] Database integration for task persistence
-- [ ] Task deletion functionality
-- [ ] Authentication and security
-- [ ] Comprehensive unit and integration tests
-- [ ] Pagination for results listing
-- [ ] Caching mechanisms for frequently accessed files
-- [ ] Task scheduling and queue management
-- [ ] Field maps backend integration
-- [ ] Pesticide prescription backend integration
+### Planned / not yet implemented
+- [ ] Database integration for task persistence and querying
+- [ ] `DELETE` / `GET` list on `/api/v1/upload` (still **501**)
+- [ ] Authentication and multi-tenant authorization
+- [ ] Pagination for large results listings
+- [ ] Dedicated public “NDVI-only” API separate from the prescription pipeline (NDVI lives in prescription GeoJSON today)
+- [ ] Broad HTTP-level integration / E2E tests in CI (beyond unit tests)
 
 ## Integration
 
-The backend is designed to work with the frontend React application:
-- Frontend runs on port 3000/3001 (configurable)
-- Backend runs on port 8000 (configurable via .env)
-- CORS configured for frontend communication
+Typical local dev ports (see root `README.md` for Docker):
+- **Frontend (CRA):** http://localhost:8000 — set `REACT_APP_API_BASE_URL=http://localhost:8001`
+- **Backend:** http://localhost:8001 — set `PORT=8001` in `.env` (matches `env.example`)
+- **CORS:** include every browser origin you use (defaults in `app/core/config.py` already list `localhost:8000`)
 
 ## Development
 
@@ -336,18 +343,13 @@ poetry export -f requirements.txt --output requirements.txt
 - **pyodm**: Python client for Node ODM integration
 - **python-multipart**: Support for file uploads
 
-## 📝 TODO
+## 📝 TODO (maintainer backlog)
 
-- [ ] Add database models and migrations for persistent storage
-- [ ] Implement task deletion functionality
-- [ ] Create comprehensive unit and integration tests
-- [ ] Implement authentication and security
-- [ ] Add pagination for results listing
-- [ ] Implement caching mechanisms for improved performance
-- [ ] Add task scheduling and queue management
-- [ ] Field maps backend integration
-- [ ] Pesticide prescription backend integration
-- [ ] Robot path generation functionality
+- [ ] Optional database layer for tasks, audit trails, and multi-user deployments
+- [ ] Implement `DELETE /api/v1/upload/{task_id}` and listing if product needs upload-session management
+- [ ] More integration / E2E tests (API chains and/or browser automation)
+- [ ] Authentication / reverse-proxy hardening patterns for non-lab deployments
+- [ ] Pagination and caching for very large farms or long result histories
 
 ## Sprint 2 Updates
 

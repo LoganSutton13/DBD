@@ -2,418 +2,348 @@
 
 ## Project summary
 
-### One-sentence description of the project
+### One-sentence description
 
-A full-stack web application that processes drone imagery through automated image stitching and orthophoto generation using Node ODM, providing farmers and agricultural professionals with high-quality field maps, NDVI analysis, path planning, and agricultural analysis tools.
+A full-stack web application that ingests drone imagery, runs **OpenDroneMap / NodeODM** orthomosaic jobs, and serves **gallery**, **NDVI-driven prescription maps**, and **robot path planning** (Fields2Cover + farm-ng style outputs) through a React UI and a FastAPI backend.
 
 ### Additional information about the project
 
-DroneBasedDevelopment is a comprehensive drone imagery processing platform designed for agricultural applications. The system combines a modern React frontend with a Python FastAPI backend to provide seamless upload, processing, and visualization of drone-captured field imagery. Users can upload multiple drone images, which are automatically processed using Node ODM to create orthophotos and field maps. The platform features a dark-themed UI with real-time processing monitoring, file management, NDVI analysis with DBSCAN clustering, robot path planning capabilities, and integration with agricultural analysis tools for pesticide prescription mapping and field assessment.
+**DroneBasedDevelopment** is a drone imagery processing platform aimed at **agricultural** use cases. A **React** frontend (TypeScript, Tailwind, Leaflet) talks to a **FastAPI** backend that stages uploads, forwards jobs to **NodeODM**, polls for completion, downloads orthophotos and reports, and orchestrates **prescription generation** (R / FIELDimageR-style workflow invoked from Python) plus **path preview** and **robot-oriented exports**.
+
+Typical flow: name a field and optionally attach a **boundary shapefile**, queue **RGB or multispectral** imagery (with optional GNSS sidecars such as `.nav` / `.obs` / `.bin` / `.mrk`), upload in **chunks** with **per-file progress**, monitor processing on the **Upload** tab, then use **View Gallery** for orthophotos and PDFs, **Prescriptions** for spray maps and regeneration, and **Field Maps** for map-centric path editing, **GeoJSON export**, **robot file ZIP** download, and **deleting stored results** for a task when you need to reclaim space.
+
+The project ships a **Docker Compose** stack (NodeODM + API + nginx-hosted UI) so installs are repeatable on a lab or farm PC, plus an optional **GitHub Container Registry (GHCR)** path for teams that want pre-built images without cloning source.
 
 ## Installation
 
 ### Prerequisites
 
-- **Node.js** (version 14 or higher) - for the React frontend
-- **Python 3.8+** - for the FastAPI backend
-- **Node ODM** - Docker container or local installation for image processing
-- **Git** - for cloning the repository
-- **Poetry** (recommended) or **pip** - for Python dependency management
+- **Node.js** 16 or newer (the frontend pins `@types/node` 16.x; LTS 18 or 20 is fine)
+- **Python 3.8+** for the FastAPI backend
+- **NodeODM** — Docker image `opendronemap/nodeodm:stable` (recommended) or any reachable NodeODM instance compatible with **PyODM**
+- **Git** — to clone this repository (not required for the Docker-only “application package” install if you use the compose bundle without source)
+- **Poetry** (recommended) or **pip** with `requirements.txt` for Python dependencies
+- **Docker Engine** and **Docker Compose v2** — for the full-stack container workflow (e.g. Docker Desktop on Windows or macOS)
 
-### Add-ons
+### Add-ons and major dependencies
 
-**Backend Dependencies:**
-- **FastAPI** - Modern, fast web framework for building APIs
-- **Uvicorn** - ASGI server for running the FastAPI application
-- **PyODM** - Python client for Node ODM integration
-- **Pydantic Settings** - Settings management using environment variables
-- **aiofiles** - Async file operations for handling uploads
-- **httpx** - HTTP client for Node ODM communication
-- **python-multipart** - Support for file uploads
-- **rasterio** - Geospatial raster I/O operations
-- **rioxarray** - Rasterio xarray extension for geospatial data
-- **geopandas** - Spatial data operations and analysis
-- **scikit-learn** - Machine learning library (DBSCAN clustering)
-- **rasterstats** - Zonal statistics for raster data
-- **farm-ng** - Robot path planning and track generation framework
+**Backend** (exact pins in `code/backend/requirements.txt`; geospatial stack is heavy — use Docker or `pip install -r requirements.txt` after Poetry):
 
-**Frontend Dependencies:**
-- **React 18** - UI library with TypeScript support
-- **Tailwind CSS** - Utility-first CSS framework for styling
-- **react-dropzone** - Drag-and-drop file upload functionality
-- **TypeScript** - Type-safe JavaScript development
+| Area | Packages / tools |
+|------|------------------|
+| Web stack | **FastAPI**, **Uvicorn**, **Pydantic Settings**, **python-multipart**, **httpx**, **aiofiles** |
+| NodeODM | **PyODM** |
+| Rasters & GIS | **rasterio**, **rioxarray**, **xarray**, **geopandas**, **shapely**, **rasterstats**, **pyproj** |
+| Analysis | **numpy** (pinned below 2.x), **pandas**, **matplotlib**, **scikit-learn** |
+| Robot / path | **farm-ng-amiga**, **protobuf**; **Fields2Cover** is wired via the Docker build (not a simple `pip` one-liner on all hosts) |
+| Testing | **pytest**, **pytest-asyncio** |
 
-### Installation Steps
+**Frontend** (`code/frontend/package.json`):
 
-#### 1. Clone the Repository
+| Area | Packages |
+|------|----------|
+| UI | **React 18**, **TypeScript**, **Tailwind CSS**, **react-scripts** |
+| Uploads | **react-dropzone** |
+| Maps & geometry | **Leaflet**, **react-leaflet**, **@turf/area** |
+| Reports | **react-pdf**, **pdfjs-dist** |
+
+> **Poetry vs pip:** `code/backend/pyproject.toml` carries a **minimal** Poetry set suitable for lightweight development. For prescription, NDVI, and path-generation code paths, install **`requirements.txt`** (or run the **backend Dockerfile**) so rasterio, farm-ng, and related libraries match production.
+
+### Installation steps
+
+#### 1. Clone the repository
+
 ```bash
 git clone <repository-url>
 cd DBD
 ```
 
-#### 2. Backend Setup (Python/FastAPI)
+#### 2. Backend setup (Python / FastAPI)
 
-**Option A: Using Poetry (Recommended)**
+**Option A — Poetry (recommended), then full requirements**
+
 ```bash
 cd code/backend
 poetry install
+pip install -r requirements.txt
 cp env.example .env
-# Edit .env with your configuration
+# Edit .env: PORT=8001, NODEODM_URL, UPLOAD_DIR, RESULTS_DIR, ALLOWED_ORIGINS (include http://localhost:8000 if you override the list)
 poetry run python run.py
 ```
 
-**Option B: Using pip**
+**Option B — pip only**
+
 ```bash
 cd code/backend
 python -m venv venv
-# On Windows:
-venv\Scripts\activate
-# On macOS/Linux:
+# Windows:
+#   venv\Scripts\activate
+# macOS / Linux:
 source venv/bin/activate
 pip install -r requirements.txt
 cp env.example .env
-# Edit .env with your configuration
 python run.py
 ```
 
-#### 3. Frontend Setup (React)
+The backend defaults to **port 8001** in `app/core/config.py`. The bundled `env.example` uses **`PORT=8001`** so it matches the frontend’s default `REACT_APP_API_BASE_URL=http://localhost:8001`.
+
+#### 3. Frontend setup (React)
+
 ```bash
 cd code/frontend
 npm install
 npm start
 ```
 
-#### 4. Node ODM Setup
+`npm start` binds **port 8000** (`PORT=8000` in `package.json`). Set **`REACT_APP_API_BASE_URL`** if the API is not on `http://localhost:8001`. With **`DEBUG=True`**, the backend uses permissive CORS; if you turn **`DEBUG=False`**, ensure **`ALLOWED_ORIGINS`** lists every origin your browser uses (including `http://localhost:8000`).
+
+#### 4. NodeODM
+
 ```bash
-# Using Docker (recommended)
 docker run -p 3000:3000 opendronemap/nodeodm:stable
 ```
 
+Point **`NODEODM_URL`** / **`NODEODM_HOST`** and **`NODEODM_PORT`** in `.env` at that service.
+
 #### 5. Docker Compose (full stack — farmer / offline-capable)
 
-You **do not need Git**, and you **do not need to clone** the source repository. Install **Docker Engine** and **Docker Compose v2** on the target computer first (for example by installing **Docker Desktop**, which provides both). Use the **application package** supplied with your installation—typically a ZIP archive or the contents of a USB drive—and verify that it includes `docker-compose.yml`, the `code/` directory, and the `scripts/` directory. Extract or copy the package so that those items sit together in one folder on the machine that will run the stack.
+You **do not need Git** for every deployment if you ship an **application package** (ZIP or USB) that contains **`docker-compose.yml`**, **`code/`**, and **`scripts/`** at the top level of one folder.
 
-Open a terminal in that **top-level** folder (the directory that contains `docker-compose.yml`):
+1. Install **Docker Engine** and **Docker Compose v2** on the target machine.
+2. Open a terminal in the folder that contains `docker-compose.yml`.
+3. Run:
 
 ```bash
 ./scripts/install-dbd.sh
-# same as: docker compose up -d --build
+# same as:
+# docker compose up -d --build
 ```
 
-This starts **NodeODM**, the **FastAPI backend**, and a **production build of the UI** (nginx). Uploads, results, and path jobs persist in the Docker volume **`dbd_app_data`**.
+This starts **NodeODM**, the **FastAPI** backend, and a **production build of the UI** (nginx). Data persists in the named volume **`dbd_app_data`** (see comments in `docker-compose.yml` for backup examples using `docker run … tar`).
 
-**URLs (same machine as Docker):**
+**URLs when Docker runs on the same machine as the browser**
 
-- **Web app**: http://localhost:8000
-- **API / docs**: http://localhost:8001/docs
-- **NodeODM** (optional): http://localhost:3000
+| Service | URL |
+|---------|-----|
+| Web app | http://localhost:8000 |
+| API / OpenAPI | http://localhost:8001/docs |
+| NodeODM (optional debugging) | http://localhost:3000 |
 
-**Working fully offline:** images must already exist on the machine. While online, run `docker compose build` and `docker compose pull`, then save images with [`docker save`](https://docs.docker.com/reference/cli/docker/image/save/) and transfer the tarball (for example on USB). On the air-gapped PC, run [`docker load`](https://docs.docker.com/reference/cli/docker/image/load/), then `./scripts/install-dbd.sh` (use `docker compose up -d` without `--build` if you are not rebuilding).
+**Working offline:** pull or build images while online, then use [`docker save`](https://docs.docker.com/reference/cli/docker/image/save/) and transfer the tarball (e.g. USB). On the air-gapped host, [`docker load`](https://docs.docker.com/reference/cli/docker/image/load/) then `./scripts/install-dbd.sh` (use `docker compose up -d` without `--build` if you are not rebuilding).
 
-**Access from another device on the LAN:** the UI is built with `REACT_APP_API_BASE_URL=http://localhost:8001` by default. To use the app from a phone or second PC, change that URL in `docker-compose.yml` under `frontend.build.args` to `http://<this-computer-LAN-IP>:8001`, then run `docker compose up -d --build frontend`.
+**Access from another device on the LAN:** the default frontend image is built with **`REACT_APP_API_BASE_URL=http://localhost:8001`**, which only works when the **browser runs on the same host as Docker**. For a phone or second PC, set `REACT_APP_API_BASE_URL` under `frontend.build.args` in `docker-compose.yml` to `http://<this-machine-LAN-IP>:8001`, then `docker compose up -d --build frontend`.
 
-**Publishing pre-built images (maintainers):** The workflow [`.github/workflows/publish-docker.yml`](.github/workflows/publish-docker.yml) builds and pushes **`dbd-backend`** and **`dbd-frontend`** to [**GitHub Container Registry**](https://docs.github.com/packages/working-with-a-github-packages-registry/working-with-the-container-registry) (`ghcr.io`). Image names are `ghcr.io/<github-owner-lowercase>/dbd-backend` and `ghcr.io/<github-owner-lowercase>/dbd-frontend` (owner = user or organization). Pushes to **`main`** tag **`latest`** (and **`main`**); Git tags **`v1.2.3`** tag **`1.2.3`** and **`latest`**. After the first successful run, open each package under the repository’s **Packages** on GitHub and set visibility to **Public** if you want **`docker pull`** to work without logging in. For a **thin offline bundle**, ship `docker-compose.ghcr.yml` and `./scripts/install-dbd-ghcr.sh` (defaults point at `ghcr.io/logansutton13/...:main`; no `.env` required). They do not need the `code/` directory. **Important:** the published **`dbd-frontend`** image is built with `REACT_APP_API_BASE_URL=http://localhost:8001`, so this GHCR/no-checkout setup works as documented only when the browser is running on the same machine as Docker. It will **not** work from another device on the LAN unless you rebuild the frontend with a LAN-reachable backend URL as described above, or publish a separate LAN-capable frontend image.
+**Publishing pre-built images (maintainers):** [`.github/workflows/publish-docker.yml`](.github/workflows/publish-docker.yml) builds and pushes **`dbd-backend`** and **`dbd-frontend`** to [**GitHub Container Registry**](https://docs.github.com/packages/working-with-a-github-packages-registry/working-with-the-container-registry) (`ghcr.io`). Names follow `ghcr.io/<github-owner-lowercase>/dbd-backend` and `ghcr.io/<github-owner-lowercase>/dbd-frontend`. Pushes to **`main`** tag **`latest`** (and **`main`**); Git tags like **`v1.2.3`** tag **`1.2.3`** and **`latest`**. After the first successful run, set package visibility to **Public** on GitHub if you want unauthenticated **`docker pull`**.
 
-#### 6. Access the Application (native dev installs from steps 2–4)
-- **Frontend**: http://localhost:8000
-- **Backend API**: http://localhost:8001
-- **API Documentation**: http://localhost:8001/docs
-- **Node ODM**: http://localhost:3000 
+**Thin GHCR install (no `code/` checkout):** use **`docker-compose.ghcr.yml`** and **`./scripts/install-dbd-ghcr.sh`** (defaults often point at `ghcr.io/logansutton13/...:main`; adjust owner and tag as needed). The same **LAN / localhost API URL** caveats apply as above.
 
+#### 6. Access the application (native dev, steps 2–4)
 
-## Functionality
+| Service | URL |
+|---------|-----|
+| Frontend (CRA) | http://localhost:8000 |
+| Backend API | http://localhost:8001 |
+| Swagger UI | http://localhost:8001/docs |
+| ReDoc | http://localhost:8001/redoc |
+| NodeODM | http://localhost:3000 |
 
-### Core Features
+---
 
-**1. Image Upload & Management**
-- Drag-and-drop interface for uploading multiple drone images
-- Support for JPEG, PNG, and TIFF formats (up to 100MB per file)
-- Real-time upload progress tracking
-- File validation and error handling
-- Upload queue management with preview thumbnails
+## Application structure (UI)
 
-**2. Automated Image Processing**
-- Integration with Node ODM for professional-grade image stitching
-- Automatic orthophoto generation with configurable quality settings
-- Background processing with real-time status updates and automatic polling
-- Task queuing and progress monitoring
-- Support for large image sets (up to 200 images per batch)
-- Automatic asset downloading upon task completion
-- Task naming capability for better organization
-- Configurable processing parameters (heading, grid size)
+The SPA exposes **four** primary areas from the sidebar:
 
-**3. Processing Monitoring**
-- Real-time processing queue with status indicators
-- Progress bars and completion tracking
-- Automatic polling for status updates
-- Error handling and retry mechanisms
-- Processing history and task management
+| Tab | Purpose |
+|-----|---------|
+| **Upload** | Multi-step wizard: field name, optional boundary shapefile, imagery queue, **chunked upload with per-file progress**, NodeODM finalize, embedded **processing queue** (`UploadQueueBoard` + polling), optional **path preview** and **save path to task** |
+| **View Gallery** | Lists processed tasks with orthophoto thumbnails; lightbox for images and in-browser **PDF** viewing |
+| **Field Maps** | Tasks with **prescription GeoJSON** from the API; Leaflet map (optional **OpenStreetMap** when online), NDVI-oriented popups, **path-from-task**, save path, GeoJSON download, **delete task results**, **robot ZIP** |
+| **Prescriptions** | List and detail from the same prescription API: **spray levels**, **GPA** thresholds, **config** edit, **regenerate** |
 
-**4. Field Map Visualization**
-- Gallery view for processed images and orthophotos with backend integration
-- Grid-based layout for easy browsing
-- Image metadata display with task names
-- Lightbox viewer for detailed inspection with full-screen preview
-- PDF report viewing with page navigation
-- Export functionality for processed results
-- Real-time task listing from backend API
-- Automatic image and report retrieval
+> **`ProcessingView.tsx`** still exists under `code/frontend/src/components/` but is **not** mounted in `App.tsx`. Live NodeODM status for recent uploads is handled on the **Upload** tab via **`useProcessingQueue`** and **`UploadQueueBoard`**.
 
-**5. Agricultural Analysis Tools**
-- Field map generation for agricultural planning
-- Pesticide prescription mapping interface with spray map functionality
-- Prescription module outputs ESRI Shapefile for pathfinding and GIS (Sprint 4)
-- Interactive spray level selection with color-coded visualization
-- Grid-based spray map editing
-- Crop health analysis tools
-- Integration with agricultural data systems
+---
 
-**6. NDVI Analysis & Field Health Assessment**
-- NDVI (Normalized Difference Vegetation Index) computation from multispectral imagery
-- NDRE (Normalized Difference Red Edge) calculation
-- DBSCAN clustering for spatial field segmentation
-- Soil masking using HSV/HUE-based image processing
-- Grid-based field analysis with configurable cell sizes
-- GeoJSON export for field maps with NDVI and cluster data
-- CSV export with plot-level NDVI statistics and geographic coordinates
-- Python port of FIELDimageR workflow for comprehensive field analysis
+## Core functionality
 
-**7. Robot Path Planning**
-- Path planning module for generating robot navigation tracks
-- Support for straight segments, turns, arcs, and AB line segments
-- Integration with farm-ng track builder framework and Fields2Cover for boustrophedon paths
-- Path preview in Upload view: upload boundary shapefile, adjust heading/robot/coverage width, regenerate until satisfied
-- Pathing API for shapefile upload and preview-only path generation with Start/End markers
-- Custom track generation utilities and robot-compatible path file generation
+### 1. Image upload and management
 
-### Usage Walkthrough
+- **Drag-and-drop** and file picker, with a **wizard** that separates naming, boundary upload, imagery queue, and finalize.
+- **Chunked uploads** (`init` → `chunk` → `finalize`) with a default **5 MiB** chunk size; **XHR upload progress** per file.
+- Supported imagery types are driven by backend MIME and extension rules (e.g. **JPEG**, **PNG**, **TIFF**); **100 MB** default per-file cap (`MAX_FILE_SIZE`).
+- Optional **auxiliary** GNSS / sensor files: **`.nav`**, **`.obs`**, **`.bin`**, **`.mrk`** (see `ALLOWED_AUXILIARY_EXTENSIONS` in `app/core/config.py`).
+- **System-wide defaults** via **`GET/PUT /api/v1/upload/settings`** (NodeODM heading/grid size, robot and coverage width, prescription parameters) and scoped **reset** endpoints.
 
-1. **Start the Application**
-   - Launch the backend server (`python run.py`)
-   - Start the frontend development server (`npm start`)
-   - Ensure Node ODM is running (`docker run -p 3000:3000 opendronemap/nodeodm:stable`)
+### 2. Automated image processing (NodeODM)
 
-2. **Upload Images**
-   - Navigate to the Upload tab
-   - Drag and drop your drone images or click to browse
-   - Review the upload queue and file details
-   - Click "Upload Files" to start processing
+- Jobs are submitted to **NodeODM** after finalize; options such as **heading** and **grid size** flow from upload init and settings.
+- The backend **polls** NodeODM and **downloads** orthophoto and report assets into per-task folders under **`results/`**.
+- Large batches are supported in principle; practical limits depend on **disk**, **NodeODM**, and **timeout** settings (`NODEODM_TIMEOUT`).
 
-3. **Monitor Processing**
-   - Switch to the Processing tab to view active jobs
-   - Watch real-time progress updates
-   - Monitor queue status and completion times
-   - Handle any processing errors
+### 3. Processing monitoring
 
-4. **View Results**
-   - Access the Gallery tab to see processed images
-   - Browse orthophotos and field maps from the backend
-   - Click on images to view full-screen previews
-   - View PDF reports directly in the browser
-   - Download processed orthophotos and reports
-   - Use the Field Maps tab for agricultural analysis
-   - Generate pesticide prescriptions with spray maps as needed
+- The **Upload** tab shows an active **queue** of tasks with status and progress polling (not a separate top-level “Processing” route).
+- Status comes from **`GET /api/v1/upload/{task_id}/status`** tied to the NodeODM task.
 
-5. **Field Analysis & Path Planning**
-   - Process orthophotos for NDVI analysis
-   - View field health maps with DBSCAN clustering
-   - Export field maps as GeoJSON or CSV
-   - Generate robot navigation paths for field operations
-   - Configure path planning parameters (heading, spacing, etc.)
+### 4. Gallery and reports
 
+- **View Gallery** loads real task rows from **`GET /api/v1/results`**.
+- **Orthophoto** PNGs and **PDF** reports open in the UI; URLs are built from the API’s summary payloads.
 
-## Known Problems
+### 5. Field maps (backend-backed)
 
-### Current Issues
+- **Field Maps** lists prescriptions via **`GET /api/v1/prescription`**, loads GeoJSON per task, and can overlay **saved display paths** from **`GET /api/v1/results/{task_id}/display-path`**.
+- **Leaflet** map: optional basemap when online; blank background when offline tile fetch fails.
+- **Path-from-task** uses pathing **`POST …/from-task`** (and aliases); **save** persists the preview to the task.
+- **Export** prescription GeoJSON from the UI; **download robot ZIP** via **`GET /api/v1/results/{task_id}/robot-files.zip`** (bundles whatever exists among robot path JSON, prescription GeoJSON, and prescription config — see API response headers for included vs missing files).
+- **Delete results** for a task via **`DELETE /api/v1/results/{task_id}`** (used from Field Maps with a confirmation step).
 
-**1. Node ODM Integration**
-- **Issue**: Backend requires Node ODM to be running on localhost:3000
-- **Impact**: Uploads will fail with 503 error if Node ODM is not available
-- **Location**: `code/backend/app/api/v1/upload.py`
-- **Workaround**: Ensure Node ODM Docker container is running before starting the backend
-- **Status**: Improved error handling in Sprint 2
+### 6. Pesticide prescriptions and spray maps
 
-**2. File Cleanup**
-- **Issue**: Temporary uploaded files are not cleaned up on processing errors
-- **Impact**: Disk space may accumulate over time with failed uploads
-- **Location**: `code/backend/app/api/v1/upload.py`
-- **Workaround**: Manually clean the `uploads/` directory periodically
-- **Status**: Background polling implemented in Sprint 2, cleanup still pending
+- **Prescriptions** tab: list, open detail map, edit **spray** levels per cluster/feature, save with **`PUT`**, adjust **GPA**-related config, open **regenerate** flow (**`POST …/generate`** returns **202** while the R pipeline runs).
+- Backend merges **config** into stored GeoJSON where applicable (spray rates on features).
 
-**3. Task Status Polling**
-- **Issue**: Frontend polling may not handle all Node ODM status responses correctly
-- **Impact**: Some tasks may show incorrect status or get stuck in processing state
-- **Location**: `code/frontend/src/components/ProcessingView.tsx`
-- **Workaround**: Use manual refresh button to force status updates
-- **Status**: Background polling implemented in Sprint 2 for automatic status updates
+### 7. NDVI analysis and path planning (where they live today)
 
-**4. Field Maps Backend Integration**
-- **Issue**: Field maps view still uses mock data instead of backend API
-- **Impact**: Users cannot view actual processed field maps in Field Maps tab
-- **Location**: `code/frontend/src/components/FieldMapsView.tsx`
-- **Workaround**: Use Gallery view to see processed orthophotos
-- **Status**: Field maps UI template created in Sprint 3, backend integration pending
+- **NDVI** (and related plot statistics) appear in **prescription GeoJSON** produced by the **FIELDimageR**-style R pipeline — there is **no separate public HTTP API** that only returns “NDVI rasters” independent of prescriptions.
+- **Path planning** uses **Fields2Cover**-based generation in the backend (**shapefile** upload or **from-task** boundary), **Farm-ng / Amiga**-oriented track conversion, **RTK base** JSON under **`/api/v1/pathing/rtk-base`**, and persistence through **save** and results **robot-path** / **display-path** files.
 
-**5. Pesticide Prescription Backend Integration**
-- **Issue**: Pesticide prescription generation uses mock data
-- **Impact**: Cannot generate actual prescription maps from processed orthophotos
-- **Location**: `code/frontend/src/components/PesticidePrescriptionsView.tsx`
-- **Workaround**: Spray map functionality is available but needs backend integration
-- **Status**: Planned for future sprint
+### 8. Testing and CI
 
-**7. Path Planning Frontend Integration**
-- **Issue**: Path planning module exists but is not integrated with frontend UI
-- **Impact**: Users cannot interact with path planning features through the web interface
-- **Location**: `code/backend/app/services/path_planning_module/`
-- **Workaround**: Path planning can be used programmatically via backend
-- **Status**: Resolved in Sprint 4 – path preview and boundary file handling integrated in Upload view; pathing API and PathGenerator (Fields2Cover) in place
+- **`pytest`** in `code/backend/tests/` — **116** collected test functions across routes, handlers, file storage, path generator, schemas, and legacy API tests (re-run `pytest --collect-only` after large edits).
+- **[`.github/workflows/backend-tests.yml`](.github/workflows/backend-tests.yml)** runs on push and pull request.
+- **[`.github/workflows/publish-docker.yml`](.github/workflows/publish-docker.yml)** publishes container images.
 
-**8. NDVI Analysis API Endpoints**
-- **Issue**: NDVI analysis functionality exists but lacks API endpoints for frontend consumption
-- **Impact**: Frontend cannot trigger or retrieve NDVI analysis results
-- **Location**: `code/backend/app/services/field_map_generator/field_image_port.py`
-- **Workaround**: NDVI analysis can be run directly via Python scripts
-- **Status**: Implementation complete in Sprint 3, API endpoints pending
+---
 
-**6. Database Integration**
-- **Issue**: No database persistence for tasks and results
-- **Impact**: Task history and metadata are file-based only
-- **Location**: Backend architecture
-- **Workaround**: Current file-based storage works but lacks query capabilities
-- **Status**: Planned for future sprint
+## API surface (quick reference)
 
-### Development Notes
+For authoritative request/response shapes, use **http://localhost:8001/docs** when the backend is running. In short:
 
-- The application is currently in active development (Sprint 5 completed)
-- **Sprint 1 Achievements**: 
-  - Complete drone imagery upload system with drag-and-drop interface
-  - Real-time processing queue monitoring
-  - Interactive gallery view for processed imagery
-  - Backend API integration with NodeODM
-  - Configurable processing parameters
-- **Sprint 2 Achievements**: 
-  - Results API with orthophoto and PDF report retrieval
-  - Gallery view backend integration with real data
-  - PDF report viewing functionality
-  - Task naming and metadata storage
-  - Automatic background polling for task completion
-  - File storage service with manifest management
-  - Enhanced upload parameters (heading, grid size)
-  - Spray map functionality in pesticide prescriptions
-- **Sprint 3 Achievements**:
-  - Path planning module with farm-ng integration
-  - NDVI analysis with DBSCAN clustering
-  - Python port of FIELDimageR workflow
-  - Field maps UI template
-  - GeoJSON and CSV export functionality
-  - Soil masking capabilities
-  - Grid-based field analysis system
-  - Client demo and semester accomplishments presentation
-- **Sprint 4 Achievements**:
-  - Path planning integrated with frontend: boundary file upload and path preview in Upload view
-  - Pathing API for shapefile upload and path generation with heading, robot width, and coverage width
-  - PathGenerator class (Fields2Cover) for boustrophedon paths from shapefiles; FarmNG track output
-  - Path preview with Start/End markers; improved Sidebar sticky behavior and Upload button consistency
-  - Prescription module: shapefile output (replacing GeoJSON), bucketed-point clustering, automatic field resolution
-  - Prescription and fieldShapeModified cleanup, documentation, and R style guide alignment
-  - Meeting minutes (MoM) for Jan–Feb 2026
-- **Sprint 5 Achievements**:
-  - CI workflow for backend automated testing and expanded unit test coverage
-  - Prescription module integration progress: callable via CLI args and invoked from backend; improved polygon outputs for clusters
-  - Farmer-specified boundary shapefile support for prescription generation
-  - Fields2Cover pathing improvements and deeper UI integration for path preview workflows
-  - RTK base station configuration endpoints to support relative/robot-friendly coordinates
-  - Dockerized application setup to improve environment consistency
-- Some features like database persistence and authentication are planned but not yet implemented
-- Node ODM integration is functional with automatic polling and asset downloading
-- File-based storage with manifest files is currently used for task metadata
-- NDVI analysis and path planning modules are implemented but need frontend integration
+| Prefix | Role |
+|--------|------|
+| `/api/v1/upload` | Chunked upload, settings, boundary, status (**note:** list and delete **upload** routes return **501** today) |
+| `/api/v1/results` | List tasks, orthophoto, PDF, **robot-path**, **display-path**, **robot-files.zip**, **DELETE** results |
+| `/api/v1/pathing` | Path jobs (multipart shapefile or **from-task**), poll, result, **save**, RTK base |
+| `/api/v1/prescription` | List, GeoJSON get/put, **config**, **status**, **generate** |
 
+---
+
+## Usage walkthrough
+
+1. **Start services** — NodeODM (e.g. Docker on port 3000), backend (`python run.py` or Poetry equivalent), frontend (`npm start`), or bring up **Docker Compose** from the repo root.
+2. **Upload** — Open **Upload**, enter a field name, attach a **boundary** shapefile if you need path/prescription geometry early, add images (and optional GNSS sidecars), then run through **chunked upload** and **finalize**.
+3. **Monitor** — Stay on **Upload** to watch the **processing queue** until NodeODM completes; fix any reported errors (503 if NodeODM is down, validation errors, etc.).
+4. **Gallery** — Open **View Gallery** to preview orthophotos and open **PDF** reports.
+5. **Prescriptions** — Open **Prescriptions**, pick a task with a completed orthophoto pipeline, review the map, set **spray** levels and **GPA**-related settings, save, and **regenerate** when you change parameters.
+6. **Field maps and paths** — Use **Field Maps** for map-centric workflows: preview **paths from task**, **save** when satisfied, **export GeoJSON**, or **download robot ZIP**; use **delete results** if you must remove a task’s stored output from disk.
+7. **Settings** — Use the **settings** entry point in the header on **Upload** (increments `openSettingsTick`) to adjust **global defaults** for NodeODM and prescription modules.
+
+---
+
+## Known issues and limitations
+
+### Operational
+
+1. **NodeODM must be running** — Finalize and status calls assume a reachable NodeODM instance; otherwise uploads fail or stall with HTTP errors (`503` when the client cannot reach NodeODM is common).
+2. **Upload router gaps** — **`DELETE /api/v1/upload/{task_id}`** and **`GET /api/v1/upload/`** return **501** (not implemented). Cleaning **finished** artifacts is done via **`DELETE /api/v1/results/{task_id}`**, not via cancelling an upload session in the API.
+3. **Disk usage** — Failed or abandoned runs can leave data under **`uploads/`** and **`path_jobs/`**; operators should monitor disk; some temp cleanup helpers exist on the backend but there is no full automatic janitor for every failure mode.
+4. **CORS** — If you customize **`ALLOWED_ORIGINS`**, list every dev and production browser origin explicitly (include **`http://localhost:8000`** for CRA).
+
+### Product / architecture
+
+5. **No database** — Task metadata lives in **manifests** and directory layout; there is no SQL layer for history or multi-tenant isolation.
+6. **No built-in authentication** — Treat deployments as **trusted single-operator** unless you add a reverse proxy or VPN.
+7. **Fields2Cover on bare metal** — Non-Docker Python environments may still need manual setup matching the **Dockerfile**; Compose remains the supported path for path generation.
+8. **Frontend test depth** — **`npm test`** is configured, but component coverage is thin compared to backend **`pytest`**.
+
+### Historical notes (fixed in recent sprints)
+
+Earlier READMEs mentioned **mock** field maps or prescriptions; as of **Sprint 6**, **Field Maps** and **Prescriptions** use **live** prescription and results APIs. **Path preview** is integrated in **Upload** and **Field Maps**, not only “backend-only.”
+
+---
+
+## Sprint and documentation history
+
+### Sprint highlights (condensed)
+
+- **Sprint 1** — Drone upload UX, early processing concepts, NodeODM wiring.
+- **Sprint 2** — **Results API**, gallery backed by real orthophotos and PDFs, manifests, **background polling**, task naming, richer upload parameters.
+- **Sprint 3** — **NDVI / FIELDimageR** port and field analysis services, **DBSCAN** / soil masking concepts, GeoJSON and CSV export paths in backend tooling, field-map UI groundwork.
+- **Sprint 4** — **Pathing API**, **PathGenerator** (Fields2Cover), **Upload** boundary + preview, prescription **shapefile** output, meeting minutes.
+- **Sprint 5** — **Dockerized** stack, **RTK** endpoints, deeper **path + prescription** integration, **CI** and expanded **pytest**, farmer-supplied boundaries for prescriptions.
+- **Sprint 6** — **Chunked upload + progress**, prescription/field-map **production UI**, **GPA** + **regenerate**, **robot-path** / **display-path** / **robot ZIP**, **delete results**, **GHCR** install path, validation fixes — see **[06_Sprint_Report.md](docs/Reports/06_Sprint_Report.md)**.
+
+### Sprint reports and requirements
+
+- [Sprint 1](docs/Reports/01_Sprint_Report.md) · [Sprint 2](docs/Reports/02_Sprint_Report.md) · [Sprint 3](docs/Reports/03_Sprint_Report.md) · [Sprint 4](docs/Reports/04_Sprint_Report.md) · [Sprint 5](docs/Reports/05_Sprint_Report.md) · [Sprint 6](docs/Reports/06_Sprint_Report.md)
+- [Original requirements (PDF)](docs/Reports/DBD_Assignment1_Requirements.pdf)
+- [Final report (PDF)](docs/Reports/DBD_Final_Report.pdf) — semester / capstone write-up when present in the repo
+- [Meeting minutes](docs/Mom/)
+- [External links](resources/Links.md)
+- [Tutorials placeholder](resources/Tutorials.md)
+
+---
 
 ## Contributing
 
-We welcome contributions to the DroneBasedDevelopment project! Please follow these steps:
+We welcome contributions. Suggested flow:
 
-1. **Fork the repository** on GitHub
-2. **Clone your fork** locally:
+1. **Fork** the repository on GitHub.
+2. **Clone** your fork:
+
    ```bash
    git clone https://github.com/your-username/DBD.git
    cd DBD
    ```
-3. **Create a feature branch**:
+
+3. **Branch**:
+
    ```bash
    git checkout -b feature/your-feature-name
    ```
-4. **Set up the development environment**:
-   - Follow the installation steps above
-   - Ensure all tests pass before making changes
-5. **Make your changes**:
-   - Follow the existing code style and patterns
-   - Add tests for new functionality
-   - Update documentation as needed
-6. **Test your changes**:
+
+4. **Environment** — Follow **Installation** above; confirm **NodeODM** is reachable for integration-style manual tests.
+5. **Implement** — Match existing TypeScript / Python style; add **`pytest`** for backend behavior you touch.
+6. **Test**:
+
    ```bash
-   # Backend tests
    cd code/backend
-   poetry run pytest
-   
-   # Frontend tests
+   pytest
+   # or: poetry run pytest
+
    cd code/frontend
    npm test
    ```
-7. **Commit your changes**:
+
+7. **Commit and push**:
+
    ```bash
-   git commit -am 'Add your feature description'
-   ```
-8. **Push to your fork**:
-   ```bash
+   git commit -am "Describe the change clearly"
    git push origin feature/your-feature-name
    ```
-9. **Submit a pull request** with a clear description of your changes
 
-### Development Guidelines
+8. **Open a pull request** with a short rationale and any screenshots for UI changes.
 
-- Use TypeScript for frontend development
-- Follow PEP 8 for Python code
-- Write meaningful commit messages
-- Include tests for new features
-- Update documentation for user-facing changes
-- Ensure the application works with Node ODM integration
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** for conventions.
 
-## Additional Documentation
+### Development guidelines
 
-### Project Documentation
-- **[Backend API Documentation](code/backend/README.md)** - Detailed backend setup and API reference
-- **[Frontend Documentation](code/frontend/README.md)** - Frontend development guide and component documentation
-- **[Integration Guide](code/frontend/INTEGRATION_GUIDE.md)** - Backend-frontend integration details
+- **Frontend:** TypeScript, functional React components, Tailwind utility classes; prefer extending **`apiService`** in `code/frontend/src/services/api.ts` for new endpoints.
+- **Backend:** PEP 8–style Python, FastAPI routers thin over **`handlers/`**, Pydantic schemas for IO; add tests under **`code/backend/tests/`**.
+- **Docs:** Update this README or **`code/backend/README.md`** when you change user-visible behavior or routes.
 
-### Project Structure
-- **[Contributing Guidelines](CONTRIBUTING.md)** - Development standards and contribution process
-- **[Project Requirements](docs/Reports/DBD_Assignment1_Requirements.pdf)** - Original project specifications
-- **[Sprint 1 Report](docs/Reports/01_Sprint_Report.md)** - Sprint 1 accomplishments and documentation
-- **[Sprint 2 Report](docs/Reports/02_Sprint_Report.md)** - Sprint 2 accomplishments and documentation
-- **[Sprint 3 Report](docs/Reports/03_Sprint_Report.md)** - Sprint 3 accomplishments and documentation
-- **[Sprint 4 Report](docs/Reports/04_Sprint_Report.md)** - Sprint 4 accomplishments and documentation
-- **[Sprint 5 Report](docs/Reports/05_Sprint_Report.md)** - Sprint 5 accomplishments and documentation
-- **[Meeting Minutes](docs/Mom/)** - Project meeting documentation and templates
+---
 
-### Resources
-- **[Tutorials](resources/Tutorials.md)** - Learning resources and guides
-- **[Useful Links](resources/Links.md)** - External resources and references
+## Additional documentation
 
-### Development Resources
-- **API Documentation**: Available at http://localhost:8001/docs when backend is running
-- **Swagger UI**: Interactive API testing interface
-- **ReDoc**: Alternative API documentation format
+- **[Backend README](code/backend/README.md)** — Endpoint cheat sheet, curl examples for chunked upload, configuration tables.
+- **Live OpenAPI** — `http://localhost:8001/docs` (Swagger) and `/redoc` when the server is running.
+
+---
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **MIT License** — see [LICENSE](LICENSE).
 
-The MIT License allows for:
-- Commercial use
-- Modification
-- Distribution
-- Private use
-
-For more information about the MIT License, visit: https://choosealicense.com/licenses/mit/
+The MIT License allows commercial use, modification, distribution, and private use. Summary: [https://choosealicense.com/licenses/mit/](https://choosealicense.com/licenses/mit/).
