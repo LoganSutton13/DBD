@@ -1,5 +1,6 @@
 # Prescription Module - inputs a multispectral orthophoto and outputs a prescription map.
 # Copyright (C) 2025 Drone-Based Developers
+# For debugging purposes in RStudio, please run setwd("~\\code\\backend\\app\\services\\field_map_generator")
 
 library(FIELDimageR)
 library(FIELDimageR.Extra)
@@ -9,7 +10,9 @@ library(stars)
 library(terra)
 
 # Precondition: current working directory must be :/code/backend/app/services/field_map_generator
-source("fieldShapeModified.R")
+if (!exists("fieldShapeAuto")) {
+  source("fieldShapeModified.R")
+}
 
 
 # function: determineFieldResolution
@@ -53,7 +56,6 @@ smoothenField <- function(field, rows, sigma = 1) {
 # Generates a prescription map from stitched orthophoto drone imagery.
 # orthophoto: stitched drone image filepath, file generated with WebODM
 # boundary: shapefile of the field's boundary. The orthophoto will crop to this.
-# heading: in degrees, the heading that the robot will use on the field
 # cell_size: in meters, the size of each cell in the field (for length & width). Larger cell size means lower field resolution. NA for automatic field resolution.
 # cluster_count: the number of categories of health to divide the map into.
 # smoothing_rounds: the number of time the data gets smoothed. The more smoothing, the larger the data clumps.
@@ -63,33 +65,58 @@ smoothenField <- function(field, rows, sigma = 1) {
 # output_file_path: the file path for the output prescription map. Defaults to data folder
 # output_file_name: the file name for the output prescription map.
 
-# TODO: deprecate heading?
-generatePrescription <- function (orthophoto, boundary, heading, cell_size, cluster_count, smoothing_rounds, smoothing_sigma,
-                                  maximum_vertices, ndvi_threshold, output_file_path, output_file_name)
+generatePrescription <- function (orthophoto, boundary = NULL, cell_size, cluster_count, smoothing_rounds, smoothing_sigma,
+                                  maximum_vertices, ndvi_threshold, output_file_path, output_file_name, utm_zone, band_order = c(1,2,3,4))
 {
   if (is.null(orthophoto)) {
     stop("Please provide a valid file path to a .tif orthophoto.")
   }
   
-  # obtain the NDVI values from the orthophoto
-  multispectral <- rast(orthophoto)
-  boundary <- vect(boundary)
-  if (!same.crs(multispectral, boundary)) {
-    boundary <- project(boundary, crs(multispectral))
+  if (is.na(cell_size) && is.na(maximum_vertices)) {
+    stop("Either cell_size or maximum_vertices should have a defined value.")
   }
   
-  # crop to bounding box of the polygon
-  multispectral_crop <- mask(crop(multispectral, boundary), boundary)
+  if (cluster_count <= 0) {
+    stop("Cluster count must be 1 or greater")
+  }
   
-  multispectral_indices <- fieldIndex(multispectral_crop,Red=1,Green=2,NIR=3,RedEdge=4,
-                               index = c("NDVI","NDRE"))
+  if (min(smoothing_rounds, smoothing_sigma) < 0) {
+    stop("Smoothing values must be 0 or greater")
+  }
   
+  if (ndvi_threshold < -1 || ndvi_threshold > 1) {
+    stop("NDVI threshold must be between -1 and 1.")
+  }
+  
+  if (length(band_order) != 4) {
+    stop("band_order must have 4 values (leave blank for default)")
+  }
+  
+  if (utm_zone < 1 || utm_zone > 60) {
+    stop("utm_zone must be between 1 and 60.")
+  }
+  
+  # obtain the NDVI values from the orthophoto
+  multispectral <- rast(orthophoto)
+  
+  if (!is.null(boundary)) {
+    boundary <- vect(boundary)
+    if (!same.crs(multispectral, boundary)) {
+      boundary <- project(boundary, crs(multispectral))
+    }
+    
+    # crop to bounding box of the polygon
+    multispectral <- mask(crop(multispectral, boundary), boundary)
+  }
+  
+  multispectral_indices <- fieldIndex(multispectral,Red=band_order[1],Green=band_order[2],NIR=band_order[3],RedEdge=band_order[4],
+                              index = c("NDVI","NDRE"))
   # obtain our field grid
   print("Setting up the field grid...")
   if(is.na(cell_size)) {
     cell_size <- determineFieldResolution(multispectral_indices$NDVI, maximum_vertices)
   }
-  field_grid<-fieldShapeAuto(mosaic = multispectral_indices$NDVI, heading = heading, cell_size = cell_size)
+  field_grid<-fieldShapeAuto(mosaic = multispectral_indices$NDVI, heading = 0, cell_size = cell_size, zone=utm_zone)
   #fieldView(mosaic = multispectral_indices$NDVI, fieldShape = field_grid$plots, type = 2, alpha = 0.2)
   
   # convert our grid into a table
@@ -137,10 +164,8 @@ generatePrescription <- function (orthophoto, boundary, heading, cell_size, clus
   prescription_map <- NDVI_cluster_data %>%
     mutate(
       # convert UTM easting / northing into latitude / longitude
-      #longitude = utm2lonlat(easting = easting, northing = northing, zone = 11, hemisphere = "N")$longitude,
-      #latitude = utm2lonlat(easting = easting, northing = northing, zone = 11, hemisphere = "N")$latitude,
-      boundary_sfc = st_sfc(boundary, crs = st_crs(boundary)),
-      boundary_latlong = st_transform(boundary_sfc, crs = 4326)
+      boundary_sfc = st_sfc(boundary, crs=32611),
+      boundary_latlong = st_transform(boundary_sfc, crs=4326)
       
     ) %>%
     select(NDVI_max, boundary_latlong, cluster)
@@ -161,10 +186,6 @@ generatePrescription <- function (orthophoto, boundary, heading, cell_size, clus
 
   cluster_polys_sf <- st_cast(cluster_polys_sf, "MULTIPOLYGON")
   
-  # Force final output CRS to WGS84 for Leaflet/frontend
-  cluster_polys_sf <- st_transform(cluster_polys_sf, 4326)
-  st_crs(cluster_polys_sf) <- st_crs("EPSG:4326")
-  
   # Write shapefile (writes .shp/.shx/.dbf/.prj)
   out_path <- file.path(output_file_path, output_file_name)
   st_write(cluster_polys_sf, out_path, delete_dsn = TRUE)
@@ -174,19 +195,19 @@ generatePrescription <- function (orthophoto, boundary, heading, cell_size, clus
 }
 
 # example call of this function:
-# # Rscript prescription_module.R --orthophoto="../../../../../data/odm_orthophoto_updated.tif" --boundary="../../../../../data/boundaries.shp" --maximum_vertices=50000
+# # Rscript prescription_module.R --orthophoto="../../../../../data/odm_orthophoto_updated.tif" --boundary="../../../../../data/boundaries.shp" --maximum_vertices=50000 --utm_zone=11
 option_list <- list(
   make_option(c("--orthophoto"), help="stitched drone image filepath, file generated with WebODM", type="character"),
   make_option(c("--boundary"), help="shapefile of the field's boundary. The orthophoto will crop to this.", type="character"),
-  make_option(c("--heading"), help="in degrees, the heading that the robot will use on the field", type="double", default=0.0),
-  make_option(c("--cell_size"), help="cell size in meters; if NA, the resolution is automatically determined using --maximum_vertices", type="double", default=NA_real_),
+  make_option(c("--cell_size"), help="in meters, the size of each cell in the field (for length & width). Larger cell size means lower field resolution. NA for automatic field resolution.", type="numeric", default=NA),
   make_option(c("--cluster_count"), help="the number of categories of health to divide the map into", type="integer", default=3),
   make_option(c("--smoothing_rounds"), help="the number of time the data gets smoothed. The more smoothing, the larger the data clumps.", type="integer", default=3),
   make_option(c("--smoothing_sigma"), help="the intensity of each round of smoothing. The more smoothing, the larger the data clumps.", type="integer", default=10),
   make_option(c("--maximum_vertices"), help="the maximum number of vertices that the field should contain. Used to calculate the field resolution. Only called when cell_size is NA.", type="integer", default=80000),
   make_option(c("--ndvi_threshold"), help="the threshold to automatically classify a \"healthy\" cell - lower value results in more of the field classified as \"healthy\". Note that cells below this value can still be classified similarly via the bucketing process.", type="double", default=1.0),
   make_option(c("--output_file_path"), help="the file path for the output prescription map (defaults to data folder)", default="../../../../../data"),
-  make_option(c("--output_file_name"), help="the file name for the output prescription map (defaults to timestamp)", default=paste0("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".shp"))
+  make_option(c("--output_file_name"), help="the file name for the output prescription map (defaults to timestamp)", default=paste0("prescriptionMap_", format(Sys.time(), "%Y-%m-%d_%H%M%S"), ".shp")),
+  make_option(c("--utm_zone"), help="the UTM zone that the field is located in geographically.", default=11)
 )
 
 if (sys.nframe() == 0L) {
@@ -196,7 +217,6 @@ if (sys.nframe() == 0L) {
   success <- generatePrescription(
     orthophoto = opt$orthophoto,
     boundary = opt$boundary,
-    heading = opt$heading,
     cell_size = opt$cell_size,
     cluster_count = opt$cluster_count,
     smoothing_rounds = opt$smoothing_rounds,
@@ -204,7 +224,8 @@ if (sys.nframe() == 0L) {
     maximum_vertices = opt$maximum_vertices,
     ndvi_threshold = opt$ndvi_threshold,
     output_file_path = opt$output_file_path,
-    output_file_name = opt$output_file_name
+    output_file_name = opt$output_file_name,
+    utm_zone = opt$utm_zone
   )
 }
 
